@@ -69,6 +69,16 @@ export default function Editor({ id }: { id: string }) {
     setTime(t)
     if (media.current) media.current.currentTime = t
   }, [])
+  /** Next/previous part. "Previous" first goes back to the start of the current part, like a music player.
+   *  Before there are parts, it skips 5 seconds. */
+  const jump = (dir: 1 | -1) => {
+    const t = media.current?.currentTime ?? time
+    const total = p?.voiceover?.duration ?? 0
+    if (!parts.length) return seek(Math.max(0, Math.min(total, t + dir * 5)))
+    const i = Math.max(0, parts.findIndex((x) => t >= x.start - 0.1 && t < x.end - 0.1))
+    const target = dir < 0 && t - parts[i].start > 1 ? parts[i] : parts[Math.max(0, Math.min(parts.length - 1, i + dir))]
+    seek(target.start + 0.05)
+  }
   const toggle = useCallback(() => {
     const m = media.current
     if (!m) return
@@ -107,9 +117,7 @@ export default function Editor({ id }: { id: string }) {
         e.preventDefault()
         toggle()
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        const i = current ? current.index + (e.key === 'ArrowRight' ? 1 : -1) : 0
-        const next = parts[Math.max(0, Math.min(parts.length - 1, i))]
-        if (next) seek(next.start + 0.05)
+        jump(e.key === 'ArrowRight' ? 1 : -1)
       } else if (e.key.toLowerCase() === 'c' && current) {
         if (!selected.length) setSelected([current.id])
         setTab('Changes')
@@ -134,11 +142,11 @@ export default function Editor({ id }: { id: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Top bar */}
-      <header className="drag flex h-[58px] shrink-0 items-center gap-2.5 border-b border-line/70 pl-4 pr-[150px]">
+      <header className="drag flex h-[58px] shrink-0 items-center gap-2 whitespace-nowrap border-b border-line/70 pl-3 pr-[146px] [&>*]:shrink-0">
         <button onClick={() => go({ name: 'home' })} className="p-1.5 text-muted hover:text-ink">
           <ArrowLeft size={18} />
         </button>
-        <button onClick={() => go({ name: 'home' })} className="text-[16px] text-muted">
+        <button onClick={() => go({ name: 'home' })} className="hidden text-[16px] text-muted xl:block">
           Videos /
         </button>
         {renaming ? (
@@ -157,33 +165,34 @@ export default function Editor({ id }: { id: string }) {
             }}
           />
         ) : (
-          <span className="min-w-0 max-w-[260px] truncate text-[17px] font-semibold" title={p.title} onDoubleClick={() => setRenaming(true)}>
+          <span className="!shrink min-w-[60px] max-w-[260px] truncate text-[16px] font-semibold" title={p.title} onDoubleClick={() => setRenaming(true)}>
             {p.title}
           </span>
         )}
-        <button className="btn ml-2 hidden px-3 py-1.5 text-[14.5px] font-normal lg:inline-flex" onClick={() => go({ name: 'styles' })}>
+        <button className="btn ml-1 hidden px-3 py-1.5 text-[14px] font-normal xl:inline-flex" onClick={() => go({ name: 'styles' })}>
           <Palette size={14} /> {style?.name ?? 'Style'}
         </button>
         <button className="btn hidden px-3 py-1.5 text-[14.5px] font-normal 2xl:inline-flex" onClick={() => go({ name: 'characters' })}>
           <Users size={14} /> Characters
         </button>
         {p.job.running ? (
-          <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-3 py-1.5 text-[14.5px] font-medium text-accent2">
-            <span className="h-2 w-2 rounded-full bg-accent" /> {APP_NAME} is working
+          <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-3 py-1.5 text-[14px] font-medium text-accent2" title={`${APP_NAME} is working`}>
+            <span className="h-2 w-2 rounded-full bg-accent" /> <span className="hidden lg:inline">{APP_NAME} is working</span><span className="lg:hidden">Working</span>
           </span>
         ) : (
-          <span className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-[14.5px] font-medium text-ok">
+          <span className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-[14px] font-medium text-ok">
             <span className="h-2 w-2 rounded-full bg-ok" /> {p.job.error ? 'Stopped' : p.output ? 'Ready' : 'Not made yet'}
           </span>
         )}
-        <div className="ml-2 inline-flex rounded-lg border border-line p-0.5">
+        <div className="ml-1 inline-flex rounded-lg border border-line p-0.5">
           {(['Timeline', 'Map'] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[15px] ${view === v ? 'bg-card2 font-semibold' : 'text-muted'}`}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[14.5px] ${view === v ? 'bg-card2 font-semibold' : 'text-muted'}`}
+              title={v}
             >
-              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} {v}
+              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} <span className="hidden lg:inline">{v}</span>
             </button>
           ))}
         </div>
@@ -243,21 +252,23 @@ export default function Editor({ id }: { id: string }) {
               <MapView p={p} selected={selected} onSelect={select} />
             ) : (
               <div className="flex h-full flex-col">
-                <div className="flex min-h-0 flex-1 items-center justify-center px-8 pt-5">
+                <div className="flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 2xl:px-8 2xl:pt-5">
+                  <div className={`flex w-full justify-center ${working && showWorking ? "m-auto" : "h-full"}`}>
                   {working && showWorking ? (
                     <Working p={p} onWatch={() => setShowWorking(false)} />
                   ) : (
                     <Preview p={p} time={time} />
                   )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 px-6 py-3">
                   <button onClick={toggle} className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-card2">
                     {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
                   </button>
-                  <button className="text-muted hover:text-ink" onClick={() => current && seek(parts[Math.max(0, current.index - 1)].start)}>
+                  <button className="text-muted hover:text-ink" onClick={() => jump(-1)} title="Previous part (←)">
                     <ChevronLeft size={20} />
                   </button>
-                  <button className="text-muted hover:text-ink" onClick={() => current && seek(parts[Math.min(parts.length - 1, current.index + 1)].start)}>
+                  <button className="text-muted hover:text-ink" onClick={() => jump(1)} title="Next part (→)">
                     <ChevronRight size={20} />
                   </button>
                   <span className="text-[16px]">
@@ -282,11 +293,11 @@ export default function Editor({ id }: { id: string }) {
           </div>
 
           {/* Toolbar */}
-          <div className="flex h-[52px] shrink-0 items-center gap-1 border-y border-line/70 px-5 text-[15px]">
+          <div className="flex h-[52px] shrink-0 items-center gap-1 whitespace-nowrap border-y border-line/70 px-4 text-[15px]">
             {selected.length ? (
               <>
-                <span className="mr-3 font-semibold">
-                  {selected.length} part{selected.length > 1 ? 's' : ''} selected
+                <span className="mr-2 font-semibold">
+                  {selected.length}<span className="hidden xl:inline"> part{selected.length > 1 ? 's' : ''} selected</span>
                 </span>
                 <ToolBtn icon={MessageCircle} label="Comment" boxed onClick={() => { setTab('Changes'); setComposing(true) }} />
                 <ToolBtn
@@ -419,7 +430,13 @@ function Preview({ p, time }: { p: Project; time: number }) {
   return (
     <div className="flex aspect-video h-full max-h-full max-w-full items-center justify-center overflow-hidden rounded-xl bg-[#08080a]">
       {part?.video ? (
-        <video ref={ref} src={window.api.media.url(part.video) + `?v=${part.history.length}`} muted className="h-full w-full object-contain" />
+        <video
+          ref={ref}
+          src={window.api.media.url(part.video) + `?v=${part.history.length}`}
+          poster={part.thumb ? window.api.media.url(part.thumb) + `?v=${part.history.length}` : undefined}
+          muted
+          className="h-full w-full object-contain"
+        />
       ) : part?.thumb ? (
         <img src={window.api.media.url(part.thumb) + `?v=${part.history.length}`} className="h-full w-full object-contain" />
       ) : (
@@ -448,11 +465,12 @@ function ToolBtn({
     <button
       disabled={disabled}
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 disabled:opacity-35 ${boxed ? 'border border-line bg-card2' : 'hover:bg-white/5'} ${
+      title={label}
+      className={`flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 disabled:opacity-35 ${boxed ? 'border border-line bg-card2' : 'hover:bg-white/5'} ${
         danger ? 'text-red-400' : ''
       }`}
     >
-      <Icon size={15} /> {label}
+      <Icon size={15} /> <span className="hidden xl:inline">{label}</span>
     </button>
   )
 }

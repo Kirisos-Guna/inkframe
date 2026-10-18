@@ -19,9 +19,11 @@ export function emit(p: Project, now = false) {
     pendingEmit.delete(p.id)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('project:changed', p)
   }
-  clearTimeout(pendingEmit.get(p.id))
-  if (now) send()
-  else pendingEmit.set(p.id, setTimeout(send, 120))
+  // At most one update every 120 ms, but never postponed forever by a steady stream of events.
+  if (now) {
+    clearTimeout(pendingEmit.get(p.id))
+    send()
+  } else if (!pendingEmit.has(p.id)) pendingEmit.set(p.id, setTimeout(send, 120))
 }
 
 function step(p: Project, label: string, opts: { title?: string; detail?: string } = {}) {
@@ -37,6 +39,9 @@ function step(p: Project, label: string, opts: { title?: string; detail?: string
   if (opts.detail !== undefined) p.job.detail = opts.detail
   emit(p)
 }
+
+/** Shortens text at a word boundary, with an ellipsis. */
+const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, s.lastIndexOf(' ', n)).replace(/[,;:.]?$/, '…'))
 
 const part = (p: Project, id: string) => p.parts.find((x) => x.id === id)
 function setPart(p: Project, id: string, patch: Partial<Part>) {
@@ -178,7 +183,7 @@ async function runJob(p: Project, signal: AbortSignal) {
   await pool(todo, p.settings.helpers ? HELPERS : 1, async (x) => {
     step(p, `Coming up with ideas for part ${x.index + 1}`, {
       title: `Coming up with ideas for part ${x.index + 1}`,
-      detail: `${style.name}, ${p.parts.length} parts. Part ${x.index + 1}: ${x.idea || x.title}`.slice(0, 220)
+      detail: clip(`${style.name}, ${p.parts.length} parts. Part ${x.index + 1}: ${x.idea || x.title}`, 220)
     })
     setPart(p, x.id, { status: 'Designing' })
     await agentScene(p, x, designPrompt(p, x, chars), `First version`, signal)

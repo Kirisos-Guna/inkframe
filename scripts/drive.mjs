@@ -64,7 +64,9 @@ if (mode === 'ui') {
 if (mode === 'make') {
   await page.click('text=Choose a file')
   await page.waitForSelector('text=Replace')
-  await page.fill('textarea', 'One prompt, followed from the phone to the chip and back: the cell tower, the cable under the sea, the data center, the rows of servers, one GPU, and the answer coming home word by word. Dark board, pen drawings, one idea at a time.')
+  // DIRECTION=template uses the Explainer template; otherwise the phone-to-chip example.
+  if (process.env.DIRECTION === 'template') await page.locator('button', { hasText: 'Explainer' }).first().click()
+  else await page.fill('textarea', process.env.DIRECTION || 'One prompt, followed from the phone to the chip and back: the cell tower, the cable under the sea, the data center, the rows of servers, one GPU, and the answer coming home word by word. Dark board, pen drawings, one idea at a time.')
   // Quicker test: Sonnet, medium effort, low checks.
   await page.locator('button', { hasText: 'Opus 5.5' }).first().click()
   await page.locator('button', { hasText: 'Sonnet 5.5' }).first().click()
@@ -113,6 +115,30 @@ if (mode === 'make') {
     }
     await shot('comment-done')
   }
+}
+
+// comment = open the most recent video and send one comment on part 2 (uses an existing userdata folder).
+if (mode === 'comment') {
+  await page.locator('aside button:has(div.h-7)').first().click()
+  await page.waitForSelector('text=Export')
+  await shot('opened')
+  await page.click('[title="Next part (→)"]')
+  await page.click('[title="Next part (→)"]')
+  await shot('arrows')
+  const tiles = page.locator('[title*="·"][class*="absolute top-0 h-full cursor-pointer"]')
+  await tiles.nth(1).click()
+  await page.fill('textarea', process.env.NOTE || 'Make the main drawing bigger and add a short label to it')
+  await shot('comment')
+  await page.click('text=Save comment')
+  await page.click('text=/Send 1 change/')
+  await shot('comment-sent')
+  for (let i = 0; i < 240; i++) {
+    await page.waitForTimeout(5000)
+    const txt = await page.evaluate(() => document.body.innerText)
+    if (i === 3) await shot('comment-working')
+    if (!txt.includes('is working') && !txt.includes('Working')) break
+  }
+  await shot('comment-done')
 }
 
 await app.evaluate(({ app }) => app.exit(0)).catch(() => {})

@@ -58,9 +58,9 @@ function JobCard({ p }: { p: Project }) {
       <div className="absolute left-0 top-0 h-[2px] w-full bg-gradient-to-r from-accent via-accent/50 to-transparent" />
       <div className="flex items-center gap-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-        <span className="flex-1 text-[19px] font-semibold text-accent">{APP_NAME} is working</span>
-        <span className="text-[14px] text-muted">{elapsed}</span>
-        <button onClick={() => window.api.job.stop(p.id)} className="ml-3 flex items-center gap-1.5 text-[15px] font-medium">
+        <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-accent 2xl:text-[19px]">{APP_NAME} is working</span>
+        <span className="shrink-0 text-[14px] text-muted">{elapsed}</span>
+        <button onClick={() => window.api.job.stop(p.id)} className="ml-2 flex shrink-0 items-center gap-1.5 text-[15px] font-medium">
           <Pause size={14} fill="currentColor" /> Stop
         </button>
       </div>
@@ -242,7 +242,7 @@ function Changes({
               </button>
             ))}
           </div>
-          <div className="mt-4 flex items-center">
+          <div className="mt-4 flex items-center whitespace-nowrap">
             <button
               className="flex items-center gap-2 text-[15px] font-medium"
               onClick={async () => setAttachments([...attachments, ...(await window.api.pick.file([{ name: 'Files', extensions: ['*'] }], true))])}
@@ -259,8 +259,8 @@ function Changes({
             >
               Cancel
             </button>
-            <button className="btn-accent" disabled={!text.trim()} onClick={save}>
-              Save comment <kbd className="rounded border border-white/30 px-1.5 text-[11px] font-normal">Ctrl ↵</kbd>
+            <button className="btn-accent whitespace-nowrap" disabled={!text.trim()} onClick={save} title="Ctrl + Enter">
+              Save comment <kbd className="hidden rounded border border-white/30 px-1.5 text-[11px] font-normal 2xl:inline">Ctrl ↵</kbd>
             </button>
           </div>
         </div>

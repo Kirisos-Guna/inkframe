@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, readFileSync, renameSync, rmSync } from 'fs'
+import { createWriteStream, existsSync, readFileSync, renameSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -22,18 +22,47 @@ async function binUrls() {
 }
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin'
 
+const STALL_MS = 30_000
+const ATTEMPTS = 5
+
+/**
+ * Downloads to `to`, resuming a half-finished `.part` file. If no data arrives for 30 seconds the
+ * connection is dropped and picked up again where it stopped, up to 5 times.
+ */
 async function download(url: string, to: string, onProgress?: (pct: number) => void) {
-  const r = await fetch(url, { redirect: 'follow' })
-  if (!r.ok || !r.body) throw new Error(`Download failed (${r.status}) ${url}`)
-  const total = Number(r.headers.get('content-length') ?? 0)
-  let got = 0
-  const body = Readable.fromWeb(r.body as never)
-  body.on('data', (c: Buffer) => {
-    got += c.length
-    if (total) onProgress?.(Math.round((got / total) * 100))
-  })
   const tmp = to + '.part'
-  await pipeline(body, createWriteStream(tmp))
+  for (let attempt = 1; ; attempt++) {
+    const have = existsSync(tmp) ? statSync(tmp).size : 0
+    const ac = new AbortController()
+    let timer = setTimeout(() => ac.abort(), STALL_MS)
+    const alive = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => ac.abort(), STALL_MS)
+    }
+    try {
+      const r = await fetch(url, { redirect: 'follow', signal: ac.signal, headers: have ? { Range: `bytes=${have}-` } : {} })
+      if (r.status === 416) break // already complete
+      if (!r.ok || !r.body) throw new Error(`Download failed (${r.status}) ${url}`)
+      const resumed = r.status === 206
+      const total = Number(r.headers.get('content-length') ?? 0) + (resumed ? have : 0)
+      let got = resumed ? have : 0
+      let last = -1
+      const body = Readable.fromWeb(r.body as never)
+      body.on('data', (c: Buffer) => {
+        alive()
+        got += c.length
+        const pct = total ? Math.floor((got / total) * 100) : -1
+        if (pct !== last) onProgress?.((last = pct))
+      })
+      await pipeline(body, createWriteStream(tmp, { flags: resumed ? 'a' : 'w' }))
+      clearTimeout(timer)
+      break
+    } catch (e) {
+      clearTimeout(timer)
+      if (attempt >= ATTEMPTS) throw new Error(`Download kept stopping (${(e as Error).message}). Check your internet and press Try again.`)
+      await new Promise((r) => setTimeout(r, 2000 * attempt))
+    }
+  }
   renameSync(tmp, to)
 }
 

@@ -57,14 +57,14 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-[1030px] overflow-hidden rounded-2xl border border-line bg-[#0e0e10] px-8 py-7">
+    <div className="relative mx-auto h-fit w-full max-w-[1030px] overflow-hidden rounded-2xl border border-line bg-[#0e0e10] px-5 py-5 2xl:px-8 2xl:py-7">
       <div className="absolute left-0 top-0 h-[2px] w-1/3 animate-pulse bg-gradient-to-r from-transparent via-accent to-transparent" />
       <div className="flex items-center gap-3">
         <span className={`h-2.5 w-2.5 rounded-full ${j.error ? 'bg-red-500' : 'bg-accent'}`} />
-        <div className={`flex-1 text-[23px] font-semibold ${j.error ? 'text-red-400' : 'text-accent'}`}>
+        <div className={`min-w-0 flex-1 truncate text-[20px] font-semibold 2xl:text-[23px] ${j.error ? 'text-red-400' : 'text-accent'}`}>
           {j.error ? 'Something went wrong' : `${APP_NAME} is working`}
         </div>
-        <span className="rounded-lg border border-line px-3 py-1 text-[13.5px] text-muted">
+        <span className="hidden whitespace-nowrap rounded-lg border border-line px-3 py-1 text-[13.5px] text-muted lg:inline">
           {p.settings.provider} · {p.settings.model} · {p.settings.effort}
         </span>
         <span className="w-12 text-right text-[14px] text-muted">{elapsed}</span>
@@ -85,8 +85,8 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
       </div>
       <div className="mt-1.5 text-[16px] italic text-ink/80">{j.error ?? j.detail}</div>
       <div className="mt-5 flex flex-wrap gap-2.5">{STAGES.map(pill)}</div>
-      <div className="mt-5 flex gap-6">
-        <div className="relative flex aspect-video w-[58%] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-black">
+      <div className="mt-5 flex gap-5">
+        <div className="relative flex aspect-video max-h-[34vh] w-[52%] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-black">
           {picture ? (
             <>
               <img src={window.api.media.url(picture) + `?t=${p.updatedAt}`} className="h-full w-full object-contain" />

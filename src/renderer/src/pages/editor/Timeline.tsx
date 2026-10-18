@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Lock, Palette, Scissors } from 'lucide-react'
 import type { Part, Project } from '@shared/types'
 import { fmtTime } from '@/store/app'
@@ -46,7 +46,18 @@ export function Timeline({
     const r = wrap.current!.getBoundingClientRect()
     return Math.max(0, Math.min(dur, ((clientX - r.left) / r.width) * dur))
   }
-  const ticks = Array.from({ length: Math.floor(dur / 5) + 1 }, (_, i) => i * 5)
+  // Measure the strip so the time labels and badges never crowd each other.
+  const [width, setWidth] = useState(1000)
+  useEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const step = [5, 10, 15, 30, 60, 120, 300].find((s) => (width / dur) * s >= 56) ?? 600
+  const ticks = Array.from({ length: Math.floor(dur / step) + 1 }, (_, i) => i * step)
+  const pxOf = (part: Part) => ((part.end - part.start) / dur) * width
   const working = p.job.running
 
   return (
@@ -71,6 +82,7 @@ export function Timeline({
               selected={selected.includes(part.id)}
               changed={changed.includes(part.id)}
               showBadges={working || p.parts.some((x) => x.status === 'Making it again')}
+              narrow={pxOf(part) < 96}
               over={over === part.id}
               onClick={(e) => onSelect(part.id, e.shiftKey)}
               onDragOver={(e) => {
@@ -155,6 +167,7 @@ function PartTile({
   changed,
   showBadges,
   over,
+  narrow,
   ...handlers
 }: {
   part: Part
@@ -164,6 +177,7 @@ function PartTile({
   changed: boolean
   showBadges: boolean
   over: boolean
+  narrow: boolean
   onClick: (e: React.MouseEvent) => void
   onDragOver: (e: React.DragEvent) => void
   onDragLeave: () => void
@@ -183,13 +197,13 @@ function PartTile({
       {part.thumb && <img src={window.api.media.url(part.thumb) + `?v=${part.history.length}`} className="absolute inset-0 h-full w-full object-cover opacity-80" draggable={false} />}
       {busy && <div className="stripes absolute inset-0 opacity-80" />}
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-      {showBadges && badge && (
+      {showBadges && badge && !narrow && (
         <span className={`absolute left-2 top-1.5 flex items-center gap-1 text-[13px] font-semibold ${busy ? 'text-accent2' : part.status === 'Failed' ? 'text-red-400' : 'text-ok'}`}>
           {busy && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
           {badge}
         </span>
       )}
-      <span className="absolute right-1.5 top-1.5 flex h-[22px] w-[22px] items-center justify-center rounded-md bg-[#8e5bd6]/90" title="Style">
+      <span className={`absolute right-1.5 top-1.5 h-[22px] w-[22px] items-center justify-center rounded-md bg-[#8e5bd6]/90 ${narrow ? 'hidden' : 'flex'}`} title="Style">
         <Palette size={12} className="text-white" />
       </span>
       {part.locked && <Lock size={13} className="absolute right-8 top-2 text-ink" />}
