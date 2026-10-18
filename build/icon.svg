@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#e2551a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <!-- a video frame, drawn by a pen that has not quite finished -->
+  <path d="M300 128 H158 Q118 128 118 168 V344 Q118 384 158 384 H354 Q394 384 394 344 V252"
+        fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- play mark inside the frame -->
+  <path d="M222 206 L306 256 L222 306 Z" fill="#fff"/>
+  <!-- pen nib at the end of the stroke -->
+  <g transform="translate(404 206) rotate(20)">
+    <path d="M-22 -86 H22 V-10 L0 30 L-22 -10 Z" fill="#fff"/>
+    <path d="M0 30 L0 -4" stroke="#e2551a" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="0" cy="-10" r="7" fill="#e2551a"/>
+  </g>
+</svg>

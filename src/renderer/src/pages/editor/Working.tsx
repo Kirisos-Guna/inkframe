@@ -1,0 +1,127 @@
+import { useEffect, useState } from 'react'
+import { Check, Image as ImageIcon, Play, X } from 'lucide-react'
+import type { Project, Stage } from '@shared/types'
+import { APP_NAME } from '@shared/brand'
+import { fmtTime } from '@/store/app'
+
+const STAGES: Stage[] = ['Voiceover', 'Parts', 'Design', 'Render', 'Video']
+
+export function useElapsed(from: number, running: boolean) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [running])
+  return running && from ? fmtTime((now - from) / 1000) : '0:00'
+}
+
+export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
+  const j = p.job
+  const n = p.parts.length
+  const elapsed = useElapsed(j.startedAt, j.running)
+  const stageIdx = STAGES.indexOf(j.stage)
+  const latest = [...p.parts].reverse().find((x) => x.status === 'Designing' || x.status === 'Making it again' || x.status === 'Rendering')
+  const picture = latest?.thumb ?? [...p.parts].reverse().find((x) => x.thumb)?.thumb
+  const steps = [...j.steps].reverse()
+
+  const pill = (s: Stage, i: number) => {
+    const done = i < stageIdx || (s === 'Video' && !!p.output && stageIdx >= 4 && !j.running)
+    const active = i === stageIdx && j.running
+    const label =
+      s === 'Parts' ? `Parts${n ? ` ${n}` : ''}` : s === 'Design' ? `Design ${j.designDone}/${n || 0}` : s === 'Render' ? `Render ${j.renderDone}/${n || 0}` : s
+    const allDone = s === 'Design' ? j.designDone === n && n > 0 : s === 'Render' ? j.renderDone === n && n > 0 : done
+    return (
+      <div
+        key={s}
+        className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[14.5px] ${
+          active ? 'border-accent text-ink' : 'border-line text-muted'
+        } ${allDone && !active ? 'text-ink' : ''}`}
+      >
+        {allDone && !active ? (
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-ok">
+            <Check size={11} strokeWidth={3.5} className="text-white" />
+          </span>
+        ) : (
+          <span
+            className={`flex h-[18px] w-[18px] items-center justify-center rounded-full text-[11px] ${
+              active ? 'bg-accent text-white' : 'bg-card2 text-muted'
+            }`}
+          >
+            {i + 1}
+          </span>
+        )}
+        {label}
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative mx-auto w-full max-w-[1030px] overflow-hidden rounded-2xl border border-line bg-[#0e0e10] px-8 py-7">
+      <div className="absolute left-0 top-0 h-[2px] w-1/3 animate-pulse bg-gradient-to-r from-transparent via-accent to-transparent" />
+      <div className="flex items-center gap-3">
+        <span className={`h-2.5 w-2.5 rounded-full ${j.error ? 'bg-red-500' : 'bg-accent'}`} />
+        <div className={`flex-1 text-[23px] font-semibold ${j.error ? 'text-red-400' : 'text-accent'}`}>
+          {j.error ? 'Something went wrong' : `${APP_NAME} is working`}
+        </div>
+        <span className="rounded-lg border border-line px-3 py-1 text-[13.5px] text-muted">
+          {p.settings.provider} · {p.settings.model} · {p.settings.effort}
+        </span>
+        <span className="w-12 text-right text-[14px] text-muted">{elapsed}</span>
+        {p.output && onWatch && (
+          <button onClick={onWatch} className="flex items-center gap-1.5 text-[15px] font-medium">
+            <Play size={13} fill="currentColor" /> Watch video
+          </button>
+        )}
+      </div>
+      <div className="mt-4 flex items-center gap-2.5">
+        {j.running ? <div className="spinner" /> : j.error ? <X size={16} className="text-red-400" /> : <Check size={16} className="text-ok" />}
+        <div className="text-[19px] font-semibold">{j.error ? (steps.find((s) => !s.done)?.label ?? 'Stopped') : j.title}</div>
+        {j.error && (
+          <button className="btn-accent ml-auto px-3 py-1.5 text-[14px]" onClick={() => window.api.job.start(p.id)}>
+            Try again
+          </button>
+        )}
+      </div>
+      <div className="mt-1.5 text-[16px] italic text-ink/80">{j.error ?? j.detail}</div>
+      <div className="mt-5 flex flex-wrap gap-2.5">{STAGES.map(pill)}</div>
+      <div className="mt-5 flex gap-6">
+        <div className="relative flex aspect-video w-[58%] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-black">
+          {picture ? (
+            <>
+              <img src={window.api.media.url(picture) + `?t=${p.updatedAt}`} className="h-full w-full object-contain" />
+              {latest && (
+                <span className="absolute bottom-3 left-3 rounded-md bg-black/70 px-2.5 py-1 text-[13px]">
+                  part {latest.index + 1} · review picture
+                </span>
+              )}
+            </>
+          ) : (
+            <div className="text-center text-[15px] text-muted">
+              <ImageIcon size={22} className="mx-auto mb-3 text-ink/60" />
+              Pictures appear here as soon as {APP_NAME} draws the first part.
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="text-[13px] font-medium tracking-[.06em] text-muted">
+            WHAT {APP_NAME.toUpperCase()} DID · {j.steps.length} steps
+          </div>
+          <div className="mt-3 max-h-[230px] flex-1 space-y-2.5 overflow-hidden">
+            {steps.slice(0, 8).map((s, i) => (
+              <div key={s.id} className="flex items-center gap-2.5 text-[15.5px]" style={{ opacity: 1 - i * 0.12 }}>
+                {s.done ? (
+                  <Check size={15} className="shrink-0 text-ok" />
+                ) : (
+                  <span className="h-[15px] w-[15px] shrink-0 rounded-full border-2 border-accent" />
+                )}
+                <span className={`truncate ${s.done ? 'text-ink/85' : 'font-semibold'}`}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-[14px] text-muted">Safe to close this window: the work carries on on this computer.</div>
+        </div>
+      </div>
+    </div>
+  )
+}

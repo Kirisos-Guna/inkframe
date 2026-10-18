@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #0b0b0c;
+  color: #ededef;
+  font-family: 'Inter Variable', Inter, 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+textarea, input { user-select: text; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 8px; border: 2px solid #0b0b0c; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.drag { -webkit-app-region: drag; }
+.drag button, .drag input, .drag select, .drag a, .drag label { -webkit-app-region: no-drag; }
+
+@layer components {
+  .card { @apply rounded-2xl border border-line bg-card; }
+  .chip { @apply rounded-lg border border-line bg-card2 px-3 py-1.5 text-[13px] text-ink/90 hover:border-[#3a3a40] transition-colors; }
+  .chip-on { @apply border-accent bg-accent/10 text-accent2; }
+  .btn { @apply inline-flex items-center gap-2 rounded-lg border border-line bg-card2 px-4 py-2 text-sm font-medium hover:border-[#3a3a40] transition-colors disabled:opacity-40; }
+  .btn-accent { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent2 transition-colors disabled:opacity-50; }
+  .input { @apply w-full rounded-lg border border-line bg-[#0f0f11] px-3.5 py-2.5 text-sm text-ink placeholder:text-dim outline-none focus:border-[#45454c]; }
+  .label { @apply text-[13px] text-muted; }
+  .tab { @apply pb-3 text-[15px] text-muted hover:text-ink border-b-2 border-transparent; }
+  .tab-on { @apply text-ink border-accent; }
+}
+
+.stripes {
+  background: repeating-linear-gradient(135deg, rgba(242,107,29,.55) 0 8px, rgba(242,107,29,.18) 8px 16px);
+}
+@keyframes spin { to { transform: rotate(360deg) } }
+.spinner { width: 14px; height: 14px; border-radius: 999px; border: 2px solid rgba(242,107,29,.35); border-top-color: #f26b1d; animation: spin .8s linear infinite; }
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 8px) } to { opacity: 1; transform: translate(-50%, 0) } }
+.toast { animation: rise .2s ease-out; }
+@keyframes draw { to { stroke-dashoffset: 0 } }
+.pen path, .pen line, .pen rect, .pen circle, .pen polyline, .pen ellipse { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: draw 2.4s ease forwards; }
