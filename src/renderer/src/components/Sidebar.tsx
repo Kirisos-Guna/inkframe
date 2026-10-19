@@ -2,6 +2,7 @@ import { Home, Palette, SlidersHorizontal, Users } from 'lucide-react'
 import { APP_VERSION } from '@shared/brand'
 import { useApp, type Route } from '@/store/app'
 import { Logo, Wordmark } from './ui'
+import { UpdateBanner } from './Update'
 
 const NAV: { label: string; icon: typeof Home; route: Route }[] = [
   { label: 'Home', icon: Home, route: { name: 'home' } },
@@ -59,6 +60,7 @@ export function Sidebar() {
           </button>
         ))}
       </div>
+      <UpdateBanner />
       <button onClick={() => !ready && go({ name: 'settings' })} className="m-3 rounded-xl border border-line bg-card px-4 py-2.5 text-left">
         <div className="flex items-center gap-2.5">
           <span className={`h-2 w-2 rounded-full ${ready ? 'bg-ok' : 'bg-accent'}`} />

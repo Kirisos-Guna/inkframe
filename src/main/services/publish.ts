@@ -1,12 +1,12 @@
 // Writing (script, titles + description, captions) and thumbnails.
-import { existsSync, mkdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { Project, PublishKit, Thumbnail } from '../../shared/types'
 import { getProject, getSettings, getStyle, libDir, listCharacters } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
-import { bundleProject, checkScene, stillScene } from './render'
+import { bundleProject, checkScene, stillScene, thumbMethodFile } from './render'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
@@ -138,48 +138,58 @@ Reply with JSON only: {"lines": ["...", ...]}`
 }
 
 // ---------- thumbnails ----------
+// Different concepts for the variants, so "Make 3" gives three real choices (see remotion/THUMBNAILS.md).
+const CONCEPTS = ['The glowing object', 'Reaction', 'Big number', 'Before → after / versus', 'Mystery']
+
 export async function makeThumbnails(id: string, count: number, note?: string, onStatus?: (s: string) => void): Promise<Project> {
   const p = getProject(id)!
   const style = getStyle(p.settings.styleId)
   const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   mkdirSync(join(p.dir, 'scenes'), { recursive: true })
+  copyFileSync(thumbMethodFile(), join(p.dir, 'THUMBNAILS.md'))
+  // A few of the video's own frames, so the thumbnail matches what the viewer will see.
+  const frames = p.parts
+    .filter((x) => x.thumb && existsSync(x.thumb))
+    .filter((_, i, a) => a.length <= 4 || i % Math.ceil(a.length / 4) === 0)
+    .slice(0, 4)
+    .map((x) => `thumbs/${x.id}.png`)
+  // Characters make the Reaction concept; without them, skip it.
+  const concepts = CONCEPTS.filter((c) => c !== 'Reaction' || chars.length)
   const made: Thumbnail[] = []
   for (let i = 0; i < count; i++) {
     const tid = 'thumb-' + randomUUID().slice(0, 8)
     const file = `scenes/${tid}.tsx`
+    const concept = concepts[(i + (p.thumbnails?.length ?? 0)) % concepts.length]
     onStatus?.(`Designing thumbnail ${i + 1} of ${count}`)
-    const prompt = `First read METHOD.md (the scene kit) and STYLE.md (the look of this video).
-
-Design a YouTube thumbnail for this video as a single still, using the kit, in the video's style.
+    const prompt = `First read THUMBNAILS.md (how to make a thumbnail that gets clicked, and the thumbnail kit), METHOD.md (the scene kit) and STYLE.md (the look of this video).
+${frames.length ? `Then look at these frames from the video (Read each picture) to reuse its key visual: ${frames.join(', ')}\n` : ''}
+Design the YouTube thumbnail for this video.
 Title: ${p.publish?.titles[0] ?? p.title}
 What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).slice(0, 1500)}
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
-${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}${note ? `The creator asked for: ${note}\n` : ''}${i > 0 ? `This is variant ${i + 1}: take a clearly different idea from the earlier variants.\n` : ''}
-What makes a thumbnail get clicked:
-- ONE subject that glows or pops (use the accent colour and a soft glow), big and slightly off-centre.
-- 2 to 4 huge words (150–260 px, heavy weight, high contrast), never the full title. Leave the bottom-right corner empty (the video length badge sits there).
-- Understandable in half a second at phone size: no small text, no clutter, strong contrast with the background.
-- It must create curiosity: show the surprising part, or a question.
-The scene is rendered as one still at its last frame: make everything finish appearing by frame 15 (start everything at frame 0 with short durations).
+Style: ${style.name}${style.render === 'three' ? ' (real 3D: build the subject with @kit/three)' : ''}
+${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
 
-Write the scene to ${file}. Do not create or change any other file.`
+Make it loud and clear: one big subject with a glow or rim, 2–4 huge words with a thick outline, strong contrast, one arrow or ring at most, bottom-right corner empty.
+It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
+
+Write the scene to ${file}. Do not create or change any other file. Reply with one sentence about the idea.`
     await runAgent({ provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, prompt, tools: true })
     const abs = join(p.dir, file)
     if (!existsSync(abs)) throw new Error('The thumbnail scene was not written')
     let err = await checkScene(abs)
     for (let tries = 0; err && tries < 2; tries++) {
       onStatus?.('Repairing the thumbnail')
-      await runAgent({ provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, prompt: `The thumbnail scene ${file} does not build:\n${err}\nFix it. Reply with one sentence.` })
+      await runAgent({ provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, prompt: `The thumbnail scene ${file} does not build:\n${err}\nRead THUMBNAILS.md if you need the kit, then fix it. Reply with one sentence.` })
       err = await checkScene(abs)
     }
     onStatus?.('Drawing the thumbnail')
     const url = await bundleProject(p)
     const out = join(p.dir, 'thumbs', `${tid}.png`)
     await stillScene(p, url, tid, out, { width: 1280, height: 720, frames: 20 })
-    made.push({ id: tid, file: out, scene: abs, note: note ?? '', at: Date.now() })
+    made.push({ id: tid, file: out, scene: abs, note: note ? `${concept} · ${note}` : concept, at: Date.now() })
   }
   p.thumbnails = [...made, ...(p.thumbnails ?? [])]
   emit(p, true)
   return p
 }
-

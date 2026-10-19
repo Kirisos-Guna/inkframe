@@ -31,6 +31,9 @@ import { Timeline } from './editor/Timeline'
 import { SidePanel, type Tab } from './editor/SidePanel'
 import { MapView } from './editor/MapView'
 
+/** Room for the Windows min/max/close buttons drawn over the top-right corner, at any display scale. */
+const CONTROLS_GAP = 'max(160px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px))'
+
 export default function Editor({ id }: { id: string }) {
   const { projects, styles, status, go, showToast, upsertProject } = useApp()
   const p = projects.find((x) => x.id === id)
@@ -143,7 +146,7 @@ export default function Editor({ id }: { id: string }) {
     <div className="flex h-full flex-col">
       {/* Top bar */}
       {/* Top bar: the same items as the original, shrinking to compact forms on narrow windows. */}
-      <header className="drag flex h-[58px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-line/70 pl-2 pr-[146px] text-[14px] 2xl:gap-2.5 2xl:pl-3 2xl:text-[15px] [&>*]:shrink-0">
+      <header style={{ paddingRight: CONTROLS_GAP }} className="drag flex h-[58px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-line/70 pl-2 text-[14px] 2xl:gap-2.5 2xl:pl-3 2xl:text-[15px] [&>*]:shrink-0">
         <button onClick={() => go({ name: 'home' })} className="p-1.5 text-muted hover:text-ink" title="Back to videos">
           <ArrowLeft size={18} />
         </button>

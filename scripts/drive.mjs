@@ -136,7 +136,7 @@ async function publishSteps() {
       }
       await shot(label)
     }
-    await page.click('text=Make 2')
+    await page.click('text=Make 3')
     await waitIdle('publish-thumbnails')
     await page.locator('button', { hasText: /Write them|Write again/ }).click()
     await waitIdle('publish-titles')

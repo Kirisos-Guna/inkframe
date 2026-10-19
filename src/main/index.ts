@@ -14,6 +14,7 @@ import { characterPrompt } from './services/prompts'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
 import { toSrt, toVtt, linesFromWords } from './services/captions'
 import { onUsage, type Usage } from './services/agent'
+import { checkForUpdates, downloadUpdate, installUpdate, setupUpdates, updateState } from './services/updater'
 import { copyFileSync, readFileSync, writeFileSync } from 'fs'
 
 app.setName(APP_NAME)
@@ -228,6 +229,13 @@ function registerIpc() {
     return r.filePath
   })
   h('usage:get', () => usage)
+  h('update:get', () => updateState())
+  h('update:check', () => checkForUpdates())
+  h('update:download', () => downloadUpdate())
+  h('update:install', () => {
+    quitting = true
+    installUpdate()
+  })
   h('job:comment', (id: string, c: Comment) => pipeline.addComment(id, c))
   h('job:export', async (id: string, opts: { height: number; fps: number }) => {
     const p = store.getProject(id)!
@@ -300,6 +308,7 @@ else {
   })
   app.whenReady().then(() => {
     loadUsage()
+    setupUpdates()
     registerMedia()
     registerIpc()
     createWindow()

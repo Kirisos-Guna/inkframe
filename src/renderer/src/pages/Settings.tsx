@@ -4,6 +4,7 @@ import type { AppSettings, ChecksLevel, Effort, Provider } from '@shared/types'
 import { APP_NAME, APP_VERSION } from '@shared/brand'
 import { useApp } from '@/store/app'
 import { Select } from '@/components/ui'
+import { UpdateSettings } from '@/components/Update'
 
 export default function Settings() {
   const { settings, status } = useApp()
@@ -49,7 +50,9 @@ export default function Settings() {
         {APP_NAME} {APP_VERSION} runs everything on this computer, with the AI tools you already pay for.
       </p>
 
-      <section className="card mt-7 px-7 py-5">
+      <UpdateSettings />
+
+      <section className="card mt-5 px-7 py-5">
         <div className="text-[19px] font-semibold">Where videos are saved</div>
         <div className="mt-3 flex gap-3">
           <input className="input" value={s.saveDir} readOnly />

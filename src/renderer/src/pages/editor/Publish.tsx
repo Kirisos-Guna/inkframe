@@ -40,22 +40,23 @@ export function Publish({ p }: { p: Project }) {
   return (
     <>
       {/* Thumbnail */}
-      <Section title="Thumbnail" sub={`Drawn by ${p.settings.provider} in the video's style: one glowing subject, a few huge words.`}>
+      <Section title="Thumbnail" sub={`Drawn by ${p.settings.provider} in the video's style, from its own frames: one big glowing subject, 2–4 huge words, strong contrast.`}>
         <div className="flex gap-2">
           <input className="input py-2 text-[14px]" placeholder="Optional: what should it show? e.g. a glowing GPU, the words “WHERE IT GOES”" value={note} onChange={(e) => setNote(e.target.value)} />
           <button
             className="btn-accent shrink-0"
             disabled={!!busy || p.job.running || !p.parts.length}
-            onClick={() => run('thumbs', () => window.api.thumbs.make(p.id, 2, note.trim() || undefined), 'Thumbnails ready')}
+            onClick={() => run('thumbs', () => window.api.thumbs.make(p.id, 3, note.trim() || undefined), 'Thumbnails ready')}
           >
-            {busy === 'thumbs' ? <span className="spinner" /> : <ImageIcon size={15} />} {busy === 'thumbs' ? 'Drawing…' : 'Make 2'}
+            {busy === 'thumbs' ? <span className="spinner" /> : <ImageIcon size={15} />} {busy === 'thumbs' ? 'Drawing…' : 'Make 3'}
           </button>
         </div>
-        {busy === 'thumbs' && <div className="mt-2 text-[13px] text-muted">Two ideas, one after the other. About a minute each.</div>}
+        {busy === 'thumbs' && <div className="mt-2 text-[13px] text-muted">Three different ideas (glowing object, big number, mystery…), one after the other. About a minute each.</div>}
         <div className="mt-3 grid grid-cols-2 gap-3">
           {(p.thumbnails ?? []).map((t) => (
             <div key={t.id} className="group relative overflow-hidden rounded-lg border border-line">
               <img src={window.api.media.url(t.file) + `?v=${t.at}`} className="aspect-video w-full object-cover" />
+              {t.note && <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] text-ink/90">{t.note}</span>}
               <div className="absolute inset-x-0 bottom-0 hidden justify-end gap-1 bg-gradient-to-t from-black/80 p-2 group-hover:flex">
                 <button className="btn px-2 py-1 text-[12.5px]" onClick={() => window.api.file.saveCopy(t.file, `${p.title} thumbnail`)}>
                   <Download size={13} /> Save PNG

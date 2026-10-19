@@ -1,6 +1,6 @@
 {
   "name": "inkframe",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "AI explainer videos from a voiceover, made by Claude Code on your own computer",
   "main": "out/main/index.js",
   "author": "m.gunamurugan2004",
@@ -11,7 +11,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "build:win": "electron-vite build && electron-builder --win"
+    "build:win": "electron-vite build && electron-builder --win --publish never"
   },
   "build": {
     "appId": "app.inkframe.desktop",
@@ -50,7 +50,14 @@
       "uninstallerIcon": "build/icon.ico",
       "shortcutName": "Inkframe"
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Kirisos-Guna",
+        "repo": "inkframe",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -79,6 +86,7 @@
     "@remotion/paths": "^4.0.242",
     "@remotion/renderer": "^4.0.242",
     "@remotion/three": "^4.0.242",
+    "electron-updater": "^6.3.9",
     "esbuild": "^0.24.0",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",

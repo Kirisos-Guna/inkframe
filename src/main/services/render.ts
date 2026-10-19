@@ -10,6 +10,7 @@ export const appRoot = () => app.getAppPath()
 export const kitDir = () => join(appRoot(), 'remotion', 'kit')
 export const methodFile = () => join(appRoot(), 'remotion', 'METHOD.md')
 export const hfMethodFile = () => join(appRoot(), 'remotion', 'HYPERFRAMES.md')
+export const thumbMethodFile = () => join(appRoot(), 'remotion', 'THUMBNAILS.md')
 
 export const sceneFile = (p: Project, part: Part) => join(p.dir, 'scenes', `${part.id}.tsx`)
 export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${part.id}.png`)

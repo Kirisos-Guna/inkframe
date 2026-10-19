@@ -9,6 +9,15 @@ import type {
   StyleDef
 } from '../shared/types'
 
+export type UpdateInfo = {
+  state: 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'ready' | 'error'
+  version: string
+  next?: string
+  notes?: string
+  percent?: number
+  message?: string
+}
+
 const invoke = <T>(ch: string, ...args: unknown[]) => ipcRenderer.invoke(ch, ...args) as Promise<T>
 
 function on<T>(ch: string, cb: (v: T) => void) {
@@ -92,6 +101,13 @@ const api = {
   usage: {
     get: () => invoke<{ fiveHour: number; resetsAt: number } | null>('usage:get'),
     on: (cb: (u: { fiveHour: number; resetsAt: number }) => void) => on('usage:changed', cb)
+  },
+  update: {
+    get: () => invoke<UpdateInfo>('update:get'),
+    check: () => invoke<UpdateInfo>('update:check'),
+    download: () => invoke<UpdateInfo>('update:download'),
+    install: () => invoke<void>('update:install'),
+    on: (cb: (u: UpdateInfo) => void) => on<UpdateInfo>('update:changed', cb)
   },
   shell: {
     open: (p: string) => invoke<void>('shell:open', p),
