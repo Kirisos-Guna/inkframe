@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, CheckCircle2, FileText, Paperclip, Pause, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, FileText, Paperclip, RotateCcw, Square, Trash2, X } from 'lucide-react'
 import type { Comment, Part, Project } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
 import { fmtTime, useApp } from '@/store/app'
-import { useElapsed } from './Working'
+import { PauseButton, useElapsed } from './Working'
+import { Publish } from './Publish'
 
-export type Tab = 'Changes' | 'Material' | 'Checks' | 'History' | 'Render'
-const TABS: Tab[] = ['Changes', 'Material', 'Checks', 'History', 'Render']
+export type Tab = 'Changes' | 'Material' | 'Checks' | 'History' | 'Render' | 'Publish'
+const TABS: Tab[] = ['Changes', 'Material', 'Checks', 'History', 'Render', 'Publish']
 const QUICK = ['Bigger text', 'Slower', 'Faster', 'More movement', 'Use my material here', 'A different idea', 'Fix the timing', 'Simpler']
 
 export function SidePanel({
@@ -45,6 +46,7 @@ export function SidePanel({
         {tab === 'Checks' && <Checks p={p} />}
         {tab === 'History' && <History p={p} selected={selected} />}
         {tab === 'Render' && <RenderTab p={p} />}
+        {tab === 'Publish' && <Publish p={p} />}
       </div>
     </aside>
   )
@@ -58,10 +60,11 @@ function JobCard({ p }: { p: Project }) {
       <div className="absolute left-0 top-0 h-[2px] w-full bg-gradient-to-r from-accent via-accent/50 to-transparent" />
       <div className="flex items-center gap-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-        <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-accent 2xl:text-[19px]">{APP_NAME} is working</span>
+        <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-accent 2xl:text-[19px]">{p.job.paused ? 'Paused' : `${APP_NAME} is working`}</span>
         <span className="shrink-0 text-[14px] text-muted">{elapsed}</span>
-        <button onClick={() => window.api.job.stop(p.id)} className="ml-2 flex shrink-0 items-center gap-1.5 text-[15px] font-medium">
-          <Pause size={14} fill="currentColor" /> Stop
+        <PauseButton p={p} />
+        <button onClick={() => window.api.job.stop(p.id)} title="Stop" className="ml-1 flex shrink-0 items-center gap-1.5 text-[15px] font-medium text-muted hover:text-ink">
+          <Square size={12} fill="currentColor" /> Stop
         </button>
       </div>
       <div className="mt-1 text-[13.5px] text-muted">
@@ -163,6 +166,17 @@ function Changes({
                     {s.name}
                   </option>
                 ))}
+            </select>
+            <span className="text-muted">Drawn with</span>
+            <select
+              className="rounded-lg border border-line bg-[#0f0f11] px-3 py-1.5 font-medium outline-none"
+              value={one.engine ?? ''}
+              onChange={(e) => window.api.projects.update(p.id, { parts: p.parts.map((x) => (x.id === one.id ? { ...x, engine: (e.target.value || undefined) as never } : x)) })}
+              title="Changing it draws this part again"
+            >
+              <option value="" className="bg-card">The video's choice</option>
+              <option value="remotion" className="bg-card">React scene (lines, 3D)</option>
+              <option value="hyperframes" className="bg-card">HTML (HyperFrames)</option>
             </select>
             <span className="text-muted">Characters</span>
             {p.settings.characterIds.length ? (

@@ -74,6 +74,15 @@ if (mode === 'make') {
   await page.locator('button', { hasText: 'Intelligence: Medium' }).first().click()
   await page.locator('select').nth(1).selectOption('Low')
   await page.locator('select').nth(0).selectOption('1080-30')
+  // STYLE=<name> ENGINE=Auto|Remotion|HyperFrames CAPTIONS=Off|Clean|Bold pop|Karaoke TRANSITION=None|Fade|...
+  const chip = (text) => page.locator('button.chip', { hasText: new RegExp('^' + text + '$') }).first().click()
+  if (process.env.STYLE) {
+    await page.locator('button', { hasText: /^Show all \d+ styles$/ }).click()
+    await page.locator('button', { hasText: process.env.STYLE }).first().click()
+  }
+  if (process.env.ENGINE) await chip(process.env.ENGINE)
+  if (process.env.CAPTIONS) await chip(process.env.CAPTIONS)
+  if (process.env.TRANSITION) await chip(process.env.TRANSITION)
   // Wait until the voiceover has been heard (first run downloads whisper.cpp).
   for (let i = 0; i < 90 && (await page.evaluate(() => document.body.innerText.includes('Working…'))); i++) await page.waitForTimeout(10000)
   console.log('heard:', (await page.evaluate(() => document.body.innerText.match(/Heard[^\n]*|Could not hear[^\n]*/)?.[0])) ?? '?')
@@ -81,14 +90,27 @@ if (mode === 'make') {
   await page.click('text=Make my video')
   const start = Date.now()
   let last = ''
+  let pausedOnce = false
   while (Date.now() - start < 90 * 60000) {
-    await page.waitForTimeout(20000)
+    await page.waitForTimeout(process.env.PAUSE ? 4000 : 20000)
     const txt = await page.evaluate(() => document.body.innerText)
     const status = txt.match(/(Coming up with ideas for part \d+|Drawing part \d+|Rendering part \d+|Checking part \d+|Repairing part \d+|Putting the video together|Listening to the voiceover|Planning the video|Something went wrong|Your video is ready|Rendering|Getting the drawing browser[^\n]*)/)?.[0] ?? '?'
     if (status !== last) {
       console.log(Math.round((Date.now() - start) / 1000) + 's', status)
       last = status
       await shot(status.replace(/\W+/g, '-').toLowerCase())
+    }
+    // PAUSE=1: pause while part 2 is being designed, then resume.
+    if (process.env.PAUSE && !pausedOnce && /Coming up with ideas for part 2/.test(txt)) {
+      pausedOnce = true
+      await page.locator('button[title="Pause"]').first().click()
+      await page.waitForTimeout(3000)
+      await shot('paused')
+      console.log('paused:', (await page.evaluate(() => document.body.innerText.includes('Paused'))) ? 'yes' : 'NO')
+      await page.waitForTimeout(4000)
+      await page.locator('button[title="Resume"]').first().click()
+      await page.waitForTimeout(1500)
+      await shot('resumed')
     }
     if (/Ready\n/.test(txt) && !txt.includes('is working')) break
     if (status === 'Something went wrong') {
@@ -98,9 +120,38 @@ if (mode === 'make') {
   }
   await shot('done')
 
+  // PUBLISH=1: thumbnails, titles + description, tidy captions, and the finishing pass.
+  if (process.env.PUBLISH) await publishSteps()
+  await commentStep()
+}
+
+async function publishSteps() {
+  {
+    await page.locator('aside button.tab', { hasText: 'Publish' }).click()
+    await shot('publish')
+    const waitIdle = async (label) => {
+      for (let i = 0; i < 120; i++) {
+        await page.waitForTimeout(3000)
+        if (!(await page.locator('aside .spinner').count())) break
+      }
+      await shot(label)
+    }
+    await page.click('text=Make 2')
+    await waitIdle('publish-thumbnails')
+    await page.locator('button', { hasText: /Write them|Write again/ }).click()
+    await waitIdle('publish-titles')
+    await page.locator('button', { hasText: /Tidy with/ }).click()
+    await waitIdle('publish-captions')
+    await page.locator('button', { hasText: /Put the video together again|Apply to the video/ }).click()
+    await waitIdle('publish-finished')
+    console.log('publish:', JSON.stringify(await page.evaluate(() => ({ thumbs: document.querySelectorAll('aside img.aspect-video').length, titles: document.body.innerText.includes('Titles · click') }))))
+  }
+}
+
+async function commentStep() {
   // Comment on part 2, send it, and wait until only that part is drawn again.
   const tiles = page.locator('[title*="·"][class*="absolute top-0 h-full cursor-pointer"]')
-  if ((await tiles.count()) > 1) {
+  if (!process.env.SKIP_COMMENT && (await tiles.count()) > 1) {
     await tiles.nth(1).click()
     await page.fill('textarea', 'Draw the box bigger and label it')
     await shot('comment')
@@ -117,10 +168,17 @@ if (mode === 'make') {
   }
 }
 
+// publish = open the most recent video and run the Publish tab steps.
+if (mode === 'publish') {
+  await page.locator('aside button:has(div.h-7)').first().click()
+  await page.waitForSelector('[title="Export"]')
+  await publishSteps()
+}
+
 // comment = open the most recent video and send one comment on part 2 (uses an existing userdata folder).
 if (mode === 'comment') {
   await page.locator('aside button:has(div.h-7)').first().click()
-  await page.waitForSelector('text=Export')
+  await page.waitForSelector('[title="Export"]')
   await shot('opened')
   await page.click('[title="Next part (→)"]')
   await page.click('[title="Next part (→)"]')

@@ -59,10 +59,21 @@ ${style.palette.paper ? `- Paper lines: ${style.palette.paper}\n` : ''}- Stroke:
 - Tags: ${style.tags.join(', ')}
 
 The <Board> already paints the background and texture for this style.
-${guide ? `\n## Notes learned from the reference video\n\n${guide}\n` : ''}`
+${style.guide ? `\n## How this style looks\n\n${style.guide}\n` : ''}${
+    style.render === 'three'
+      ? '\n## This style is real 3D\n\nBuild Remotion parts with `@kit/three` (see "Real 3D" in METHOD.md): a <Stage3D> scene with real lighting and camera moves, not flat SVG.\n'
+      : ''
+  }${guide ? `\n## Notes learned from the reference video\n\n${guide}\n` : ''}`
 }
 
-function partContext(p: Project, part: Part, chars: CharacterDef[]) {
+/** Where a part's scene lives and how it is made. */
+export interface SceneTarget {
+  file: string // relative to the project folder
+  engine: 'remotion' | 'hyperframes'
+}
+const methodOf = (t: SceneTarget) => (t.engine === 'hyperframes' ? 'HYPERFRAMES.md (how to draw an HTML part)' : 'METHOD.md (how to draw a part with the kit)')
+
+function partContext(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
   const fps = p.settings.quality.fps
   const frames = Math.round((part.end - part.start) * fps)
   const n = p.parts.length
@@ -71,35 +82,44 @@ function partContext(p: Project, part: Part, chars: CharacterDef[]) {
 What the voiceover says in this part:
 "${part.text || '(not heard; follow the idea)'}"
 
-Words and the frame each one starts at, counted from the start of this part (use at('word') in code):
-${wordsLine(p, part.start, part.end, fps, part.start) || '(none)'}
+${
+    target.engine === 'hyperframes'
+      ? `Words and the second each one starts at, counted from the start of this part (use these times on the GSAP timeline):
+${wordsLine(p, part.start, part.end, undefined, part.start) || '(none)'}`
+      : `Words and the frame each one starts at, counted from the start of this part (use at('word') in code):
+${wordsLine(p, part.start, part.end, fps, part.start) || '(none)'}`
+  }
 
 The idea for this part: ${part.idea || 'your choice, following the direction'}
 
 The whole video, for context (do not draw the other parts):
 ${p.parts.map((x) => `${x.index + 1}. ${x.title}: ${x.text.slice(0, 90)}`).join('\n')}
 
-Direction from the user: ${p.direction || '(none)'}
+Direction from the user: ${p.direction || '(none)'}${
+    p.settings.captions && p.settings.captions !== 'Off'
+      ? '\nCaptions are shown along the bottom of the video: keep everything important above y = 860 (the bottom 220 px of the 1080 frame stays clear of text and key objects).'
+      : ''
+  }
 Characters in this video: ${chars.length ? chars.map((c) => `${c.name} (${c.outfit.toLowerCase()}, ${c.hair.toLowerCase()} hair${c.glasses ? ', glasses' : ''})`).join('; ') : 'none, do not use <Character>'}
 Material files you can show with <Picture name="...">: ${[...new Set([...part.material, ...p.material].map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}${
     part.material.length ? `\nThe user dragged these onto this part, so show them: ${part.material.map((m) => m.split(/[\\/]/).pop()).join(', ')}` : ''
   }`
 }
 
-export function designPrompt(p: Project, part: Part, chars: CharacterDef[]) {
-  return `First read METHOD.md (how to draw a part with the kit) and STYLE.md (the look of this video).
+export function designPrompt(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget) {
+  return `First read ${methodOf(target)} and STYLE.md (the look of this video).
 
-${partContext(p, part, chars)}
+${partContext(p, part, chars, target)}
 
-Write the scene to scenes/${part.id}.tsx. Do not create or change any other file.
+${target.engine === 'hyperframes' ? `Fill in the starter at ${target.file}` : `Write the scene to ${target.file}`}. Do not create or change any other file.
 When you are done, reply with one short sentence that says what the part shows.`
 }
 
-export function fixPrompt(p: Project, part: Part, chars: CharacterDef[], c: Comment, attachments: string[]) {
+export function fixPrompt(p: Project, part: Part, chars: CharacterDef[], c: Comment, attachments: string[], target: SceneTarget) {
   const others = p.parts.length - 1
-  return `First read METHOD.md and STYLE.md, then the current scene, scenes/${part.id}.tsx.
+  return `First read ${target.engine === 'hyperframes' ? 'HYPERFRAMES.md' : 'METHOD.md'} and STYLE.md, then the current scene, ${target.file}.
 
-${partContext(p, part, chars)}
+${partContext(p, part, chars, target)}
 
 The user watched this part and left a note:
 "${c.text}"
@@ -109,16 +129,16 @@ ${
       ? 'Fix just this: change only what the note asks for. Keep everything else in the scene exactly as it is.'
       : 'Rethink the scene: come up with a new idea for this part that answers the note, and write the scene again from scratch.'
   }
-The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are: change only scenes/${part.id}.tsx.
+The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are: change only ${target.file}.
 When you are done, reply with one short sentence that says what you changed.`
 }
 
-export function repairPrompt(part: Part, error: string) {
-  return `The scene scenes/${part.id}.tsx does not work. This is the error:
+export function repairPrompt(part: Part, error: string, target: SceneTarget) {
+  return `The scene ${target.file} does not work. This is the error:
 
 ${error.slice(0, 3000)}
 
-Read METHOD.md if you need the kit's API, then fix scenes/${part.id}.tsx so it builds and renders. Keep the drawing the same.
+Read ${target.engine === 'hyperframes' ? 'HYPERFRAMES.md' : 'METHOD.md'} if you need the rules, then fix ${target.file} so it builds and renders. Keep the drawing the same.
 Reply with one short sentence.`
 }
 

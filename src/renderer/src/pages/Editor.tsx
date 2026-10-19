@@ -142,18 +142,19 @@ export default function Editor({ id }: { id: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Top bar */}
-      <header className="drag flex h-[58px] shrink-0 items-center gap-2 whitespace-nowrap border-b border-line/70 pl-3 pr-[146px] [&>*]:shrink-0">
-        <button onClick={() => go({ name: 'home' })} className="p-1.5 text-muted hover:text-ink">
+      {/* Top bar: the same items as the original, shrinking to compact forms on narrow windows. */}
+      <header className="drag flex h-[58px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-line/70 pl-2 pr-[146px] text-[14px] 2xl:gap-2.5 2xl:pl-3 2xl:text-[15px] [&>*]:shrink-0">
+        <button onClick={() => go({ name: 'home' })} className="p-1.5 text-muted hover:text-ink" title="Back to videos">
           <ArrowLeft size={18} />
         </button>
-        <button onClick={() => go({ name: 'home' })} className="hidden text-[16px] text-muted xl:block">
+        <button onClick={() => go({ name: 'home' })} className="text-muted hover:text-ink">
           Videos /
         </button>
         {renaming ? (
           <input
             autoFocus
             defaultValue={p.title}
-            className="input w-[260px] py-1 text-[16px] font-semibold"
+            className="input w-[220px] py-1 text-[15px] font-semibold"
             onBlur={async (e) => {
               const t = e.currentTarget.value.trim()
               if (t && t !== p.title) await window.api.projects.update(p.id, { title: t })
@@ -165,51 +166,40 @@ export default function Editor({ id }: { id: string }) {
             }}
           />
         ) : (
-          <span className="!shrink min-w-[60px] max-w-[260px] truncate text-[16px] font-semibold" title={p.title} onDoubleClick={() => setRenaming(true)}>
+          <span className="!shrink min-w-[48px] max-w-[110px] truncate text-[16px] font-semibold xl:max-w-[220px] 2xl:max-w-[300px] 2xl:text-[17px]" title={`${p.title} (double-click to rename)`} onDoubleClick={() => setRenaming(true)}>
             {p.title}
           </span>
         )}
-        <button className="btn ml-1 hidden px-3 py-1.5 text-[14px] font-normal xl:inline-flex" onClick={() => go({ name: 'styles' })}>
-          <Palette size={14} /> {style?.name ?? 'Style'}
+        <button className="btn ml-1 gap-1.5 px-2.5 py-1.5 font-normal" title={`Style: ${style?.name ?? ''}`} onClick={() => go({ name: 'styles' })}>
+          <Palette size={14} /> <span className="hidden max-w-[150px] truncate lg:inline">{style?.name ?? 'Style'}</span>
         </button>
-        <button className="btn hidden px-3 py-1.5 text-[14.5px] font-normal 2xl:inline-flex" onClick={() => go({ name: 'characters' })}>
-          <Users size={14} /> Characters
+        <button className="btn gap-1.5 px-2.5 py-1.5 font-normal" title="Characters" onClick={() => go({ name: 'characters' })}>
+          <Users size={14} /> <span className="hidden xl:inline">Characters</span>
         </button>
         {p.job.running ? (
-          <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-3 py-1.5 text-[14px] font-medium text-accent2" title={`${APP_NAME} is working`}>
-            <span className="h-2 w-2 rounded-full bg-accent" /> <span className="hidden lg:inline">{APP_NAME} is working</span><span className="lg:hidden">Working</span>
+          <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-2.5 py-1.5 font-medium text-accent2" title={p.job.paused ? 'Paused' : `${APP_NAME} is working`}>
+            <span className="h-2 w-2 rounded-full bg-accent" /> {p.job.paused ? 'Paused' : <><span className="hidden 2xl:inline">{APP_NAME} is working</span><span className="2xl:hidden">Working</span></>}
           </span>
         ) : (
-          <span className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-[14px] font-medium text-ok">
+          <span className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 font-medium text-ok">
             <span className="h-2 w-2 rounded-full bg-ok" /> {p.job.error ? 'Stopped' : p.output ? 'Ready' : 'Not made yet'}
           </span>
         )}
         <div className="ml-1 inline-flex rounded-lg border border-line p-0.5">
           {(['Timeline', 'Map'] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[14.5px] ${view === v ? 'bg-card2 font-semibold' : 'text-muted'}`}
-              title={v}
-            >
-              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} <span className="hidden lg:inline">{v}</span>
+            <button key={v} onClick={() => setView(v)} title={v} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 ${view === v ? 'bg-card2 font-semibold' : 'text-muted'}`}>
+              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} <span className="hidden xl:inline">{v}</span>
             </button>
           ))}
         </div>
-        <button className="hidden items-center gap-2 px-2 text-[15px] xl:flex" onClick={() => setTab('Checks')}>
-          <CircleCheck size={15} className="text-muted" /> Checks <b>{p.settings.checks}</b>
+        <button className="flex items-center gap-1.5 px-1.5" title="Checks" onClick={() => setTab('Checks')}>
+          <CircleCheck size={15} className="text-muted" /> <span className="hidden xl:inline">Checks</span> <b>{p.settings.checks}</b>
         </button>
-        {status?.usage !== undefined && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-1.5 text-[14.5px]" title="Share of your 5-hour Claude limit used">
-            <span className="text-muted">Claude 5h</span>
-            <div className="h-1.5 w-14 overflow-hidden rounded bg-card2">
-              <div className="h-full bg-ok" style={{ width: `${Math.min(100, status.usage)}%` }} />
-            </div>
-            <span>{Math.round(status.usage)}%</span>
-          </div>
-        )}
-        <span className="hidden items-center gap-2 whitespace-nowrap px-2 text-[15px] 2xl:flex">
-          <Gauge size={15} className="text-muted" /> {p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`} · {p.settings.quality.fps} fps
+        <UsageMeter provider={p.settings.provider} />
+        <span className="flex items-center gap-1.5 px-1.5" title="Quality">
+          <Gauge size={15} className="text-muted" />
+          <span className="hidden xl:inline">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`} · {p.settings.quality.fps} fps</span>
+          <span className="xl:hidden">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`}{p.settings.quality.fps}</span>
         </span>
         <div className="relative ml-auto">
           <button className="p-2 text-muted hover:text-ink" onClick={() => setMenu(!menu)}>
@@ -239,8 +229,8 @@ export default function Editor({ id }: { id: string }) {
             </div>
           )}
         </div>
-        <button className="btn px-3.5 py-1.5" onClick={() => setTab('Render')}>
-          <Download size={15} /> Export
+        <button className="btn px-3 py-1.5" title="Export" onClick={() => setTab('Render')}>
+          <Download size={15} /> <span className="hidden lg:inline">Export</span>
         </button>
       </header>
 
@@ -484,5 +474,31 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
     <button onClick={onClick} className={`block w-full px-3.5 py-2 text-left text-[14px] hover:bg-white/5 ${danger ? 'text-red-400' : ''}`}>
       {label}
     </button>
+  )
+}
+
+/** "Claude 5h ▬ 12%": the share of the 5-hour Claude limit used, as reported by Claude Code on each run. */
+function UsageMeter({ provider }: { provider: string }) {
+  const [u, setU] = useState<{ fiveHour: number; resetsAt: number } | null>(null)
+  useEffect(() => {
+    window.api.usage.get().then(setU)
+    return window.api.usage.on(setU)
+  }, [])
+  if (provider !== 'Claude Code') return null
+  const fresh = u && u.resetsAt > Date.now()
+  const pct = fresh ? Math.round(u!.fiveHour) : null
+  const colour = pct === null ? 'bg-dim' : pct >= 85 ? 'bg-red-500' : pct >= 60 ? 'bg-accent' : 'bg-ok'
+  const resets = fresh ? new Date(u!.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return (
+    <div
+      className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5"
+      title={pct === null ? 'Share of your 5-hour Claude limit used. Shows after the next Claude step.' : `${pct}% of your 5-hour Claude limit used · resets at ${resets}`}
+    >
+      <span className="text-muted"><span className="hidden xl:inline">Claude </span>5h</span>
+      <div className="h-1.5 w-8 overflow-hidden rounded bg-card2 xl:w-14">
+        <div className={`h-full ${colour}`} style={{ width: `${pct ?? 0}%` }} />
+      </div>
+      <span>{pct === null ? '–' : `${pct}%`}</span>
+    </div>
   )
 }

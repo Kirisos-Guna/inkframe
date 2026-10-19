@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Image as ImageIcon, Play, X } from 'lucide-react'
+import { Check, Image as ImageIcon, Pause, Play, X } from 'lucide-react'
 import type { Project, Stage } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
 import { fmtTime } from '@/store/app'
@@ -62,12 +62,13 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
       <div className="flex items-center gap-3">
         <span className={`h-2.5 w-2.5 rounded-full ${j.error ? 'bg-red-500' : 'bg-accent'}`} />
         <div className={`min-w-0 flex-1 truncate text-[20px] font-semibold 2xl:text-[23px] ${j.error ? 'text-red-400' : 'text-accent'}`}>
-          {j.error ? 'Something went wrong' : `${APP_NAME} is working`}
+          {j.error ? 'Something went wrong' : j.paused ? 'Paused' : `${APP_NAME} is working`}
         </div>
         <span className="hidden whitespace-nowrap rounded-lg border border-line px-3 py-1 text-[13.5px] text-muted lg:inline">
           {p.settings.provider} · {p.settings.model} · {p.settings.effort}
         </span>
         <span className="w-12 text-right text-[14px] text-muted">{elapsed}</span>
+        {j.running && <PauseButton p={p} />}
         {p.output && onWatch && (
           <button onClick={onWatch} className="flex items-center gap-1.5 text-[15px] font-medium">
             <Play size={13} fill="currentColor" /> Watch video
@@ -75,7 +76,7 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
         )}
       </div>
       <div className="mt-4 flex items-center gap-2.5">
-        {j.running ? <div className="spinner" /> : j.error ? <X size={16} className="text-red-400" /> : <Check size={16} className="text-ok" />}
+        {j.running && j.paused ? <Pause size={16} className="text-accent" fill="currentColor" /> : j.running ? <div className="spinner" /> : j.error ? <X size={16} className="text-red-400" /> : <Check size={16} className="text-ok" />}
         <div className="text-[19px] font-semibold">{j.error ? (steps.find((s) => !s.done)?.label ?? 'Stopped') : j.title}</div>
         {j.error && (
           <button className="btn-accent ml-auto px-3 py-1.5 text-[14px]" onClick={() => window.api.job.start(p.id)}>
@@ -123,5 +124,19 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/** Pause stops the step in progress and holds the job; Resume does that step again and carries on. */
+export function PauseButton({ p }: { p: Project }) {
+  const paused = !!p.job.paused
+  return (
+    <button
+      onClick={() => (paused ? window.api.job.resume(p.id) : window.api.job.pause(p.id))}
+      title={paused ? 'Resume' : 'Pause'}
+      className={`ml-1 flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[15px] font-medium ${paused ? 'bg-accent text-white hover:bg-accent2' : 'hover:bg-white/5'}`}
+    >
+      {paused ? <Play size={13} fill="currentColor" /> : <Pause size={14} fill="currentColor" />} {paused ? 'Resume' : 'Pause'}
+    </button>
   )
 }

@@ -5,6 +5,14 @@ import type { Effort, Provider } from '../../shared/types'
 import { claudePath, codexPath } from './tools'
 import { fakeAgent, fakeEnabled } from './fakeAgent'
 
+export interface Usage {
+  fiveHour: number // percent used
+  resetsAt: number // ms
+}
+let usageListener: ((u: Usage) => void) | null = null
+export const onUsage = (fn: (u: Usage) => void) => (usageListener = fn)
+const reportUsage = (u: Usage) => usageListener?.(u)
+
 export interface AgentOpts {
   provider: Provider
   model: string
@@ -14,6 +22,8 @@ export interface AgentOpts {
   /** Let the agent read and write files in cwd (and addDirs). */
   tools?: boolean
   addDirs?: string[]
+  /** Codex only: allow web search (for research). */
+  search?: boolean
   signal?: AbortSignal
   onStep?: (label: string) => void
 }
@@ -92,7 +102,11 @@ async function runClaude(o: AgentOpts): Promise<string> {
         if (!line) continue
         try {
           const ev = JSON.parse(line)
-          if (ev.type === 'assistant') {
+          if (ev.type === 'rate_limit_event') {
+            // Claude reports how much of the 5-hour window is used; the editor's top bar shows it.
+            const w = ev.rate_limit_info?.unifiedWindows?.five_hour
+            if (w && typeof w.utilization === 'number') reportUsage({ fiveHour: w.utilization * 100, resetsAt: (w.resetsAt ?? 0) * 1000 })
+          } else if (ev.type === 'assistant') {
             for (const c of ev.message?.content ?? []) if (c.type === 'tool_use') o.onStep?.(friendly(c.name, c.input ?? {}))
           } else if (ev.type === 'result') {
             if (ev.is_error || ev.subtype !== 'success') error = ev.result || ev.subtype || 'Claude Code failed'
@@ -121,8 +135,11 @@ async function runCodex(o: AgentOpts): Promise<string> {
   if (!exe) throw new Error('Codex is not installed on this computer. Install it or set its path in Settings.')
   const last = join(o.cwd, `.codex-last-${Date.now()}.txt`)
   const effort = o.effort.toLowerCase()
-  const args = ['exec', '--json', '--skip-git-repo-check', '-m', o.model, '-c', `model_reasoning_effort="${effort}"`, '--output-last-message', last]
-  args.push(o.tools ? '--full-auto' : '--sandbox=read-only', '-')
+  // --search (live web search, for research) is a top-level flag, so it goes before 'exec'.
+  const args = [...(o.search ? ['--search'] : []), 'exec', '--json', '--skip-git-repo-check', '-c', `model_reasoning_effort="${effort}"`, '--output-last-message', last]
+  // 'Codex default' uses the model set in the Codex app.
+  if (o.model && !/default/i.test(o.model)) args.push('-m', o.model)
+  args.push('-s', o.tools ? 'workspace-write' : 'read-only', '-')
   return new Promise((resolve, reject) => {
     const shell = /\.(cmd|bat)$/i.test(exe)
     const p = spawn(shell ? `"${exe}"` : exe, args, { cwd: o.cwd, env: cleanEnv(), windowsHide: true, shell })

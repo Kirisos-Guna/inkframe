@@ -1,15 +1,20 @@
 import { BrowserWindow } from 'electron'
 import { copyFileSync, existsSync, rmSync, writeFileSync } from 'fs'
-import { basename, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 import type { Comment, Part, Project } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 import { getProject, getStyle, listCharacters, saveProject, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { transcribe } from './transcribe'
-import { assemble, cutAudio } from './media'
-import { bundleProject, checkScene, clipFile, methodFile, renderPart, sceneFile, stillPart, syncMaterial } from './render'
-import { checkPrompt, designPrompt, fixPrompt, repairPrompt, splitPrompt, styleDoc } from './prompts'
+import { cutAudio, finishVideo } from './media'
+import { bundleProject, clipFile, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
+import { checkAny, engineOf, renderAny, scenePath, sceneRel, stillAny, writeHfStarter } from './engines'
+import { captionFilters, linesFromWords, prepareCaptionFonts } from './captions'
+import { createRequire } from 'module'
+
+const req = createRequire(__filename)
+import { checkPrompt, designPrompt, fixPrompt, repairPrompt, splitPrompt, styleDoc, type SceneTarget } from './prompts'
 
 // ---------- events ----------
 const pendingEmit = new Map<string, NodeJS.Timeout>()
@@ -92,12 +97,74 @@ const HELPERS = 4
 export const isRunning = (id: string) => jobs.has(id)
 
 export function stopJob(id: string) {
+  const p = getProject(id)
+  if (p?.job.paused) resumeJob(id)
   jobs.get(id)?.abort()
+}
+
+// ---------- pause / resume ----------
+// Pausing stops the step that is running right now (an agent call or a render) and holds the job; Resume does
+// that one step again and carries on. Finished parts are kept.
+const stepControllers = new Map<string, Set<AbortController>>()
+const resumeWaiters = new Map<string, (() => void)[]>()
+
+export function pauseJob(id: string) {
+  const p = getProject(id)
+  if (!p || !jobs.has(id) || p.job.paused) return
+  p.job.paused = true
+  step(p, 'Paused', { detail: 'Paused. Press Resume to carry on from here; finished parts are kept.' })
+  for (const ac of stepControllers.get(id) ?? []) ac.abort()
+  emit(p, true)
+}
+
+export function resumeJob(id: string) {
+  const p = getProject(id)
+  if (!p || !p.job.paused) return
+  p.job.paused = false
+  step(p, 'Carrying on')
+  emit(p, true)
+  for (const go of resumeWaiters.get(id) ?? []) go()
+  resumeWaiters.delete(id)
+}
+
+function waitWhilePaused(p: Project, job: AbortSignal) {
+  if (!p.job.paused) return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    const list = resumeWaiters.get(p.id) ?? []
+    list.push(resolve)
+    resumeWaiters.set(p.id, list)
+    job.addEventListener('abort', () => reject(new Error('Stopped')), { once: true })
+  })
+}
+
+/** Runs one step so that Pause can interrupt it; after Resume the step runs again from the start. */
+async function guarded<T>(p: Project, job: AbortSignal, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  for (;;) {
+    await waitWhilePaused(p, job)
+    if (job.aborted) throw new Error('Stopped')
+    const ac = new AbortController()
+    const onJobAbort = () => ac.abort()
+    job.addEventListener('abort', onJobAbort, { once: true })
+    const set = stepControllers.get(p.id) ?? new Set()
+    set.add(ac)
+    stepControllers.set(p.id, set)
+    try {
+      return await fn(ac.signal)
+    } catch (e) {
+      if (p.job.paused && !job.aborted) continue
+      throw e
+    } finally {
+      set.delete(ac)
+      job.removeEventListener('abort', onJobAbort)
+    }
+  }
 }
 
 function agentOpts(p: Project, signal: AbortSignal, extra: { onStep?: (s: string) => void } = {}) {
   return { provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, signal, ...extra }
 }
+
+const target = (p: Project, x: Part): SceneTarget => ({ file: sceneRel(p, x), engine: engineOf(p, x) })
 
 /** Starts (or continues) making the video. `force` designs every unlocked part again. */
 export function startJob(id: string, force = false) {
@@ -117,7 +184,7 @@ export function startJob(id: string, force = false) {
     })
     .catch((e: Error) => {
       p.job.running = false
-      for (const x of p.parts) if (['Designing', 'Rendering', 'Making it again'].includes(x.status)) x.status = existsSync(sceneFile(p, x)) ? 'Designed' : 'Not designed yet'
+      for (const x of p.parts) if (['Designing', 'Rendering', 'Making it again'].includes(x.status)) x.status = existsSync(scenePath(p, x)) ? 'Designed' : 'Not designed yet'
       for (const c of p.comments) if (c.state === 'Working') c.state = 'Waiting'
       if (ac.signal.aborted) {
         p.job.title = 'Stopped'
@@ -128,7 +195,10 @@ export function startJob(id: string, force = false) {
       }
     })
     .finally(() => {
+      p.job.paused = false
       jobs.delete(id)
+      stepControllers.delete(id)
+      resumeWaiters.delete(id)
       emit(p, true)
       // A change sent at the very end gets its own run.
       if (!ac.signal.aborted && p.comments.some((c) => c.state === 'Waiting')) startJob(id)
@@ -144,13 +214,19 @@ export function addComment(id: string, c: Comment) {
   if (!jobs.has(id)) startJob(id)
 }
 
+/** Files the agent reads in the project folder. */
+function writeGuides(p: Project) {
+  const style = getStyle(p.settings.styleId)
+  copyFileSync(methodFile(), join(p.dir, 'METHOD.md'))
+  copyFileSync(hfMethodFile(), join(p.dir, 'HYPERFRAMES.md'))
+  writeFileSync(join(p.dir, 'STYLE.md'), styleDoc(style, styleGuide(style.id)))
+  syncMaterial(p)
+}
+
 async function runJob(p: Project, signal: AbortSignal) {
   const style = getStyle(p.settings.styleId)
   const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
-  // Files the agent reads.
-  copyFileSync(methodFile(), join(p.dir, 'METHOD.md'))
-  writeFileSync(join(p.dir, 'STYLE.md'), styleDoc(style, styleGuide(style.id)))
-  syncMaterial(p)
+  writeGuides(p)
 
   // 1 · Voiceover
   p.job.stage = 'Voiceover'
@@ -167,7 +243,7 @@ async function runJob(p: Project, signal: AbortSignal) {
     step(p, `Reading the ${APP_NAME} method`, { title: 'Planning the video', detail: `${style.name}. Reading your direction.` })
     step(p, 'Looking at the style')
     step(p, 'Splitting the voiceover into parts')
-    const reply = await runAgent({ ...agentOpts(p, signal), prompt: splitPrompt(p, style) })
+    const reply = await guarded(p, signal, (s) => runAgent({ ...agentOpts(p, s), prompt: splitPrompt(p, style) }))
     const plan = extractJson<{ title?: string; parts: { start: number; end: number; title: string; text?: string; idea?: string }[] }>(reply)
     p.parts = normaliseParts(p, plan.parts)
     if (plan.title && (p.title === p.voiceover?.name.replace(/\.[^.]+$/, '') || p.title === 'Untitled video')) p.title = plan.title
@@ -177,16 +253,17 @@ async function runJob(p: Project, signal: AbortSignal) {
 
   // 3 · Design
   p.job.stage = 'Design'
-  const designed = () => p.parts.filter((x) => existsSync(sceneFile(p, x)) && x.status !== 'Not designed yet').length
+  const designed = () => p.parts.filter((x) => existsSync(scenePath(p, x)) && x.status !== 'Not designed yet').length
   p.job.designDone = designed()
-  const todo = p.parts.filter((x) => !x.locked && (x.status === 'Not designed yet' || !existsSync(sceneFile(p, x))))
+  const todo = p.parts.filter((x) => !x.locked && (x.status === 'Not designed yet' || !existsSync(scenePath(p, x))))
   await pool(todo, p.settings.helpers ? HELPERS : 1, async (x) => {
     step(p, `Coming up with ideas for part ${x.index + 1}`, {
       title: `Coming up with ideas for part ${x.index + 1}`,
       detail: clip(`${style.name}, ${p.parts.length} parts. Part ${x.index + 1}: ${x.idea || x.title}`, 220)
     })
     setPart(p, x.id, { status: 'Designing' })
-    await agentScene(p, x, designPrompt(p, x, chars), `First version`, signal)
+    if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x, true)
+    await guarded(p, signal, (s) => agentScene(p, x, designPrompt(p, x, chars, target(p, x)), `First version`, s))
     p.job.designDone = designed()
     emit(p)
   })
@@ -208,7 +285,8 @@ async function runJob(p: Project, signal: AbortSignal) {
         title: `Drawing part ${x.index + 1}`,
         detail: `One note, on part ${x.index + 1}: ${c.text.replace(/\.$/, '')}. The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are.`
       })
-      await agentScene(p, x, fixPrompt(p, x, chars, c, attachments), c.text, signal)
+      if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x)
+      await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, c, attachments, target(p, x)), c.text, s))
     })
     c.state = 'Done'
     emit(p)
@@ -221,38 +299,33 @@ async function runJob(p: Project, signal: AbortSignal) {
   const renderList = p.parts.filter(needsRender)
   if (renderList.length) {
     step(p, 'Putting the drawings together', { title: 'Rendering', detail: `${renderList.length} part${renderList.length > 1 ? 's' : ''} at ${p.settings.quality.height}p · ${p.settings.quality.fps} fps` })
-    let serveUrl = await bundleProject(p, (s) => step(p, s))
+    let serveUrl = renderList.some((x) => engineOf(p, x) === 'remotion') ? await bundleProject(p, (s) => step(p, s)) : undefined
     for (const x of renderList) {
       if (signal.aborted) throw new Error('Stopped')
       setPart(p, x.id, { status: 'Rendering' })
       step(p, `Rendering part ${x.index + 1}`, { title: `Rendering part ${x.index + 1}`, detail: `${x.title}. ${p.job.renderDone} of ${p.parts.length} done.` })
       try {
-        await renderPart(p, x, serveUrl, { signal })
+        await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s, onStatus: (t) => step(p, t) }))
       } catch (e) {
         if (signal.aborted) throw e
-        // A scene that renders as a still can still fail over time: let the agent repair it once.
+        // A scene that draws as a still can still fail over time: let the agent repair it once.
         step(p, `Repairing part ${x.index + 1}`)
-        await agentScene(p, x, repairPrompt(x, (e as Error).message), 'Repaired', signal, false)
-        serveUrl = await bundleProject(p)
-        await renderPart(p, x, serveUrl, { signal })
+        await guarded(p, signal, (s) => agentScene(p, x, repairPrompt(x, (e as Error).message, target(p, x)), 'Repaired', s, false))
+        if (engineOf(p, x) === 'remotion') serveUrl = await bundleProject(p)
+        await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s }))
       }
       setPart(p, x.id, { video: clipFile(p, x) })
 
       // Checks
       if (p.settings.checks !== 'Off' && !x.locked) {
-        const result = await runCheck(p, x, serveUrl, signal)
+        const result = await guarded(p, signal, (s) => runCheck(p, x, serveUrl, s))
         if (!result.ok && p.settings.checks === 'High') {
           step(p, `Fixing part ${x.index + 1} after the check`, { detail: result.notes.join(' · ') })
-          await agentScene(
-            p,
-            x,
-            fixPrompt(p, x, chars, { id: '', partIds: [x.id], text: `A reviewer found: ${result.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }, []),
-            'Fixed after the check',
-            signal
-          )
-          serveUrl = await bundleProject(p)
-          await renderPart(p, x, serveUrl, { signal })
-          await runCheck(p, x, serveUrl, signal)
+          const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${result.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
+          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
+          if (engineOf(p, x) === 'remotion') serveUrl = await bundleProject(p)
+          await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s }))
+          await guarded(p, signal, (s) => runCheck(p, x, serveUrl, s))
         }
       }
       setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
@@ -263,16 +336,50 @@ async function runJob(p: Project, signal: AbortSignal) {
 
   // 6 · Video
   p.job.stage = 'Video'
-  step(p, 'Putting it together with your voiceover', { title: 'Putting the video together', detail: 'Joining the parts and laying the voiceover on top.' })
+  step(p, 'Putting it together with your voiceover', { title: 'Putting the video together', detail: finishDetail(p) })
   const out = join(p.dir, 'renders', 'video.mp4')
-  await assemble(p.parts.map((x) => x.video!), p.voiceover!.file, out, {}, signal)
+  await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
   p.output = out
   emit(p, true)
 }
 
+const finishDetail = (p: Project) =>
+  [
+    'Joining the parts and laying the voiceover on top',
+    p.settings.transition && p.settings.transition !== 'None' ? `${p.settings.transition.toLowerCase()} between parts` : '',
+    p.settings.captions && p.settings.captions !== 'Off' ? `${p.settings.captions.toLowerCase()} captions` : '',
+    p.settings.music ? 'music under the voice' : ''
+  ]
+    .filter(Boolean)
+    .join(', ') + '.'
+
+/** The finishing pass: transitions, captions and music over the rendered parts. */
+async function finish(p: Project, out: string, size: { height: number; fps: number }, signal?: AbortSignal, clips = p.parts.map((x) => x.video!)) {
+  const workDir = join(p.dir, 'work')
+  let captions: string[] | undefined
+  if (p.settings.captions && p.settings.captions !== 'Off' && p.words.length) {
+    const lines = p.captionLines?.length ? p.captionLines : linesFromWords(p.words)
+    prepareCaptionFonts(workDir, (w) => join(dirname(req.resolve('@fontsource/inter/package.json')), 'files', `inter-latin-${w}-normal.woff`))
+    const H = size.height
+    captions = captionFilters(lines, p.settings.captions, { W: Math.round((H * 16) / 9 / 2) * 2, H, accent: getStyle(p.settings.styleId).palette.accent, workDir })
+  }
+  return finishVideo({
+    clips: p.parts.map((x, i) => ({ file: clips[i], dur: x.end - x.start })),
+    voice: p.voiceover!.file,
+    out,
+    workDir,
+    height: size.height,
+    fps: size.fps,
+    transition: p.settings.transition,
+    captions,
+    music: p.settings.music && existsSync(p.settings.music.file) ? p.settings.music : null,
+    signal
+  })
+}
+
 /** Runs the agent on one scene, then checks it builds and draws; repairs it up to twice. */
 async function agentScene(p: Project, x: Part, prompt: string, note: string, signal: AbortSignal, keepHistory = true) {
-  const file = sceneFile(p, x)
+  const file = scenePath(p, x)
   const onStep = (s: string) => {
     if (s.startsWith('Drawing ') || s.startsWith('Changing ')) s = `${s.startsWith('Drawing') ? 'Drawing' : 'Changing'} part ${x.index + 1}`
     const last = p.job.steps[p.job.steps.length - 1]
@@ -281,14 +388,16 @@ async function agentScene(p: Project, x: Part, prompt: string, note: string, sig
   await runAgent({ ...agentOpts(p, signal, { onStep }), prompt, tools: true })
   if (!existsSync(file)) throw new Error(`Part ${x.index + 1}: the scene was not written`)
   for (let tries = 0; ; tries++) {
-    const err = (await checkScene(file)) ?? (await stillOrError(p, x))
+    const err = (await checkAny(p, x)) ?? (await stillOrError(p, x, signal))
     if (!err) break
+    if (signal.aborted) throw new Error('Stopped')
     if (tries >= 2) throw new Error(`Part ${x.index + 1} does not draw: ${err.slice(0, 300)}`)
     step(p, `Repairing part ${x.index + 1}`)
-    await runAgent({ ...agentOpts(p, signal, { onStep }), prompt: repairPrompt(x, err), tools: true })
+    await runAgent({ ...agentOpts(p, signal, { onStep }), prompt: repairPrompt(x, err, target(p, x)), tools: true })
   }
   if (keepHistory) {
-    const h = join(p.dir, 'scenes', 'history', `${x.id}-${Date.now()}.tsx`)
+    const ext = engineOf(p, x) === 'hyperframes' ? 'html' : 'tsx'
+    const h = join(p.dir, 'scenes', 'history', `${x.id}-${Date.now()}.${ext}`)
     copyFileSync(file, h)
     const cur = part(p, x.id)!
     cur.history = [...cur.history, { at: Date.now(), note, file: h }]
@@ -298,11 +407,11 @@ async function agentScene(p: Project, x: Part, prompt: string, note: string, sig
 
 // Bundling writes one shared entry; do it one at a time.
 let bundleLock: Promise<unknown> = Promise.resolve()
-function stillOrError(p: Project, x: Part): Promise<string | null> {
+function stillOrError(p: Project, x: Part, signal?: AbortSignal): Promise<string | null> {
   const job = bundleLock.then(async () => {
     try {
-      const url = await bundleProject(p, (s) => step(p, s))
-      await stillPart(p, x, url)
+      const url = engineOf(p, x) === 'remotion' ? await bundleProject(p, (s) => step(p, s)) : undefined
+      await stillAny(p, x, 0.7, thumbFile(p, x), url, signal, (s) => step(p, s))
       emit(p)
       return null
     } catch (e) {
@@ -313,12 +422,12 @@ function stillOrError(p: Project, x: Part): Promise<string | null> {
   return job
 }
 
-async function runCheck(p: Project, x: Part, serveUrl: string, signal: AbortSignal) {
+async function runCheck(p: Project, x: Part, serveUrl: string | undefined, signal: AbortSignal) {
   step(p, `Checking part ${x.index + 1}`)
   const frames: string[] = []
   for (const [i, at] of [0.2, 0.55, 0.97].entries()) {
     const f = join(p.dir, 'work', `check-${x.index + 1}-${i + 1}.png`)
-    await stillPart(p, x, serveUrl, at, f)
+    await stillAny(p, x, at, f, serveUrl, signal)
     frames.push(`work/check-${x.index + 1}-${i + 1}.png`)
   }
   try {
@@ -390,7 +499,7 @@ export function splitPart(id: string, partId: string, at: number) {
   // Snap to the nearest word start.
   const snap = p.words.filter((w) => w.start > a.start + 0.5 && w.start < a.end - 0.5).sort((x, y) => Math.abs(x.start - at) - Math.abs(y.start - at))[0]?.start ?? at
   const b: Part = { ...a, id: randomUUID(), title: `${a.title} (2)`, start: snap, text: textOf(p, snap, a.end), status: 'Not designed yet', locked: false, history: [], thumb: undefined, video: undefined, checks: undefined }
-  Object.assign(a, { end: snap, text: textOf(p, a.start, snap), status: existsSync(sceneFile(p, a)) ? 'Designed' : 'Not designed yet' })
+  Object.assign(a, { end: snap, text: textOf(p, a.start, snap), status: existsSync(scenePath(p, a)) ? 'Designed' : 'Not designed yet' })
   p.parts.splice(i + 1, 0, b)
   reindex(p)
   emit(p, true)
@@ -455,7 +564,7 @@ export async function cutRanges(id: string, ranges: [number, number][]) {
 export async function removeParts(id: string, partIds: string[]) {
   const p = getProject(id)!
   const ranges = p.parts.filter((x) => partIds.includes(x.id)).map((x) => [x.start, x.end] as [number, number])
-  for (const x of p.parts.filter((x) => partIds.includes(x.id))) rmSync(sceneFile(p, x), { force: true })
+  for (const x of p.parts.filter((x) => partIds.includes(x.id))) rmSync(scenePath(p, x), { force: true })
   return cutRanges(id, ranges)
 }
 
@@ -463,7 +572,7 @@ export function restoreVersion(id: string, partId: string, file: string) {
   const p = getProject(id)!
   busy(p)
   const x = part(p, partId)!
-  copyFileSync(file, sceneFile(p, x))
+  copyFileSync(file, scenePath(p, x))
   const h = x.history.find((v) => v.file === file)
   x.history = [...x.history, { at: Date.now(), note: `Back to: ${h?.note ?? 'an earlier version'}`, file }]
   x.status = 'Designed'
@@ -481,18 +590,29 @@ export async function exportVideo(id: string, opts: { height: number; fps: numbe
     copyFileSync(p.output, to)
     return to
   }
+  let clips = p.parts.map((x) => x.video!)
   if (opts.height > p.settings.quality.height || opts.fps > p.settings.quality.fps) {
     // Draw again at the larger size so lines stay sharp.
-    const serveUrl = await bundleProject(p)
-    const clips: string[] = []
+    const serveUrl = p.parts.some((x) => engineOf(p, x) === 'remotion') ? await bundleProject(p) : undefined
+    clips = []
     for (const x of p.parts) {
       const out = join(p.dir, 'work', `export-${x.id}.mp4`)
-      await renderPart(p, x, serveUrl, { ...opts, out })
+      await renderAny(p, x, { serveUrl, ...opts, out })
       clips.push(out)
     }
-    await assemble(clips, p.voiceover!.file, to)
-    return to
   }
-  await assemble(p.parts.map((x) => x.video!), p.voiceover!.file, to, opts)
+  await finish(p, to, opts, undefined, clips)
   return to
+}
+
+/** Builds the final video again from the rendered parts (after changing captions, music or transitions). */
+export async function refinish(id: string) {
+  const p = getProject(id)!
+  busy(p)
+  if (p.parts.some((x) => !x.video || !existsSync(x.video))) throw new Error('Make the video first.')
+  const out = join(p.dir, 'renders', 'video.mp4')
+  await finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps })
+  p.output = out
+  emit(p, true)
+  return p
 }

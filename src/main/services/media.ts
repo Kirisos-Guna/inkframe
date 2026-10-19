@@ -9,9 +9,13 @@ export interface Run {
   stderr: string
 }
 
-export function run(exe: string, args: string[], opts: { cwd?: string; signal?: AbortSignal; onLine?: (line: string) => void } = {}): Promise<Run> {
+export function run(
+  exe: string,
+  args: string[],
+  opts: { cwd?: string; signal?: AbortSignal; onLine?: (line: string) => void; env?: NodeJS.ProcessEnv } = {}
+): Promise<Run> {
   return new Promise((resolve, reject) => {
-    const p = spawn(exe, args, { cwd: opts.cwd, windowsHide: true, signal: opts.signal })
+    const p = spawn(exe, args, { cwd: opts.cwd, windowsHide: true, signal: opts.signal, env: opts.env })
     const out: Buffer[] = []
     let err = ''
     let pending = ''
@@ -110,3 +114,82 @@ export const audioRange = (input: string, from: number, to: number, out: string)
 
 export const muxAudio = (video: string, audio: string, out: string) =>
   ffmpeg(['-i', video, '-i', audio, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-shortest', out])
+
+const XFADE: Record<string, string> = { Fade: 'fade', Flash: 'fadewhite', Wipe: 'wipeleft', Slide: 'slideleft', Zoom: 'zoomin' }
+
+/**
+ * Builds the final video in one FFmpeg pass: every part scaled to the same size and frame rate, an optional
+ * transition between parts (each part keeps its exact place against the voice: the outgoing part holds its last
+ * frame while the next one comes in), optional burned-in captions (an .ass file in `workDir`), and optional music
+ * that ducks under the voice.
+ */
+export async function finishVideo(o: {
+  clips: { file: string; dur: number }[]
+  voice: string
+  out: string
+  workDir: string
+  height: number
+  fps: number
+  transition?: string
+  /** drawtext filters for burned-in captions (see captions.ts). */
+  captions?: string[]
+  music?: { file: string; volume: number } | null
+  signal?: AbortSignal
+}) {
+  const W = Math.round((o.height * 16) / 9 / 2) * 2
+  const H = o.height
+  const T = o.transition && XFADE[o.transition] && o.clips.length > 1 ? 0.4 : 0
+  const n = o.clips.length
+  const lines: string[] = []
+  o.clips.forEach((c, i) => {
+    const pad = T && i < n - 1 ? `,tpad=stop_mode=clone:stop_duration=${T}` : ''
+    lines.push(
+      `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=${o.fps},format=yuv420p,setsar=1,` +
+        `tpad=stop_mode=clone:stop_duration=1,trim=duration=${c.dur.toFixed(4)},setpts=PTS-STARTPTS${pad}[v${i}]`
+    )
+  })
+  let last = 'v0'
+  if (n > 1 && T) {
+    let acc = o.clips[0].dur + T
+    for (let i = 1; i < n; i++) {
+      const len = o.clips[i].dur + (i < n - 1 ? T : 0)
+      const offset = acc - T
+      lines.push(`[${last}][v${i}]xfade=transition=${XFADE[o.transition!]}:duration=${T}:offset=${offset.toFixed(4)}[x${i}]`)
+      last = `x${i}`
+      acc = offset + len
+    }
+  } else if (n > 1) {
+    lines.push(`${o.clips.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[cat]`)
+    last = 'cat'
+  }
+  if (o.captions?.length) {
+    lines.push(`[${last}]${o.captions.join(",")}[cap]`)
+    last = 'cap'
+  }
+  const vi = n
+  if (o.music) {
+    const mi = n + 1
+    lines.push(`[${vi}:a]asplit=2[voice][side]`)
+    lines.push(`[${mi}:a]volume=${o.music.volume.toFixed(2)}[mus]`)
+    lines.push(`[mus][side]sidechaincompress=threshold=0.03:ratio=10:attack=15:release=400[duck]`)
+    lines.push(`[voice][duck]amix=inputs=2:duration=first:normalize=0[aout]`)
+  } else lines.push(`[${vi}:a]anull[aout]`)
+  const script = join(o.workDir, 'finish.filter')
+  writeFileSync(script, lines.join(';\n'))
+  const total = o.clips.reduce((s, c) => s + c.dur, 0)
+  const args = ['-hide_banner', '-y']
+  for (const c of o.clips) args.push('-i', c.file)
+  args.push('-i', o.voice)
+  if (o.music) args.push('-stream_loop', '-1', '-i', o.music.file)
+  args.push(
+    '-filter_complex_script', 'finish.filter',
+    '-map', `[${last}]`, '-map', '[aout]',
+    '-t', total.toFixed(3),
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(o.fps),
+    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', o.out
+  )
+  // Run inside workDir so the filter script and captions file are plain relative names (no Windows path escaping).
+  const r = await run(ffmpegPath(), args, { cwd: o.workDir, signal: o.signal })
+  if (r.code !== 0) throw new Error('FFmpeg: ' + r.stderr.split('\n').filter(Boolean).slice(-4).join(' '))
+  return o.out
+}

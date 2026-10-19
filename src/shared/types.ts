@@ -41,6 +41,29 @@ export interface Part {
   video?: string
   history: PartVersion[]
   checks?: { ok: boolean; notes: string[]; at: number }
+  /** Which renderer draws this part. Unset = the video's default. */
+  engine?: Engine
+}
+
+/** Remotion draws React/SVG (and three.js 3D) scenes; HyperFrames draws HTML + GSAP scenes. */
+export type Engine = 'remotion' | 'hyperframes'
+export type Transition = 'None' | 'Fade' | 'Flash' | 'Wipe' | 'Slide' | 'Zoom'
+export type CaptionStyle = 'Off' | 'Clean' | 'Bold pop' | 'Karaoke'
+
+export interface Thumbnail {
+  id: string
+  file: string
+  scene: string
+  note: string
+  at: number
+}
+
+export interface PublishKit {
+  titles: string[]
+  description: string
+  tags: string[]
+  hashtags: string[]
+  at: number
 }
 
 export interface Comment {
@@ -72,6 +95,8 @@ export interface JobState {
   steps: Step[]
   startedAt: number
   error?: string
+  /** Paused by the user: the current step was stopped and will be done again on Resume. */
+  paused?: boolean
 }
 
 export interface ProjectSettings {
@@ -86,6 +111,11 @@ export interface ProjectSettings {
   model: string
   effort: Effort
   helpers: boolean
+  /** Default engine for parts. 'Auto' follows the style. */
+  engine?: 'Auto' | 'Remotion' | 'HyperFrames'
+  transition?: Transition
+  captions?: CaptionStyle
+  music?: { file: string; volume: number } | null
 }
 
 export interface Project {
@@ -107,6 +137,10 @@ export interface Project {
   settings: ProjectSettings
   job: JobState
   output?: string
+  thumbnails?: Thumbnail[]
+  publish?: PublishKit
+  /** Caption lines (cleaned up by the writer), in seconds. */
+  captionLines?: { start: number; end: number; text: string; words: { w: string; start: number; end: number }[] }[]
 }
 
 export interface StyleDef {
@@ -119,6 +153,12 @@ export interface StyleDef {
   stroke: { width: number; jitter: number; texture: 'pen' | 'chalk' | 'pencil' | 'marker' | 'brush' | 'none' }
   custom?: boolean
   source?: string
+  /** 'three' styles are real 3D scenes built with three.js. */
+  render?: 'svg' | 'three'
+  /** The engine this style looks best in. */
+  engine?: Engine
+  /** Extra direction for the designer, written into STYLE.md. */
+  guide?: string
 }
 
 export interface CharacterDef {
@@ -172,6 +212,9 @@ export interface AppSettings {
   defaultModel: string
   defaultEffort: Effort
   defaultChecks: ChecksLevel
+  /** Who writes scripts, titles, descriptions and captions. */
+  writerProvider?: Provider
+  writerModel?: string
 }
 
 export interface Status {

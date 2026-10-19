@@ -1,17 +1,22 @@
 import { app } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
 import { build } from 'esbuild'
 import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
 import { getStyle, listCharacters } from './store'
+import { interFont } from './hyperframes'
 
 export const appRoot = () => app.getAppPath()
 export const kitDir = () => join(appRoot(), 'remotion', 'kit')
 export const methodFile = () => join(appRoot(), 'remotion', 'METHOD.md')
+export const hfMethodFile = () => join(appRoot(), 'remotion', 'HYPERFRAMES.md')
 
 export const sceneFile = (p: Project, part: Part) => join(p.dir, 'scenes', `${part.id}.tsx`)
 export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${part.id}.png`)
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
+
+// ANGLE gives Chrome real WebGL for the three.js styles (and is fine for 2D).
+const chromiumOptions = { gl: 'angle' as const }
 
 const sizeFor = (h: number) => ({ width: Math.round((h * 16) / 9), height: h })
 
@@ -19,6 +24,9 @@ const sizeFor = (h: number) => ({ width: Math.round((h * 16) / 9), height: h })
 export function syncMaterial(p: Project) {
   const pub = join(p.dir, 'public')
   mkdirSync(pub, { recursive: true })
+  // The kit loads Inter from here, so clean text looks the same on every PC.
+  const inter = join(pub, '_inter.woff2')
+  if (!existsSync(inter)) copyFileSync(interFont(), inter)
   for (const m of p.material) {
     const to = join(pub, basename(m))
     if (existsSync(m) && !existsSync(to)) copyFileSync(m, to)
@@ -35,7 +43,7 @@ export async function checkScene(file: string): Promise<string | null> {
       logLevel: 'silent',
       jsx: 'automatic',
       loader: { '.tsx': 'tsx' },
-      external: ['react', 'react/*', 'remotion', '@remotion/*', '@kit']
+      external: ['react', 'react/*', 'remotion', '@remotion/*', '@kit', '@kit/*', 'three', 'three/*', '@react-three/*']
     })
     return null
   } catch (e) {
@@ -45,15 +53,19 @@ export async function checkScene(file: string): Promise<string | null> {
 }
 
 function writeEntry(p: Project) {
-  const parts = p.parts.filter((x) => existsSync(sceneFile(p, x)))
-  const entry = join(p.dir, 'scenes', '_entry.tsx')
+  // Every React scene in the folder: the parts and any thumbnails.
+  const dir = join(p.dir, 'scenes')
+  const ids = readdirSync(dir)
+    .filter((f) => f.endsWith('.tsx') && !f.startsWith('_'))
+    .map((f) => f.replace(/\.tsx$/, ''))
+  const entry = join(dir, '_entry.tsx')
   writeFileSync(
     entry,
     `import React from 'react'
 import { Composition, registerRoot } from 'remotion'
 import { makeRoot } from '@kit'
-${parts.map((x, i) => `import S${i} from './${x.id}'`).join('\n')}
-const PartRoot = makeRoot({ ${parts.map((x, i) => `'${x.id}': S${i}`).join(', ')} })
+${ids.map((id, i) => `import S${i} from './${id}'`).join('\n')}
+const PartRoot = makeRoot({ ${ids.map((id, i) => `'${id}': S${i}`).join(', ')} })
 const Root = () => (
   <Composition
     id="Part"
@@ -70,6 +82,27 @@ registerRoot(Root)
 `
   )
   return entry
+}
+
+/** A still of any scene in the project (used for thumbnails), at its last frame. */
+export async function stillScene(p: Project, serveUrl: string, sceneId: string, out: string, size: { width: number; height: number; frames: number }) {
+  const { selectComposition, renderStill } = await import('@remotion/renderer')
+  const style = getStyle(p.settings.styleId)
+  const inputProps = {
+    partId: sceneId,
+    frames: size.frames,
+    fps: 30,
+    width: size.width,
+    height: size.height,
+    text: p.title,
+    words: [],
+    style,
+    characters: listCharacters().filter((c) => p.settings.characterIds.includes(c.id)),
+    material: [...new Set(p.material.map((m) => basename(m)))]
+  }
+  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions })
+  await renderStill({ serveUrl, composition, output: out, inputProps, frame: size.frames - 1, logLevel: 'error', chromiumOptions })
+  return out
 }
 
 let browserReady: Promise<unknown> | null = null
@@ -132,8 +165,8 @@ export function propsFor(p: Project, part: Part, opts?: { height?: number; fps?:
 export async function stillPart(p: Project, part: Part, serveUrl: string, at = 0.7, out = thumbFile(p, part)) {
   const { selectComposition, renderStill } = await import('@remotion/renderer')
   const inputProps = propsFor(p, part, { height: 540, fps: 30 })
-  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error' })
-  await renderStill({ serveUrl, composition, output: out, inputProps, frame: Math.min(composition.durationInFrames - 1, Math.floor(composition.durationInFrames * at)), logLevel: 'error' })
+  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions })
+  await renderStill({ serveUrl, composition, output: out, inputProps, frame: Math.min(composition.durationInFrames - 1, Math.floor(composition.durationInFrames * at)), logLevel: 'error', chromiumOptions })
   return out
 }
 
@@ -145,7 +178,7 @@ export async function renderPart(
 ) {
   const { selectComposition, renderMedia, makeCancelSignal } = await import('@remotion/renderer')
   const inputProps = propsFor(p, part, opts)
-  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error' })
+  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions })
   const cancel = makeCancelSignal()
   opts.signal?.addEventListener('abort', () => cancel.cancel(), { once: true })
   const out = opts.out ?? clipFile(p, part)
@@ -162,6 +195,7 @@ export async function renderPart(
     muted: true,
     cancelSignal: cancel.cancelSignal,
     logLevel: 'error',
+    chromiumOptions,
     onProgress: ({ progress }) => opts.onProgress?.(Math.round(progress * 100))
   })
   return out

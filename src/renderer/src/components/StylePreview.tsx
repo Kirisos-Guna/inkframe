@@ -253,6 +253,161 @@ export function StylePreview({ id }: { id: string }) {
           ))}
         </g>
       )}
+      {id === 'ink-wash-cartoon' && (
+        <g>
+          <rect x="40" y="40" width="150" height="100" fill="#7fb0d6" opacity=".35" />
+          <ellipse cx="225" cy="95" rx="55" ry="40" fill="#e8a87c" opacity=".45" />
+          <g stroke={ink} strokeWidth="3" fill="none" strokeLinecap="round">
+            <rect x="60" y="60" width="110" height="70" rx="6" />
+            <path d="M90 95h50M90 110h30" />
+            <circle cx="230" cy="80" r="18" />
+            <path d="M230 98v34M230 110l-16 14M230 110l18 -12M230 132l-12 20M230 132l12 20" />
+            <path d="M222 76h2M236 76h2M224 86q6 5 12 0" />
+          </g>
+          <text x="245" y="55" fontSize="14" fontFamily={font} fill={accent}>!</text>
+        </g>
+      )}
+      {id === 'living-ink' && (
+        <g fill={ink}>
+          <path d="M60 120 C 90 40, 150 40, 170 90 S 240 150, 270 70" fill="none" stroke={ink} strokeWidth="10" strokeLinecap="round" />
+          <circle cx="275" cy="62" r="12" />
+          <circle cx="110" cy="140" r="7" opacity=".7" />
+          <circle cx="122" cy="148" r="3" opacity=".6" />
+          <rect x="250" y="130" width="22" height="22" fill={accent} rx="2" />
+        </g>
+      )}
+      {id === 'cut-paper-poster' && (
+        <g>
+          <path d="M0 120 L120 60 L320 140 V180 H0Z" fill={paper} />
+          <path d="M180 0 H320 V80 Q260 100 200 70Z" fill={accent} />
+          <circle cx="250" cy="40" r="22" fill="#f6d55c" />
+          <text x="22" y="70" fontSize="44" fontWeight="900" fontFamily="Impact, Segoe UI Black, sans-serif" fill={ink}>BIG</text>
+          <text x="22" y="108" fontSize="30" fontWeight="900" fontFamily="Impact, Segoe UI Black, sans-serif" fill={ink}>IDEAS</text>
+        </g>
+      )}
+      {id === 'shadow-puppets' && (
+        <g>
+          <radialGradient id="spg" cx=".5" cy=".45" r=".7">
+            <stop offset="0" stopColor="#ffe6a8" />
+            <stop offset="1" stopColor="#c46a12" />
+          </radialGradient>
+          <rect width="320" height="180" fill="url(#spg)" />
+          <g fill={ink} stroke={ink}>
+            <circle cx="110" cy="70" r="14" />
+            <path d="M98 84 h24 l6 50 h-36z" />
+            <path d="M120 90 l30 -12" strokeWidth="5" />
+            <path d="M230 120 q-40 -50 -10 -70 q30 -10 40 30 q10 30 -30 40z" />
+            <path d="M110 134 L110 180 M150 78 L170 180 M240 120 L240 180" strokeWidth="1.5" />
+          </g>
+        </g>
+      )}
+      {id === 'cutaways' && (
+        <g>
+          <rect x="60" y="40" width="140" height="100" rx="14" fill={paper} stroke={ink} strokeWidth="2" />
+          <path d="M130 40 V140" stroke={ink} strokeDasharray="4 4" />
+          <rect x="138" y="52" width="54" height="76" rx="6" fill="#fff" stroke={ink} />
+          <circle cx="165" cy="76" r="12" fill={accent} />
+          <rect x="148" y="98" width="34" height="18" fill="#9fb8c8" />
+          <g stroke={ink} strokeWidth="1">
+            <path d="M177 76 L240 50 H290" />
+            <path d="M182 107 L240 120 H290" />
+          </g>
+          <text x="244" y="46" fontSize="10" fill={ink} fontFamily="Segoe UI">MOTOR</text>
+          <text x="244" y="116" fontSize="10" fill={ink} fontFamily="Segoe UI">BATTERY</text>
+        </g>
+      )}
+      {id === 'character-stories' && (
+        <g>
+          <rect y="130" width="320" height="50" fill="#e9dcc6" />
+          <rect x="30" y="40" width="70" height="90" fill="#cfe3f0" stroke={ink} strokeWidth="3" />
+          <g stroke={ink} strokeWidth="3">
+            <circle cx="170" cy="80" r="16" fill="#f2c29b" />
+            <rect x="156" y="98" width="28" height="34" rx="6" fill={accent} />
+            <circle cx="245" cy="84" r="14" fill="#c98f6a" />
+            <rect x="232" y="100" width="26" height="32" rx="6" fill="#4f6fd8" />
+          </g>
+          <path d="M190 40 h70 v26 h-50 l-10 10 v-10 h-10z" fill="#fff" stroke={ink} strokeWidth="2" />
+          <text x="200" y="58" fontSize="12" fontFamily={font} fill={ink}>Wait, what?</text>
+        </g>
+      )}
+      {id === 'cartoon-music-video' && (
+        <g>
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <rect key={i} x={20 + i * 37} y={150 - (i % 4) * 22 - 20} width="22" height={(i % 4) * 22 + 20} rx="4" fill={i % 2 ? paper : accent} />
+          ))}
+          <circle cx="160" cy="62" r="30" fill={accent} stroke={ink} strokeWidth="4" />
+          <path d="M148 58h4M168 58h4M148 72q12 10 24 0" stroke="#2b1055" strokeWidth="4" fill="none" />
+          <text x="236" y="44" fontSize="26" fill={ink}>♪</text>
+          <text x="40" y="40" fontSize="20" fill={ink}>♫</text>
+        </g>
+      )}
+      {id === 'paper-plane-3d' && (
+        <g>
+          <circle cx="250" cy="40" r="20" fill="#f4a261" />
+          <path d="M0 110 q60 -30 120 -5 t200 -15 V180 H0z" fill="#e76f51" opacity=".85" />
+          <path d="M0 130 q80 -25 160 0 t160 -10 V180 H0z" fill="#2a9d8f" />
+          <path d="M0 150 q70 -15 150 5 t170 -5 V180 H0z" fill="#264653" />
+          <path d="M120 90 l70 -28 -36 34z" fill="#fffaf0" />
+          <path d="M120 90 l34 6 2 12z" fill="#e8dfcf" />
+        </g>
+      )}
+      {id === 'popup-book-3d' && (
+        <g>
+          <path d="M20 150 L160 130 L300 150 L300 160 L160 140 L20 160Z" fill="#f2e6d0" />
+          <path d="M160 130 V140" stroke="#8a6a50" />
+          <path d="M70 140 L70 80 L110 60 L150 80 L150 135Z" fill="#f7efe2" stroke="#8a6a50" />
+          <path d="M100 135 V105 h20 v30" fill={accent} />
+          <path d="M190 135 L210 70 L230 135Z" fill="#7fb069" />
+          <path d="M235 135 L250 90 L265 135Z" fill="#5b8c51" />
+          <ellipse cx="160" cy="158" rx="150" ry="8" fill="#000" opacity=".35" />
+        </g>
+      )}
+      {id === 'blueprint-3d' && (
+        <g stroke={ink} fill="none" strokeWidth="1.3">
+          <defs>
+            <pattern id="bg3" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0H0V20" stroke="#fff" strokeOpacity=".08" />
+            </pattern>
+          </defs>
+          <rect width="320" height="180" fill="url(#bg3)" stroke="none" />
+          <path d="M110 120 l50 -25 50 25 -50 25z M110 120 v-40 l50 -25 50 25 v40 M160 95 v-40" />
+          <path d="M210 80 l30 -15" stroke={accent} />
+          <path d="M240 65 l20 10 -30 15" stroke={accent} strokeDasharray="4 3" />
+          <text x="240" y="58" fontSize="10" fill={ink} stroke="none" fontFamily="Segoe UI">rotor</text>
+        </g>
+      )}
+      {id === 'pencil-3d' && (
+        <g stroke={ink} fill="none" strokeWidth="1.2" opacity=".85">
+          <path d="M100 120 l60 -30 60 30 -60 30z" />
+          <path d="M100 120 v-50 l60 -30 60 30 v50 M160 90 v-50" />
+          <path d="M100 70 l60 30 60 -30" strokeDasharray="3 3" />
+          <path d="M115 128 l40 20 M125 124 l40 20 M135 120 l40 20" strokeWidth=".6" />
+        </g>
+      )}
+      {id === 'little-worlds-3d' && (
+        <g>
+          <ellipse cx="160" cy="120" rx="110" ry="34" fill="#6fb36b" />
+          <path d="M50 120 q110 70 220 0 v12 q-110 70 -220 0z" fill="#8a5a3b" />
+          <rect x="110" y="85" width="30" height="28" fill="#fff4e0" />
+          <path d="M106 86 l19 -16 19 16z" fill={accent} />
+          <rect x="170" y="90" width="22" height="22" fill="#ffd36e" />
+          <path d="M215 110 l10 -30 10 30z" fill="#3e8e41" />
+          <path d="M80 112 l8 -22 8 22z" fill="#3e8e41" />
+          <circle cx="150" cy="122" r="3" fill="#2c3e50" />
+        </g>
+      )}
+      {id === 'interactive-3d' && (
+        <g>
+          <ellipse cx="160" cy="150" rx="110" ry="10" fill="#000" opacity=".5" />
+          <rect x="110" y="60" width="100" height="70" rx="12" fill="#1f2638" stroke="#2d3956" />
+          <rect x="150" y="30" width="60" height="28" rx="6" fill={accent} opacity=".9" />
+          <rect x="230" y="80" width="40" height="40" rx="6" fill="#2a3450" stroke={accent} />
+          <g stroke={ink} strokeWidth="1">
+            <path d="M210 44 L250 30 H290" />
+          </g>
+          <text x="254" y="26" fontSize="10" fill={ink} fontFamily="Segoe UI">sensor</text>
+        </g>
+      )}
       {!BUILTIN_STYLES.some((b) => b.id === id) && (
         <g stroke={ink} fill="none" strokeWidth={Math.max(1, st.stroke.width)}>
           <path d="M40 130q60-80 120-30t120-40" />

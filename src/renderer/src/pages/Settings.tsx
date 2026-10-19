@@ -71,8 +71,8 @@ export default function Settings() {
       <section className="card mt-5 px-7 py-5">
         <div className="mb-4 text-[19px] font-semibold">Made by (default for new videos)</div>
         <div className="grid grid-cols-4 gap-3">
-          <Select<Provider> value={s.defaultProvider} options={['Claude Code', 'Codex']} onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'gpt-5-codex' : 'Opus 5.5' })} />
-          <Select value={s.defaultModel} options={s.defaultProvider === 'Codex' ? ['gpt-5-codex', 'gpt-5'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']} onChange={(v) => save({ defaultModel: v })} />
+          <Select<Provider> value={s.defaultProvider} options={['Claude Code', 'Codex']} onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'Codex default' : 'Opus 5.5' })} />
+          <Select value={s.defaultModel} options={s.defaultProvider === 'Codex' ? ['Codex default'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']} onChange={(v) => save({ defaultModel: v })} />
           <Select<string>
             value={`Intelligence: ${s.defaultEffort}`}
             options={['Intelligence: Low', 'Intelligence: Medium', 'Intelligence: High']}
@@ -80,6 +80,20 @@ export default function Settings() {
           />
           <Select<string> value={`Checks: ${s.defaultChecks}`} options={['Checks: Off', 'Checks: Low', 'Checks: Medium', 'Checks: High']} onChange={(v) => save({ defaultChecks: v.split(': ')[1] as ChecksLevel })} />
         </div>
+      </section>
+
+      <section className="card mt-5 px-7 py-5">
+        <div className="text-[19px] font-semibold">Writing done by</div>
+        <div className="mb-4 mt-1 text-[14px] text-muted">Scripts, titles, descriptions and captions.</div>
+        <div className="grid grid-cols-4 gap-3">
+          <Select<Provider> value={s.writerProvider ?? 'Codex'} options={['Codex', 'Claude Code']} onChange={(v) => save({ writerProvider: v })} />
+          {(s.writerProvider ?? 'Codex') === 'Codex' && (
+            <Select value={s.writerModel ?? 'Codex default'} options={['Codex default']} onChange={(v) => save({ writerModel: v })} />
+          )}
+        </div>
+        {(s.writerProvider ?? 'Codex') === 'Codex' && !status?.codex && (
+          <div className="mt-3 text-[13.5px] text-accent2">Codex is not on this computer, so Claude Code writes instead. Install the Codex app and sign in to use it.</div>
+        )}
       </section>
 
       <section className="card mb-10 mt-5 px-7 py-3">

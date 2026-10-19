@@ -90,6 +90,9 @@ export default function Styles({ initialTab }: { initialTab?: Tab }) {
                   </div>
                 </div>
                 <div className="mt-1.5 text-[15px] leading-snug text-muted">{s.description}</div>
+                {(s.render === 'three' || s.engine === 'hyperframes') && (
+                  <div className="mt-1.5 text-[13px] font-medium text-accent2">{s.render === 'three' ? 'Real 3D (three.js)' : 'HTML scene (HyperFrames)'}</div>
+                )}
               </div>
             ))}
           </div>
@@ -224,7 +227,7 @@ function Learn() {
             <div className="pt-6 text-[14.5px] text-muted">Built by</div>
             <div className="grid flex-1 grid-cols-2 gap-2.5">
               <Select<Provider> value={provider} options={['Claude Code', 'Codex']} onChange={setProvider} />
-              <Select value={model} options={provider === 'Codex' ? ['gpt-5-codex', 'gpt-5'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1']} onChange={setModel} />
+              <Select value={model} options={provider === 'Codex' ? ['Codex default'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1']} onChange={setModel} />
               <Select<string>
                 className="col-span-2"
                 value={`Intelligence: ${effort}`}

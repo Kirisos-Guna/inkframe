@@ -42,6 +42,35 @@ shape.rect(x,y,w,h,r?) shape.circle(cx,cy,r) shape.line(x1,y1,x2,y2) shape.arrow
 Plain SVG elements (`<path>`, `<circle>`, `<text>`, `<g>`…) work too inside `<Board>`. Text in raw `<text>` needs
 `stroke="none" fill={palette.ink} fontFamily={font}`.
 
+## Real 3D (only when STYLE.md says the style is 3D)
+Use `@kit/three`, `three` and `@react-three/fiber`. The whole part is one `<Stage3D>`; text goes on top of it in a
+`<Board>`-free `<AbsoluteFill>` (from `@kit`) with an `<svg viewBox="0 0 1920 1080">` overlay if you need labels.
+```tsx
+import { useScene, AbsoluteFill, Write } from '@kit'
+import { Stage3D, useProgress, usePop, Paper, Clay, Glow, LineBox, PaperPlane, THREE } from '@kit/three'
+
+export default function Scene() {
+  const { at, dur, palette } = useScene()
+  const fly = useProgress(at('plane', 1, 10), 60)          // 0 → 1 while the plane flies in
+  const pop = usePop(at('city', 1, 70))
+  return (
+    <AbsoluteFill>
+      <Stage3D light="paper" camera={[{ at: 0, pos: [0, 4, 12], look: [0, 1, 0] }, { at: dur, pos: [3, 3, 8], look: [0, 1, 0] }]}>
+        <group position={[-6 + fly * 6, 2 + Math.sin(fly * 6) * 0.2, 0]} rotation={[0, -Math.PI / 2, 0.1]}><PaperPlane /></group>
+        <mesh position={[2, 0.75, -2]} scale={pop} castShadow><boxGeometry args={[1.5, 1.5, 1.5]} /><Clay color={palette.accent} /></mesh>
+      </Stage3D>
+    </AbsoluteFill>
+  )
+}
+```
+- Units are metres-ish: keep the subject within about 10 units of the origin; the ground is at y = 0.
+- Move the camera with keys (`at` = frame). Slow, eased moves look expensive; avoid spinning the camera.
+- `useProgress(start, dur)` gives 0 → 1 for any motion; `usePop(start)` gives a scale for things that appear.
+- Materials: `Paper` (matte paper, cut-outs, pop-up books), `Clay` (soft toy worlds), `Glow` (lit details),
+  `LineBox` (blueprint and pencil builds; `draw` 0 → 1 fades the edges in), `PaperPlane`.
+- Plain three.js geometry works: `boxGeometry`, `cylinderGeometry`, `sphereGeometry`, `coneGeometry`,
+  `extrudeGeometry` with a `THREE.Shape` for cut-out silhouettes.
+
 ## Example
 ```tsx
 import { useScene, Board, Draw, shape, Write, Pop } from '@kit'

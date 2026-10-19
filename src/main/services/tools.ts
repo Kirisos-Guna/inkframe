@@ -14,6 +14,17 @@ function which(cmd: string): Promise<string | null> {
   )
 }
 
+/** codex.exe that ships inside the Codex desktop app (newest copy). */
+function bundledCodex(): string | null {
+  const root = join(app.getPath('home'), 'AppData', 'Local', 'OpenAI', 'Codex', 'bin')
+  if (!existsSync(root)) return null
+  const found = readdirSync(root)
+    .map((d) => join(root, d, 'codex.exe'))
+    .filter(existsSync)
+    .map((f) => ({ f, t: statSync(f).mtimeMs }))
+  return found.sort((a, b) => b.t - a.t)[0]?.f ?? null
+}
+
 /** Newest Claude Code bundled with the Claude desktop app, if any. */
 function bundledClaude(): string | null {
   const root = join(app.getPath('appData'), 'Claude', 'claude-code')
@@ -46,7 +57,7 @@ export async function claudePath() {
 export async function codexPath() {
   const s = getSettings()
   if (s.codexPath && existsSync(s.codexPath)) return s.codexPath
-  if (resolved.codex === undefined) resolved.codex = (await which('codex')) ?? [join(app.getPath('appData'), 'npm', 'codex.cmd')].find(existsSync) ?? null
+  if (resolved.codex === undefined) resolved.codex = (await which('codex')) ?? [join(app.getPath('appData'), 'npm', 'codex.cmd')].find(existsSync) ?? bundledCodex()
   return resolved.codex
 }
 

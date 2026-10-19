@@ -1,7 +1,7 @@
 // Scene kit: the building blocks Claude uses to draw each part.
 // Everything is drawn in a 1920x1080 SVG space, whatever the output size.
 import React, { createContext, useContext, useId, useMemo } from 'react'
-import { AbsoluteFill, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
+import { AbsoluteFill, continueRender, delayRender, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { evolvePath, getLength } from '@remotion/paths'
 import type { CharacterDef, StyleDef } from '../../src/shared/types'
 import { CharacterArt } from '../../src/shared/CharacterArt'
@@ -60,7 +60,22 @@ export function useScene() {
 export const hand = (s: StyleDef) =>
   ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture)
     ? "'Segoe Print', 'Comic Sans MS', cursive"
-    : "'Segoe UI', 'Inter', system-ui, sans-serif"
+    : "'Inter', 'Segoe UI', sans-serif"
+
+// Inter ships with every project (public/_inter.woff2), so clean text never depends on the PC's system fonts.
+let interLoad: Promise<void> | null = null
+function useInter() {
+  const [handle] = React.useState(() => delayRender('Loading the Inter font'))
+  React.useEffect(() => {
+    interLoad ??= new FontFace('Inter', `url(${staticFile('_inter.woff2')}) format('woff2')`, { weight: '100 900' })
+      .load()
+      .then((f) => {
+        document.fonts.add(f)
+      })
+      .catch(() => {})
+    interLoad.then(() => continueRender(handle))
+  }, [handle])
+}
 
 const ease = Easing.bezier(0.45, 0, 0.25, 1)
 const prog = (frame: number, start: number, dur: number) =>
@@ -110,7 +125,13 @@ export function Board({ children, camera }: { children?: React.ReactNode; camera
           {children}
         </g>
         {style.id === 'hand-drawn-board' && <rect width="1920" height="1080" fill={`url(#v${id})`} />}
-        {['pencil-sketch', 'watercolour', 'risograph', 'sumi-ink', 'paper-cutout', 'notebook-sketch'].includes(style.id) && (
+        {style.id === 'shadow-puppets' && (
+          <>
+            <radialGradient id={`sp${id}`} cx=".5" cy=".45" r=".7"><stop offset="0" stopColor="#fff2c6" stopOpacity=".55" /><stop offset="1" stopColor="#5a2a00" stopOpacity=".55" /></radialGradient>
+            <rect width="1920" height="1080" fill={`url(#sp${id})`} style={{ mixBlendMode: 'multiply' }} />
+          </>
+        )}
+        {['ink-wash-cartoon', 'living-ink', 'cut-paper-poster', 'pencil-sketch', 'watercolour', 'risograph', 'sumi-ink', 'paper-cutout', 'notebook-sketch'].includes(style.id) && (
           <rect width="1920" height="1080" filter={`url(#grain${id})`} />
         )}
       </svg>
@@ -340,7 +361,20 @@ const DRAWN: Record<string, string> = {
   'soft-3d': 'Soft 3D',
   'flat-cartoon': 'Flat',
   'cinematic-3d': 'Soft 3D',
-  'short-3d': 'Soft 3D'
+  'short-3d': 'Soft 3D',
+  'ink-wash-cartoon': 'Watercolour',
+  'living-ink': 'Ink',
+  'cut-paper-poster': 'Paper',
+  'shadow-puppets': 'Ink',
+  cutaways: 'Flat',
+  'character-stories': 'Flat',
+  'cartoon-music-video': 'Flat',
+  'paper-plane-3d': 'Paper',
+  'popup-book-3d': 'Paper',
+  'blueprint-3d': 'Blueprint',
+  'pencil-3d': 'Ink',
+  'little-worlds-3d': 'Soft 3D',
+  'interactive-3d': 'Flat'
 }
 
 /** One of the video's characters, drawn in the video's style. `name` matches the character's name. */
@@ -395,6 +429,7 @@ export function Picture({ name, x, y, w, h, start = 0, frame: framed = true }: {
 /** Wrapper the app uses to give every scene its props. */
 export function makeRoot(scenes: Record<string, React.ComponentType>) {
   return function PartRoot(props: SceneProps) {
+    useInter()
     const Scene = scenes[props.partId]
     return (
       <SceneProvider value={props}>

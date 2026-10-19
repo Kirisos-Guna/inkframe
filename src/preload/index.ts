@@ -46,6 +46,9 @@ const api = {
   job: {
     start: (id: string, force = false) => invoke<void>('job:start', id, force),
     stop: (id: string) => invoke<void>('job:stop', id),
+    pause: (id: string) => invoke<void>('job:pause', id),
+    resume: (id: string) => invoke<void>('job:resume', id),
+    refinish: (id: string) => invoke<Project>('job:refinish', id),
     comment: (id: string, c: Comment) => invoke<void>('job:comment', id, c),
     exportVideo: (id: string, opts: { height: number; fps: number }) =>
       invoke<string | null>('job:export', id, opts)
@@ -73,6 +76,22 @@ const api = {
     list: () => invoke<LearnSession[]>('learn:list'),
     start: (s: Partial<LearnSession> & { source: string }) => invoke<LearnSession>('learn:start', s),
     remove: (id: string) => invoke<void>('learn:remove', id)
+  },
+  writer: {
+    script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
+      invoke<{ title: string; script: string; sources: string[]; by: string }>('writer:script', r),
+    publish: (id: string) => invoke<Project>('writer:publish', id),
+    captions: (id: string, tidy: boolean) => invoke<Project>('writer:captions', id, tidy)
+  },
+  captions: { save: (id: string, format: 'srt' | 'vtt') => invoke<string | null>('captions:save', id, format) },
+  thumbs: { make: (id: string, count: number, note?: string) => invoke<Project>('thumbs:make', id, count, note) },
+  file: {
+    saveCopy: (from: string, name: string) => invoke<string | null>('file:saveCopy', from, name),
+    saveText: (text: string, name: string) => invoke<string | null>('file:saveText', text, name)
+  },
+  usage: {
+    get: () => invoke<{ fiveHour: number; resetsAt: number } | null>('usage:get'),
+    on: (cb: (u: { fiveHour: number; resetsAt: number }) => void) => on('usage:changed', cb)
   },
   shell: {
     open: (p: string) => invoke<void>('shell:open', p),

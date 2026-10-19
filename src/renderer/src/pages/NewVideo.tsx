@@ -14,6 +14,8 @@ import {
   Play,
   Pause,
   Users,
+  Music,
+  Sparkles,
   X
 } from 'lucide-react'
 import type { Effort, Project, ProjectSettings, Provider, VideoKind } from '@shared/types'
@@ -22,6 +24,7 @@ import { fmtTime, useApp } from '@/store/app'
 import { Chips, Row, Select, StepBadge, Waveform } from '@/components/ui'
 import { CharacterSvg } from '@/components/CharacterSvg'
 import { StylePreview } from '@/components/StylePreview'
+import { ScriptWriter } from '@/components/ScriptWriter'
 
 const TEMPLATES: Record<string, string> = {
   Explainer:
@@ -48,8 +51,11 @@ const CREATIVITY = [
   { v: 'Storytelling', sub: 'Visual metaphors' },
   { v: 'Wild', sub: 'Surprise me' }
 ] as const
+const ENGINES = ['Auto', 'Remotion', 'HyperFrames'] as const
+const TRANSITIONS = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom'] as const
+const CAPTIONS = ['Off', 'Clean', 'Bold pop', 'Karaoke'] as const
 const MODELS = ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']
-const CODEX_MODELS = ['gpt-5-codex', 'gpt-5']
+const CODEX_MODELS = ['Codex default']
 
 const defaultSettings = (): ProjectSettings => ({
   kind: 'Explainer',
@@ -62,7 +68,11 @@ const defaultSettings = (): ProjectSettings => ({
   provider: 'Claude Code',
   model: 'Opus 5.5',
   effort: 'High',
-  helpers: false
+  helpers: false,
+  engine: 'Auto',
+  transition: 'Fade',
+  captions: 'Off',
+  music: null
 })
 
 export default function NewVideo() {
@@ -78,6 +88,9 @@ export default function NewVideo() {
   const [audio] = useState(() => new Audio())
   const [drag, setDrag] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [writing, setWriting] = useState(false)
+  const [allStyles, setAllStyles] = useState(false)
+  const [styleDim, setStyleDim] = useState<'All' | '2D' | '3D'>('All')
 
   useEffect(() => {
     if (app) setS((x) => ({ ...x, provider: app.defaultProvider, model: app.defaultModel, effort: app.defaultEffort, checks: app.defaultChecks }))
@@ -96,6 +109,9 @@ export default function NewVideo() {
 
   const words = direction.trim() ? direction.trim().split(/\s+/).length : 0
   const style = styles.find((x) => x.id === s.styleId)
+  const filtered = styles.filter((x) => styleDim === 'All' || x.dim === styleDim)
+  // The chosen style always stays visible, even when the list is short.
+  const shownStyles = allStyles ? filtered : [...filtered.slice(0, 8), ...filtered.slice(8).filter((x) => x.id === s.styleId)]
   const set = (patch: Partial<ProjectSettings>) => setS((x) => ({ ...x, ...patch }))
 
   async function addVoiceover(file: string) {
@@ -248,7 +264,21 @@ export default function NewVideo() {
               Add your script (optional)
             </button>
             <span className="text-muted">· names and numbers come out exactly right</span>
+            <span className="flex-1" />
+            <button className="flex items-center gap-1.5 font-semibold text-accent" onClick={() => setWriting(true)}>
+              <Sparkles size={15} /> Write the script with AI
+            </button>
           </div>
+          {writing && (
+            <ScriptWriter
+              onClose={() => setWriting(false)}
+              onUse={(text, title) => {
+                setScript(text)
+                if (title && !direction.trim()) setDirection(title)
+                setWriting(false)
+              }}
+            />
+          )}
           {script !== null && (
             <textarea
               className="input mt-3 h-32 resize-none text-[15px] leading-relaxed"
@@ -357,6 +387,34 @@ export default function NewVideo() {
               <Paperclip size={15} /> Add files
             </button>
           </div>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="text-[15px] font-semibold text-ink/90">Background music</div>
+            {s.music ? (
+              <>
+                <span className="chip flex items-center gap-2">
+                  <Music size={13} /> {base(s.music.file)}
+                  <button onClick={() => set({ music: null })}>
+                    <X size={13} className="text-muted" />
+                  </button>
+                </span>
+                <label className="flex items-center gap-2 text-[14px] text-muted">
+                  Volume
+                  <input type="range" min={0.05} max={0.6} step={0.05} value={s.music.volume} onChange={(e) => set({ music: { ...s.music!, volume: +e.target.value } })} className="accent-accent" />
+                </label>
+                <span className="text-[13px] text-dim">It ducks under the voice by itself.</span>
+              </>
+            ) : (
+              <button
+                className="btn"
+                onClick={async () => {
+                  const [m] = await window.api.pick.file([{ name: 'Music', extensions: ['mp3', 'wav', 'm4a', 'ogg'] }])
+                  if (m) set({ music: { file: m, volume: 0.25 } })
+                }}
+              >
+                <Music size={15} /> Add music
+              </button>
+            )}
+          </div>
         </section>
 
         {/* 4 · Look */}
@@ -364,12 +422,19 @@ export default function NewVideo() {
           <Header n={4} done title="Look" right="Change it any time" />
           <div className="mt-4 flex items-center justify-between">
             <div className="text-[15px] font-semibold text-ink/90">Style</div>
-            <button className="text-[14px] font-semibold text-accent" onClick={() => go({ name: 'styles' })}>
-              Browse all styles
-            </button>
+            <div className="flex items-center gap-2">
+              {(['All', '2D', '3D'] as const).map((d) => (
+                <button key={d} className={`chip px-2.5 py-1 text-[12.5px] ${styleDim === d ? 'chip-on' : ''}`} onClick={() => setStyleDim(d)}>
+                  {d}
+                </button>
+              ))}
+              <button className="ml-2 text-[14px] font-semibold text-accent" onClick={() => setAllStyles(!allStyles)}>
+                {allStyles ? 'Show fewer' : `Show all ${styles.length} styles`}
+              </button>
+            </div>
           </div>
           <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-            {styles.slice(0, 8).map((st) => (
+            {shownStyles.map((st) => (
               <button
                 key={st.id}
                 onClick={() => set({ styleId: st.id })}
@@ -411,6 +476,30 @@ export default function NewVideo() {
               )
             })}
           </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 2xl:grid-cols-3">
+            <div>
+              <div className="text-[15px] font-semibold text-ink/90">Drawn with</div>
+              <div className="mt-3">
+                <Chips options={ENGINES} value={s.engine ?? 'Auto'} onToggle={(engine) => set({ engine })} size="sm" />
+              </div>
+              <div className="mt-2 text-[13px] text-dim">
+                {(s.engine ?? 'Auto') === 'Auto' ? 'The style decides: React scenes, real 3D, or HTML.' : s.engine === 'HyperFrames' ? 'HTML + GSAP: great for kinetic type, charts and motion graphics.' : 'React scenes: hand-drawn lines and real 3D.'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[15px] font-semibold text-ink/90">Between parts</div>
+              <div className="mt-3">
+                <Chips options={TRANSITIONS} value={s.transition ?? 'None'} onToggle={(transition) => set({ transition })} size="sm" />
+              </div>
+            </div>
+            <div>
+              <div className="text-[15px] font-semibold text-ink/90">Captions</div>
+              <div className="mt-3">
+                <Chips options={CAPTIONS} value={s.captions ?? 'Off'} onToggle={(captions) => set({ captions })} size="sm" />
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -425,6 +514,7 @@ export default function NewVideo() {
           <Row k="Tone" v={s.tone.join(', ') || '—'} />
           <Row k="Creativity" v={s.creativity} />
           <Row k="Style" v={style?.name ?? '—'} />
+          <Row k="Captions" v={s.captions ?? 'Off'} />
           <Row k="Characters" v={s.characterIds.length ? characters.filter((c) => s.characterIds.includes(c.id)).map((c) => c.name).join(', ') : '—'} />
           <Row
             k="Quality"

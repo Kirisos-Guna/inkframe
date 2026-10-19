@@ -11,6 +11,10 @@ import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { extractJson, runAgent } from './services/agent'
 import { characterPrompt } from './services/prompts'
+import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
+import { toSrt, toVtt, linesFromWords } from './services/captions'
+import { onUsage, type Usage } from './services/agent'
+import { copyFileSync, readFileSync, writeFileSync } from 'fs'
 
 app.setName(APP_NAME)
 // Installed: work from the app's data folder, so Remotion downloads its browser there (writable, kept across updates).
@@ -114,7 +118,25 @@ function ensureTray() {
 }
 
 // Fields of a part the page may change; the rest belong to the pipeline.
-const USER_PART_FIELDS: (keyof Part)[] = ['locked', 'styleId', 'material', 'title']
+const USER_PART_FIELDS: (keyof Part)[] = ['locked', 'styleId', 'material', 'title', 'engine']
+
+const safeName = (s: string) => s.replace(/[\/:*?"<>|]+/g, '').slice(0, 80) || 'Inkframe'
+
+// The last 5-hour usage Claude reported (shown in the editor's top bar), kept across restarts.
+const usageFile = () => join(store.userDir(), 'usage.json')
+let usage: Usage | null = null
+function loadUsage() {
+  try {
+    usage = JSON.parse(readFileSync(usageFile(), 'utf8'))
+  } catch {
+    usage = null
+  }
+  onUsage((u) => {
+    usage = u
+    writeFileSync(usageFile(), JSON.stringify(u))
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('usage:changed', u)
+  })
+}
 
 function registerIpc() {
   const h = <A extends unknown[], R>(ch: string, fn: (...a: A) => R) => ipcMain.handle(ch, (_e, ...a) => fn(...(a as A)))
@@ -146,6 +168,7 @@ function registerIpc() {
         if (!cur) continue
         for (const k of USER_PART_FIELDS) if (k in incoming) (cur as unknown as Record<string, unknown>)[k] = incoming[k]
         if ('styleId' in incoming && cur.status === 'Up to date') cur.status = 'Designed'
+        if ('engine' in incoming && incoming.engine !== undefined && cur.status !== 'Not designed yet') cur.status = 'Not designed yet'
       }
     }
     if (newVoice) {
@@ -175,6 +198,36 @@ function registerIpc() {
 
   h('job:start', (id: string, force?: boolean) => pipeline.startJob(id, !!force))
   h('job:stop', (id: string) => pipeline.stopJob(id))
+  h('job:pause', (id: string) => pipeline.pauseJob(id))
+  h('job:resume', (id: string) => pipeline.resumeJob(id))
+  h('job:refinish', (id: string) => pipeline.refinish(id))
+
+  h('writer:script', (r: ScriptRequest) => writeScript(r))
+  h('writer:publish', (id: string) => writePublishKit(id))
+  h('writer:captions', (id: string, tidy: boolean) => writeCaptions(id, tidy))
+  h('captions:save', async (id: string, format: 'srt' | 'vtt') => {
+    const p = store.getProject(id)!
+    const lines = p.captionLines?.length ? p.captionLines : linesFromWords(p.words)
+    const r = await dialog.showSaveDialog(win!, { defaultPath: join(store.getSettings().saveDir, `${safeName(p.title)}.${format}`), filters: [{ name: format.toUpperCase(), extensions: [format] }] })
+    if (r.canceled || !r.filePath) return null
+    writeFileSync(r.filePath, format === 'srt' ? toSrt(lines) : toVtt(lines))
+    return r.filePath
+  })
+  h('thumbs:make', (id: string, count: number, note?: string) => makeThumbnails(id, count, note))
+  h('file:saveCopy', async (from: string, name: string) => {
+    const ext = from.split('.').pop() ?? 'png'
+    const r = await dialog.showSaveDialog(win!, { defaultPath: join(store.getSettings().saveDir, `${safeName(name)}.${ext}`), filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+    if (r.canceled || !r.filePath) return null
+    copyFileSync(from, r.filePath)
+    return r.filePath
+  })
+  h('file:saveText', async (text: string, name: string) => {
+    const r = await dialog.showSaveDialog(win!, { defaultPath: join(store.getSettings().saveDir, `${safeName(name)}.txt`), filters: [{ name: 'Text', extensions: ['txt'] }] })
+    if (r.canceled || !r.filePath) return null
+    writeFileSync(r.filePath, text)
+    return r.filePath
+  })
+  h('usage:get', () => usage)
   h('job:comment', (id: string, c: Comment) => pipeline.addComment(id, c))
   h('job:export', async (id: string, opts: { height: number; fps: number }) => {
     const p = store.getProject(id)!
@@ -246,6 +299,7 @@ else {
     win?.focus()
   })
   app.whenReady().then(() => {
+    loadUsage()
     registerMedia()
     registerIpc()
     createWindow()
