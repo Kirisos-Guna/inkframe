@@ -170,16 +170,21 @@ export interface CharacterDef {
   eyeColour: string
   eyebrows: 'None' | 'Soft' | 'Thick' | 'Arched'
   nose: 'None' | 'Dot' | 'Button' | 'Long'
-  hair: 'Bob' | 'Short' | 'Long' | 'Bun' | 'Bald' | 'Curly'
+  hair: 'Bob' | 'Short' | 'Long' | 'Bun' | 'Bald' | 'Curly' | 'Ponytail' | 'Afro' | 'Spiky' | 'Side part'
   hairColour: string
   glasses: boolean
-  outfit: 'Lab coat' | 'Hoodie' | 'Suit' | 'T-shirt' | 'Apron'
+  outfit: 'Lab coat' | 'Hoodie' | 'Suit' | 'T-shirt' | 'Apron' | 'Jacket' | 'Dress' | 'Overalls' | 'Sweater'
   outfitColour: string
   body: 'Slim' | 'Average' | 'Broad'
   pose: string
   expression: string
   drawnIn: string
   description?: string
+  // Added in 1.3: optional, so characters saved earlier still load.
+  facialHair?: 'None' | 'Stubble' | 'Beard' | 'Mustache'
+  hat?: 'None' | 'Cap' | 'Beanie' | 'Hard hat'
+  headphones?: boolean
+  age?: 'Kid' | 'Adult' | 'Older'
 }
 
 export interface LearnSession {

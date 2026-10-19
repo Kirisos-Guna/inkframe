@@ -260,6 +260,7 @@ function registerIpc() {
   h('characters:list', () => store.listCharacters())
   h('characters:save', (c: CharacterDef) => store.saveCharacter(c))
   h('characters:remove', (id: string) => store.removeCharacter(id))
+  h('characters:addCast', () => store.addStarterCast())
   h('characters:describe', async (c: CharacterDef, text: string) => {
     const s = store.getSettings()
     const reply = await runAgent({ provider: s.defaultProvider, model: s.defaultModel, effort: 'Low', cwd: store.libDir('characters'), prompt: characterPrompt(c, text) })
@@ -278,8 +279,12 @@ function registerIpc() {
       eyes: pick('eyes', ['Dots', 'Round', 'Big', 'Sleepy', 'Lashes']),
       eyebrows: pick('eyebrows', ['None', 'Soft', 'Thick', 'Arched']),
       nose: pick('nose', ['None', 'Dot', 'Button', 'Long']),
-      hair: pick('hair', ['Bob', 'Short', 'Long', 'Bun', 'Bald', 'Curly']),
-      outfit: pick('outfit', ['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron']),
+      hair: pick('hair', ['Bob', 'Short', 'Long', 'Bun', 'Bald', 'Curly', 'Ponytail', 'Afro', 'Spiky', 'Side part']),
+      outfit: pick('outfit', ['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron', 'Jacket', 'Dress', 'Overalls', 'Sweater']),
+      facialHair: pick('facialHair', ['None', 'Stubble', 'Beard', 'Mustache']),
+      hat: pick('hat', ['None', 'Cap', 'Beanie', 'Hard hat']),
+      age: pick('age', ['Kid', 'Adult', 'Older']),
+      headphones: typeof got.headphones === 'boolean' ? got.headphones : c.headphones,
       body: pick('body', ['Slim', 'Average', 'Broad']),
       glasses: typeof got.glasses === 'boolean' ? got.glasses : c.glasses,
       pose: typeof got.pose === 'string' ? got.pose : c.pose,

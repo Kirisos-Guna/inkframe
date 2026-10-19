@@ -36,7 +36,7 @@ export function writeHfStarter(p: Project, x: Part, force = false) {
 <meta charset="utf-8" />
 <style>
   @font-face { font-family: 'Inter'; src: url('assets/inter.woff2') format('woff2'); font-weight: 100 900; }
-  @font-face { font-family: 'Hand'; src: local('Segoe Print'); }
+  @font-face { font-family: 'Hand'; src: url('assets/hand.woff2') format('woff2'); }
   html, body { margin: 0; background: ${st.palette.bg}; }
   #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: ${st.palette.bg}; color: ${st.palette.ink}; font-family: 'Hand', 'Inter'; }
   .clip { position: absolute; }

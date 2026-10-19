@@ -16,11 +16,37 @@ This part is drawn as **one HTML page** that HyperFrames renders to video. The a
    No `setTimeout`, no `requestAnimationFrame`, no CSS `animation`/`transition`, no `Math.random()` (use fixed values).
 5. **Pen drawing:** inline `<svg>` paths with `pathLength="1"`, `stroke-dasharray:1; stroke-dashoffset:1` in CSS, then
    `tl.to('#p1', { strokeDashoffset: 0, duration: 0.8, ease: 'power1.inOut' }, t)`. `DrawSVGPlugin` is also loaded.
-6. **Only local files:** `gsap.min.js`, `DrawSVGPlugin.min.js` and the files in `assets/` (the user's material, and
-   `inter.woff2`). No CDN links, no fetch, no web fonts from the internet.
-7. **Fonts:** `font-family: 'Hand'` for handwriting (Segoe Print) and `'Inter'` for clean text. Both are declared in the
+6. **Only local files:** `gsap.min.js`, `DrawSVGPlugin.min.js` and the files in `assets/` (the user's material,
+   `inter.woff2` and `hand.woff2`). No CDN links, no fetch, no web fonts from the internet.
+7. **Fonts:** `font-family: 'Hand'` for handwriting (Caveat) and `'Inter'` for clean text. Both are declared in the
    starter. Do not use other fonts.
 8. End on a held, complete picture for the last ~0.5 s.
+
+## Craft: it must look made by a person, not generated
+Viewers spot "AI video" in a second. These are the tells to avoid, and what an illustrator does instead.
+
+**Never use the clichés.** No glowing brains, circuit-board brains, robots or robot hands, neural-network node
+graphs, light bulbs for "idea", gears for "process", rocket ships for "growth", floating sparkles or particles,
+abstract gradient blobs, glowing orbs, hexagon grids, emoji, or a globe with connecting lines. If the narration says
+"AI", draw the *actual* thing: a chat window on a phone, a data-centre aisle, a GPU board with its fans, a person
+typing.
+
+**Draw specific, observed things.** A real object has telling details: the notch on a phone, the cable ties on a
+server rack, the crumpled corner of a receipt, a coffee ring on a desk. Two or three such details make a drawing feel
+observed rather than generic. Draw the real silhouette, not a rounded rectangle with a label.
+
+**Compose like an illustrator.** Asymmetric layouts on thirds, not everything centred. One big thing and a few small
+ones, not many equal boxes in a row. Overlap shapes. Leave real empty space. Vary the camera from part to part: wide,
+close, from above.
+
+**Few words, in the hand of the drawing.** Label at most 2–3 things, short and lowercase, with a small leader line,
+not in boxes. Never put the narration on screen word for word.
+
+**Time it like hand animation.** Big outlines slowly, details quickly. Draw in the order a person would: outline,
+then features, then labels. Hold a finished picture for a beat before the next idea. Not everything moves at once,
+and not everything moves at the same speed.
+
+**Restraint with colour.** Mostly ink. One accent, used on the one thing that matters in this part.
 
 ## Things HTML parts do especially well
 - Big kinetic type: words that slide, scale and stack as they are spoken.

@@ -130,26 +130,26 @@ function Changes({
     <>
       <JobCard p={p} />
       {one && (
-        <div className="rounded-xl border border-line bg-[#121214] p-4">
-          <div className="flex gap-4">
-            <div className="h-[92px] w-[164px] shrink-0 overflow-hidden rounded-lg bg-black">
+        <div className="min-w-0 rounded-xl border border-line bg-[#121214] p-4">
+          <div className="flex min-w-0 gap-3.5">
+            <div className="aspect-video w-[42%] max-w-[164px] shrink-0 overflow-hidden rounded-lg bg-black">
               {one.thumb && <img src={window.api.media.url(one.thumb) + `?v=${one.history.length}`} className="h-full w-full object-cover" />}
             </div>
-            <div className="pt-4">
-              <div className="text-[18px] font-semibold">{one.title}</div>
-              <div className="text-[14.5px] text-muted">
+            <div className="min-w-0 self-center">
+              <div className="line-clamp-2 text-[17px] font-semibold leading-snug">{one.title}</div>
+              <div className="mt-0.5 whitespace-nowrap text-[13.5px] text-muted">
                 Part {one.index + 1} · {fmtTime(one.start)}–{fmtTime(one.end)}
               </div>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-[96px_1fr] items-center gap-y-3 text-[14.5px]">
+          <div className="mt-4 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-x-2 gap-y-3 text-[14px]">
             <span className="text-muted">Material</span>
-            <span className="text-ink/80">
-              {one.material.length ? one.material.map((m) => m.split(/[\\/]/).pop()).join(', ') : 'None yet. Drag a file here from Material.'}
+            <span className="min-w-0 text-ink/80" title="Drag a file onto this part from the Material tab">
+              {one.material.length ? one.material.map((m) => m.split(/[\\/]/).pop()).join(', ') : 'None yet. Drag one here from Material.'}
             </span>
             <span className="text-muted">Style</span>
             <select
-              className="rounded-lg border border-line bg-[#0f0f11] px-3 py-1.5 font-medium outline-none"
+              className="w-full min-w-0 truncate rounded-lg border border-line bg-[#0f0f11] px-2.5 py-1.5 font-medium outline-none"
               value={one.styleId ?? ''}
               onChange={async (e) => {
                 const parts = p.parts.map((x) => (x.id === one.id ? { ...x, styleId: e.target.value || undefined } : x))
@@ -169,7 +169,7 @@ function Changes({
             </select>
             <span className="text-muted">Drawn with</span>
             <select
-              className="rounded-lg border border-line bg-[#0f0f11] px-3 py-1.5 font-medium outline-none"
+              className="w-full min-w-0 truncate rounded-lg border border-line bg-[#0f0f11] px-2.5 py-1.5 font-medium outline-none"
               value={one.engine ?? ''}
               onChange={(e) => window.api.projects.update(p.id, { parts: p.parts.map((x) => (x.id === one.id ? { ...x, engine: (e.target.value || undefined) as never } : x)) })}
               title="Changing it draws this part again"

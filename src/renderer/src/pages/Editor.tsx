@@ -146,7 +146,9 @@ export default function Editor({ id }: { id: string }) {
     <div className="flex h-full flex-col">
       {/* Top bar */}
       {/* Top bar: the same items as the original, shrinking to compact forms on narrow windows. */}
-      <header style={{ paddingRight: CONTROLS_GAP }} className="drag flex h-[58px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-line/70 pl-2 text-[14px] 2xl:gap-2.5 2xl:pl-3 2xl:text-[15px] [&>*]:shrink-0">
+      <header style={{ paddingRight: CONTROLS_GAP }} className="drag flex h-[58px] shrink-0 items-center gap-2 whitespace-nowrap border-b border-line/70 pl-2 text-[14px] 2xl:pl-3 2xl:text-[15px]">
+        {/* Left: everything that can shrink or be clipped. Right: the menu and Export, which never move. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden 2xl:gap-2.5 [&>*]:shrink-0">
         <button onClick={() => go({ name: 'home' })} className="p-1.5 text-muted hover:text-ink" title="Back to videos">
           <ArrowLeft size={18} />
         </button>
@@ -177,7 +179,7 @@ export default function Editor({ id }: { id: string }) {
           <Palette size={14} /> <span className="hidden max-w-[150px] truncate lg:inline">{style?.name ?? 'Style'}</span>
         </button>
         <button className="btn gap-1.5 px-2.5 py-1.5 font-normal" title="Characters" onClick={() => go({ name: 'characters' })}>
-          <Users size={14} /> <span className="hidden xl:inline">Characters</span>
+          <Users size={14} /> <span className="hidden 2xl:inline">Characters</span>
         </button>
         {p.job.running ? (
           <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-2.5 py-1.5 font-medium text-accent2" title={p.job.paused ? 'Paused' : `${APP_NAME} is working`}>
@@ -191,20 +193,22 @@ export default function Editor({ id }: { id: string }) {
         <div className="ml-1 inline-flex rounded-lg border border-line p-0.5">
           {(['Timeline', 'Map'] as const).map((v) => (
             <button key={v} onClick={() => setView(v)} title={v} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 ${view === v ? 'bg-card2 font-semibold' : 'text-muted'}`}>
-              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} <span className="hidden xl:inline">{v}</span>
+              {v === 'Timeline' ? <Video size={14} /> : <Layers size={14} />} <span className="hidden 2xl:inline">{v}</span>
             </button>
           ))}
         </div>
         <button className="flex items-center gap-1.5 px-1.5" title="Checks" onClick={() => setTab('Checks')}>
-          <CircleCheck size={15} className="text-muted" /> <span className="hidden xl:inline">Checks</span> <b>{p.settings.checks}</b>
+          <CircleCheck size={15} className="text-muted" /> <span className="hidden 2xl:inline">Checks</span> <b>{p.settings.checks}</b>
         </button>
         <UsageMeter provider={p.settings.provider} />
         <span className="flex items-center gap-1.5 px-1.5" title="Quality">
           <Gauge size={15} className="text-muted" />
-          <span className="hidden xl:inline">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`} · {p.settings.quality.fps} fps</span>
-          <span className="xl:hidden">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`}{p.settings.quality.fps}</span>
+          <span className="hidden 2xl:inline">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`} · {p.settings.quality.fps} fps</span>
+          <span className="2xl:hidden">{p.settings.quality.height === 2160 ? '4K' : `${p.settings.quality.height}p`}{p.settings.quality.fps}</span>
         </span>
-        <div className="relative ml-auto">
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="relative">
           <button className="p-2 text-muted hover:text-ink" onClick={() => setMenu(!menu)}>
             <MoreHorizontal size={18} />
           </button>
@@ -235,6 +239,7 @@ export default function Editor({ id }: { id: string }) {
         <button className="btn px-3 py-1.5" title="Export" onClick={() => setTab('Render')}>
           <Download size={15} /> <span className="hidden lg:inline">Export</span>
         </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -497,7 +502,7 @@ function UsageMeter({ provider }: { provider: string }) {
       className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5"
       title={pct === null ? 'Share of your 5-hour Claude limit used. Shows after the next Claude step.' : `${pct}% of your 5-hour Claude limit used · resets at ${resets}`}
     >
-      <span className="text-muted"><span className="hidden xl:inline">Claude </span>5h</span>
+      <span className="text-muted"><span className="hidden 2xl:inline">Claude </span>5h</span>
       <div className="h-1.5 w-8 overflow-hidden rounded bg-card2 xl:w-14">
         <div className={`h-full ${colour}`} style={{ width: `${pct ?? 0}%` }} />
       </div>

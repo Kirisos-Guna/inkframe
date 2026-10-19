@@ -79,6 +79,7 @@ const api = {
     list: () => invoke<CharacterDef[]>('characters:list'),
     save: (c: CharacterDef) => invoke<CharacterDef>('characters:save', c),
     remove: (id: string) => invoke<void>('characters:remove', id),
+    addCast: () => invoke<number>('characters:addCast'),
     describe: (c: CharacterDef, text: string) => invoke<CharacterDef>('characters:describe', c, text)
   },
   learn: {

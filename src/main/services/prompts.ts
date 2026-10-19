@@ -164,9 +164,13 @@ eyes: Dots | Round | Big | Sleepy | Lashes
 eyeColour, hairColour, outfitColour: any hex colour
 eyebrows: None | Soft | Thick | Arched
 nose: None | Dot | Button | Long
-hair: Bob | Short | Long | Bun | Bald | Curly
+hair: Bob | Short | Long | Bun | Bald | Curly | Ponytail | Afro | Spiky | Side part
 glasses: true | false
-outfit: Lab coat | Hoodie | Suit | T-shirt | Apron
+outfit: Lab coat | Hoodie | Suit | T-shirt | Apron | Jacket | Dress | Overalls | Sweater
+facialHair: None | Stubble | Beard | Mustache
+hat: None | Cap | Beanie | Hard hat
+headphones: true | false
+age: Kid | Adult | Older
 body: Slim | Average | Broad
 pose: Stand | Wave | Point | Point up | Thumbs up | Cheer | Shrug | Think | Arms crossed | Present | Hold | Hands on hips | Facepalm | Explain | Walk
 expression: Neutral | Happy | Laughing | Surprised | Sad | Angry | Thinking | Wink | Worried | Smug

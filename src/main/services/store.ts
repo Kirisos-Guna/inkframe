@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto'
 import type { AppSettings, CharacterDef, LearnSession, Project, StyleDef } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 import { BUILTIN_STYLES } from '../../shared/styles'
-import { newCharacter } from '../../shared/characterDefaults'
+import { fromLook, STARTER_CAST } from '../../shared/characterDefaults'
 
 export const userDir = () => app.getPath('userData')
 export const libDir = (...p: string[]) => {
@@ -171,15 +171,22 @@ export function listCharacters(): CharacterDef[] {
   if (!list.length && !existsSync(join(dir, '.seeded'))) {
     // First run: start with one character so the page is not empty.
     writeFileSync(join(dir, '.seeded'), '')
-    const ada = newCharacter(randomUUID())
-    saveCharacter(ada)
-    return [ada]
+    const cast = STARTER_CAST.map((look) => fromLook(randomUUID(), look))
+    cast.forEach(saveCharacter)
+    return cast
   }
   return list.sort((a, b) => a.name.localeCompare(b.name))
 }
 export function saveCharacter(c: CharacterDef) {
   writeJson(join(libDir('characters'), `${c.id}.json`), c)
   return c
+}
+/** Adds the starter cast members you do not have yet (matched by name). Returns how many were added. */
+export function addStarterCast() {
+  const have = new Set(listCharacters().map((c) => c.name.toLowerCase()))
+  const missing = STARTER_CAST.filter((l) => !have.has(l.name.toLowerCase()))
+  missing.forEach((l) => saveCharacter(fromLook(randomUUID(), l)))
+  return missing.length
 }
 export const removeCharacter = (id: string) => rmSync(join(libDir('characters'), `${id}.json`), { force: true })
 

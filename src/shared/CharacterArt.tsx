@@ -86,8 +86,20 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
     Long: `M${hx - head[0] - 4} ${hy + 50} Q${hx - head[0] - 8} ${hy - head[1] - 10} ${hx} ${hy - head[1] - 5} Q${hx + head[0] + 8} ${hy - head[1] - 10} ${hx + head[0] + 4} ${hy + 50} L${hx + head[0] - 4} ${hy + 50} Q${hx + head[0] - 2} ${hy - 18} ${hx} ${hy - 22} Q${hx - head[0] + 2} ${hy - 18} ${hx - head[0] + 4} ${hy + 50} Z`,
     Bun: `M${hx - head[0]} ${hy - 4} Q${hx - head[0]} ${hy - head[1] - 6} ${hx} ${hy - head[1] - 4} Q${hx + head[0]} ${hy - head[1] - 6} ${hx + head[0]} ${hy - 4} Q${hx} ${hy - 24} ${hx - head[0]} ${hy - 4} Z M${hx - 12} ${hy - head[1] - 6} a12 12 0 1 1 24 0 a12 12 0 1 1 -24 0`,
     Curly: `M${hx - head[0] - 4} ${hy} ${Array.from({ length: 9 }, (_, i) => { const a = Math.PI + (i / 8) * Math.PI; return `Q${hx + Math.cos(a - 0.2) * (head[0] + 16)} ${hy - 6 + Math.sin(a - 0.2) * (head[1] + 16)} ${hx + Math.cos(a) * (head[0] + 4)} ${hy - 6 + Math.sin(a) * (head[1] + 4)}` }).join(' ')} Q${hx} ${hy - 24} ${hx - head[0] - 4} ${hy} Z`,
+    Ponytail: `M${hx - head[0]} ${hy - 4} Q${hx - head[0]} ${hy - head[1] - 8} ${hx} ${hy - head[1] - 6} Q${hx + head[0]} ${hy - head[1] - 8} ${hx + head[0]} ${hy - 4} Q${hx} ${hy - 26} ${hx - head[0]} ${hy - 4} Z`,
+    Afro: `M${hx - head[0] - 2} ${hy - 2} Q${hx - head[0] - 4} ${hy - head[1] - 10} ${hx} ${hy - head[1] - 8} Q${hx + head[0] + 4} ${hy - head[1] - 10} ${hx + head[0] + 2} ${hy - 2} Q${hx} ${hy - 22} ${hx - head[0] - 2} ${hy - 2} Z`,
+    Spiky: `M${hx - head[0]} ${hy - 8} L${hx - head[0] + 4} ${hy - head[1] - 10} L${hx - 14} ${hy - head[1] - 2} L${hx - 6} ${hy - head[1] - 16} L${hx + 4} ${hy - head[1] - 3} L${hx + 14} ${hy - head[1] - 15} L${hx + 18} ${hy - head[1] - 1} L${hx + head[0]} ${hy - head[1] - 8} L${hx + head[0]} ${hy - 8} Q${hx} ${hy - 24} ${hx - head[0]} ${hy - 8} Z`,
+    'Side part': `M${hx - head[0]} ${hy - 2} Q${hx - head[0] - 2} ${hy - head[1] - 8} ${hx - 6} ${hy - head[1] - 6} Q${hx + head[0] + 8} ${hy - head[1] - 10} ${hx + head[0]} ${hy - 4} Q${hx + 8} ${hy - 30} ${hx - 8} ${hy - 18} Q${hx - 20} ${hy - 12} ${hx - head[0]} ${hy - 2} Z`,
     Bald: ''
   }[c.hair]
+  const hairBack =
+    c.hair === 'Afro' ? `M${hx} ${hy - 4} m-${head[0] + 22} 0 a${head[0] + 22} ${head[1] + 18} 0 1 0 ${(head[0] + 22) * 2} 0 a${head[0] + 22} ${head[1] + 18} 0 1 0 -${(head[0] + 22) * 2} 0`
+    : c.hair === 'Ponytail' ? `M${hx + head[0] - 6} ${hy - 20} Q${hx + head[0] + 26} ${hy - 10} ${hx + head[0] + 14} ${hy + 40} Q${hx + head[0] + 4} ${hy + 10} ${hx + head[0] - 6} ${hy - 6} Z`
+    : ''
+  const age = c.age ?? 'Adult'
+  const facial = c.facialHair ?? 'None'
+  const hat = c.hat ?? 'None'
+  const hairLine = line === 'none' ? '#3b2a20' : line
   const outfitCol = c.outfit === 'Lab coat' ? '#f4f4f4' : c.outfitColour
   return (
     <svg viewBox="0 0 200 300" width={size} height={size} className="block">
@@ -97,7 +109,7 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
           <stop offset="1" stopColor="#000000" stopOpacity=".12" />
         </radialGradient>
       </defs>
-      <g strokeLinecap="round" strokeLinejoin="round">
+      <g strokeLinecap="round" strokeLinejoin="round" transform={age === 'Kid' ? 'translate(100 290) scale(0.78) translate(-100 -290)' : undefined}>
         {/* legs */}
         {(d.fill || c.pose === 'Walk') && (
           <path
@@ -113,7 +125,11 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
         <path d="M74 284 q8 -10 22 0 z M104 284 q8 -10 22 0 z" fill={f('#2b2b30')} stroke={line} strokeWidth={sw} />
         {/* body */}
         <path
-          d={`M${100 - bodyW} 150 Q${100 - bodyW - 4} 200 ${100 - bodyW + 2} 230 L${100 + bodyW - 2} 230 Q${100 + bodyW + 4} 200 ${100 + bodyW} 150 Q100 136 ${100 - bodyW} 150 Z`}
+          d={
+            c.outfit === 'Dress'
+              ? `M${100 - bodyW} 150 Q${100 - bodyW - 2} 190 ${100 - bodyW - 16} 238 L${100 + bodyW + 16} 238 Q${100 + bodyW + 2} 190 ${100 + bodyW} 150 Q100 136 ${100 - bodyW} 150 Z`
+              : `M${100 - bodyW} 150 Q${100 - bodyW - 4} 200 ${100 - bodyW + 2} 230 L${100 + bodyW - 2} 230 Q${100 + bodyW + 4} 200 ${100 + bodyW} 150 Q100 136 ${100 - bodyW} 150 Z`
+          }
           fill={f(outfitCol)}
           stroke={line}
           strokeWidth={sw}
@@ -128,6 +144,21 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
         {c.outfit === 'Suit' && <path d="M100 142 L94 164 L100 200 L106 164 Z" fill={f('#c8372d')} stroke={line} strokeWidth={sw * 0.7} />}
         {c.outfit === 'Hoodie' && <path d="M84 146 q16 18 32 0" fill="none" stroke={line} strokeWidth={sw} />}
         {c.outfit === 'Apron' && <rect x="84" y="170" width="32" height="56" fill={f('#3c8c5a')} stroke={line} strokeWidth={sw * 0.8} />}
+        {c.outfit === 'Jacket' && (
+          <g stroke={line} strokeWidth={sw * 0.8}>
+            <path d="M90 142 L100 172 L110 142 Z" fill={f('#f2f2f2')} />
+            <path d="M90 142 L84 176 L100 172 M110 142 L116 176 L100 172 M100 172 V230" fill="none" />
+          </g>
+        )}
+        {c.outfit === 'Overalls' && (
+          <g stroke={line} strokeWidth={sw * 0.8}>
+            <path d="M84 176 H116 V230 H84 Z" fill={f('#3d5a99')} />
+            <path d="M86 176 L82 146 M114 176 L118 146" fill="none" strokeWidth={sw * 1.4} />
+            <circle cx="88" cy="182" r="2.5" fill={f('#f2c94c')} />
+            <circle cx="112" cy="182" r="2.5" fill={f('#f2c94c')} />
+          </g>
+        )}
+        {c.outfit === 'Sweater' && <path d="M86 146 q14 10 28 0 M80 222 h40" fill="none" stroke={line} strokeWidth={sw * 0.8} strokeDasharray="3 3" />}
         {/* arms */}
         {[arms.l, arms.r].map((a, i) => (
           <path key={i} d={a} stroke={line === 'none' ? outfitCol : line} strokeWidth={d.fill ? 12 : sw} fill="none" />
@@ -138,7 +169,7 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
         ))}
         {/* neck + head */}
         <rect x="93" y={hy + head[1] - 6} width="14" height="14" fill={f(c.skin)} stroke={line} strokeWidth={sw * 0.8} />
-        {c.hair === 'Long' || c.hair === 'Bob' ? null : null}
+        {hairBack && <path d={hairBack} fill={f(c.hairColour)} stroke={line} strokeWidth={sw} />}
         {c.head === 'Square' ? (
           <rect x={hx - head[0]} y={hy - head[1]} width={head[0] * 2} height={head[1] * 2} rx={12} fill={f(c.skin)} stroke={line} strokeWidth={sw} />
         ) : (
@@ -146,6 +177,9 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
         )}
         {c.drawnIn === 'Soft 3D' && <ellipse cx={hx} cy={hy} rx={head[0]} ry={head[1]} fill={`url(#soft-${c.id})`} />}
         {hairPath && <path d={hairPath} fill={f(c.hairColour)} stroke={line} strokeWidth={sw} />}
+        {facial === 'Beard' && <path d={`M${hx - head[0] + 4} ${hy + 4} Q${hx - head[0] + 6} ${hy + head[1] + 8} ${hx} ${hy + head[1] + 10} Q${hx + head[0] - 6} ${hy + head[1] + 8} ${hx + head[0] - 4} ${hy + 4} Q${hx} ${hy + 14} ${hx - head[0] + 4} ${hy + 4} Z`} fill={f(c.hairColour)} stroke={line} strokeWidth={sw * 0.8} />}
+        {facial === 'Stubble' && <path d={`M${hx - head[0] + 8} ${hy + 12} Q${hx} ${hy + head[1] + 6} ${hx + head[0] - 8} ${hy + 12}`} fill="none" stroke={hairLine} strokeWidth={sw * 2.4} strokeDasharray="1 3" opacity={0.6} />}
+        {age === 'Older' && <path d={`M${hx - 12} ${hy - 22} q12 -4 24 0 M${hx - 9} ${hy - 27} q9 -3 18 0`} fill="none" stroke={hairLine} strokeWidth={sw * 0.5} opacity={0.6} />}
         {eye(hx - 13)}
         {eye(hx + 13, e === 'Wink')}
         {brow(hx - 13, -1)}
@@ -164,6 +198,33 @@ export function CharacterArt({ c, size = '100%' }: { c: CharacterDef; size?: num
           <ellipse cx={hx} cy={hy + 19} rx={5} ry={6} fill={f('#5a2a2a')} stroke={line} strokeWidth={sw * 0.8} />
         ) : (
           <path d={mouth} stroke={line === 'none' ? '#5a2a2a' : line} strokeWidth={sw * 0.9} fill={e === 'Laughing' ? f('#7a2e2e') : 'none'} />
+        )}
+        {facial === 'Mustache' && <path d={`M${hx - 12} ${hy + 14} Q${hx - 6} ${hy + 8} ${hx} ${hy + 12} Q${hx + 6} ${hy + 8} ${hx + 12} ${hy + 14} Q${hx} ${hy + 16} ${hx - 12} ${hy + 14} Z`} fill={f(c.hairColour)} stroke={hairLine} strokeWidth={sw * 0.7} />}
+        {hat === 'Cap' && (
+          <g stroke={line} strokeWidth={sw}>
+            <path d={`M${hx - head[0] - 2} ${hy - 12} Q${hx - head[0]} ${hy - head[1] - 14} ${hx} ${hy - head[1] - 12} Q${hx + head[0]} ${hy - head[1] - 14} ${hx + head[0] + 2} ${hy - 12} Z`} fill={f(c.outfitColour)} />
+            <path d={`M${hx + head[0] - 4} ${hy - 14} q28 0 34 8 q-20 4 -34 0 z`} fill={f(c.outfitColour)} />
+          </g>
+        )}
+        {hat === 'Beanie' && (
+          <g stroke={line} strokeWidth={sw}>
+            <path d={`M${hx - head[0] - 2} ${hy - 10} Q${hx - head[0]} ${hy - head[1] - 20} ${hx} ${hy - head[1] - 18} Q${hx + head[0]} ${hy - head[1] - 20} ${hx + head[0] + 2} ${hy - 10} Z`} fill={f(c.outfitColour)} />
+            <rect x={hx - head[0] - 3} y={hy - 18} width={(head[0] + 3) * 2} height={10} rx={4} fill={f(c.outfitColour)} />
+          </g>
+        )}
+        {hat === 'Hard hat' && (
+          <g stroke={line} strokeWidth={sw}>
+            <path d={`M${hx - head[0]} ${hy - 12} Q${hx - head[0]} ${hy - head[1] - 20} ${hx} ${hy - head[1] - 18} Q${hx + head[0]} ${hy - head[1] - 20} ${hx + head[0]} ${hy - 12} Z`} fill={f('#f2c230')} />
+            <rect x={hx - head[0] - 10} y={hy - 15} width={(head[0] + 10) * 2} height={7} rx={3} fill={f('#f2c230')} />
+            <path d={`M${hx} ${hy - head[1] - 17} V${hy - 13}`} fill="none" />
+          </g>
+        )}
+        {c.headphones && (
+          <g stroke={line === 'none' ? '#222' : line} strokeWidth={sw}>
+            <path d={`M${hx - head[0] - 4} ${hy} Q${hx - head[0] - 6} ${hy - head[1] - 16} ${hx} ${hy - head[1] - 14} Q${hx + head[0] + 6} ${hy - head[1] - 16} ${hx + head[0] + 4} ${hy}`} fill="none" strokeWidth={sw * 1.6} />
+            <rect x={hx - head[0] - 10} y={hy - 8} width={12} height={22} rx={5} fill={f('#2b2b30')} />
+            <rect x={hx + head[0] - 2} y={hy - 8} width={12} height={22} rx={5} fill={f('#2b2b30')} />
+          </g>
         )}
         {e === 'Thinking' && <path d="M150 50 a6 6 0 1 1 0.1 0 M160 34 a9 9 0 1 1 0.1 0" stroke={line} fill="none" strokeWidth={sw * 0.7} />}
       </g>

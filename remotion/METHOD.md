@@ -18,6 +18,32 @@ together and lays the voiceover on top.
    frame (use fixed values or `random('seed')` from remotion).
 7. The file must `export default function Scene()`.
 
+## Craft: it must look made by a person, not generated
+Viewers spot "AI video" in a second. These are the tells to avoid, and what an illustrator does instead.
+
+**Never use the clichés.** No glowing brains, circuit-board brains, robots or robot hands, neural-network node
+graphs, light bulbs for "idea", gears for "process", rocket ships for "growth", floating sparkles or particles,
+abstract gradient blobs, glowing orbs, hexagon grids, emoji, or a globe with connecting lines. If the narration says
+"AI", draw the *actual* thing: a chat window on a phone, a data-centre aisle, a GPU board with its fans, a person
+typing.
+
+**Draw specific, observed things.** A real object has telling details: the notch on a phone, the cable ties on a
+server rack, the crumpled corner of a receipt, a coffee ring on a desk. Two or three such details make a drawing feel
+observed rather than generic. Draw the real silhouette, not a rounded rectangle with a label.
+
+**Compose like an illustrator.** Asymmetric layouts on thirds, not everything centred. One big thing and a few small
+ones, not many equal boxes in a row. Overlap shapes. Leave real empty space. Vary the camera from part to part: wide,
+close, from above.
+
+**Few words, in the hand of the drawing.** Label at most 2–3 things, short and lowercase, with a small leader line,
+not in boxes. Never put the narration on screen word for word.
+
+**Time it like hand animation.** Big outlines slowly, details quickly. Draw in the order a person would: outline,
+then features, then labels. Hold a finished picture for a beat before the next idea. Not everything moves at once,
+and not everything moves at the same speed.
+
+**Restraint with colour.** Mostly ink. One accent, used on the one thing that matters in this part.
+
 ## The kit
 ```tsx
 import { useScene, Board, Draw, shape, Write, Typewriter, Pop, Fade, Move, Travel, Count, Character, Picture, useCamera } from '@kit'
@@ -26,7 +52,8 @@ const { frame, fps, dur, at, palette, words, text, characters, material, font } 
 // dur = frames in this part. at('word', nth?, fallbackFrame?) = frame the word is spoken.
 
 <Board camera={useCamera([{ at: 0, zoom: 1, x: 960, y: 540 }, { at: 90, zoom: 1.6, x: 1300, y: 500 }])}>  // background + texture, optional camera
-<Draw d={svgPath} start={f} dur={30} color? width? fill? dashed? />   // pen-draws any SVG path
+<Draw d={svgPath} start={f} dur={30} color? width? fill? dashed? clean? />   // pen-draws any SVG path
+   // In hand-drawn styles Draw adds natural hand irregularity by itself; pass clean for exact lines (charts, grids).
 shape.rect(x,y,w,h,r?) shape.circle(cx,cy,r) shape.line(x1,y1,x2,y2) shape.arrow(x1,y1,x2,y2) shape.curve(x1,y1,x2,y2,bend?) shape.wave(x,y,w,amp?,n?)
 <Write text="the feed" x={960} y={900} size={56} start={f} align="middle" color? />   // handwriting reveal
 <Typewriter text="..." x y size start cps />                        // typed text

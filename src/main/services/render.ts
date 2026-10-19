@@ -4,7 +4,7 @@ import { basename, join } from 'path'
 import { build } from 'esbuild'
 import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
 import { getStyle, listCharacters } from './store'
-import { interFont } from './hyperframes'
+import { handFont, interFont } from './hyperframes'
 
 export const appRoot = () => app.getAppPath()
 export const kitDir = () => join(appRoot(), 'remotion', 'kit')
@@ -28,6 +28,8 @@ export function syncMaterial(p: Project) {
   // The kit loads Inter from here, so clean text looks the same on every PC.
   const inter = join(pub, '_inter.woff2')
   if (!existsSync(inter)) copyFileSync(interFont(), inter)
+  const handw = join(pub, '_hand.woff2')
+  if (!existsSync(handw)) copyFileSync(handFont(), handw)
   for (const m of p.material) {
     const to = join(pub, basename(m))
     if (existsSync(m) && !existsSync(to)) copyFileSync(m, to)

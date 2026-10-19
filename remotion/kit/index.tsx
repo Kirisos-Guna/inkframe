@@ -2,7 +2,8 @@
 // Everything is drawn in a 1920x1080 SVG space, whatever the output size.
 import React, { createContext, useContext, useId, useMemo } from 'react'
 import { AbsoluteFill, continueRender, delayRender, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
-import { evolvePath, getLength } from '@remotion/paths'
+import { evolvePath } from '@remotion/paths'
+import rough from 'roughjs'
 import type { CharacterDef, StyleDef } from '../../src/shared/types'
 import { CharacterArt } from '../../src/shared/CharacterArt'
 
@@ -57,23 +58,22 @@ export function useScene() {
   }, [p, frame, fps])
 }
 
+/** Hand styles write with a real handwriting font (Caveat, bundled); the rest use Inter. */
 export const hand = (s: StyleDef) =>
-  ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture)
-    ? "'Segoe Print', 'Comic Sans MS', cursive"
-    : "'Inter', 'Segoe UI', sans-serif"
+  ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture) ? "'Hand', 'Segoe Print', cursive" : "'Inter', 'Segoe UI', sans-serif"
 
-// Inter ships with every project (public/_inter.woff2), so clean text never depends on the PC's system fonts.
-let interLoad: Promise<void> | null = null
-function useInter() {
-  const [handle] = React.useState(() => delayRender('Loading the Inter font'))
+// Fonts ship with every project (public/_inter.woff2, public/_hand.woff2), so text never depends on the PC's fonts.
+let fontsLoad: Promise<void> | null = null
+function useFonts() {
+  const [handle] = React.useState(() => delayRender('Loading fonts'))
   React.useEffect(() => {
-    interLoad ??= new FontFace('Inter', `url(${staticFile('_inter.woff2')}) format('woff2')`, { weight: '100 900' })
-      .load()
-      .then((f) => {
-        document.fonts.add(f)
-      })
+    fontsLoad ??= Promise.all([
+      new FontFace('Inter', `url(${staticFile('_inter.woff2')}) format('woff2')`, { weight: '100 900' }).load(),
+      new FontFace('Hand', `url(${staticFile('_hand.woff2')}) format('woff2')`).load()
+    ])
+      .then((faces) => faces.forEach((f) => document.fonts.add(f)))
       .catch(() => {})
-    interLoad.then(() => continueRender(handle))
+    fontsLoad.then(() => continueRender(handle))
   }, [handle])
 }
 
@@ -81,27 +81,46 @@ const ease = Easing.bezier(0.45, 0, 0.25, 1)
 const prog = (frame: number, start: number, dur: number) =>
   interpolate(frame, [start, start + Math.max(1, dur)], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
 
+/** How hand-made a style's lines are: rough.js roughness, and whether lines "boil" like hand animation. */
+function craftOf(style: StyleDef) {
+  const t = style.stroke.texture
+  const hand = ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(t)
+  return {
+    hand,
+    // Strong enough to see at 1080p (rough.js offsets are a few pixels), gentle enough to stay tidy.
+    roughness: !hand ? 0 : t === 'pen' ? 1.3 + style.stroke.jitter * 0.5 : 1.8 + style.stroke.jitter * 0.6,
+    multi: t === 'pencil' || t === 'chalk' || t === 'marker',
+    boil: hand
+  }
+}
+
 /** The background of the style, with its texture, and a 1920x1080 SVG for the drawing. */
 export function Board({ children, camera }: { children?: React.ReactNode; camera?: { zoom: number; x: number; y: number } }) {
-  const { style } = useScene()
+  const { style, frame, dur } = useScene()
   const { bg, ink, paper } = style.palette
   const id = useId().replace(/:/g, '')
   const t = style.stroke.texture
-  const cam = camera ? `translate(960 540) scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})` : undefined
+  const craft = craftOf(style)
+  // A slow drift, so no frame is ever perfectly still (a camera on a tripod still breathes).
+  const drift = interpolate(frame, [0, Math.max(1, dur)], [0, 1])
+  const breathe = `translate(960 540) scale(${1 + drift * 0.018}) translate(${-960 - drift * 6} ${-540 + drift * 3})`
+  const cam = camera ? `translate(960 540) scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})` : breathe
+  // Line boil: the texture shifts every 3 frames, like lines redrawn by hand on each drawing.
+  const seed = craft.boil ? Math.floor(frame / 3) % 7 : 0
   return (
     <AbsoluteFill style={{ background: bg }}>
       <svg viewBox="0 0 1920 1080" width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
         <defs>
           <filter id={`chalk${id}`}>
-            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n" />
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed={seed} result="n" />
             <feDisplacementMap in="SourceGraphic" in2="n" scale="3" />
           </filter>
           <filter id={`rough${id}`}>
-            <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="n" />
-            <feDisplacementMap in="SourceGraphic" in2="n" scale={2 + style.stroke.jitter * 2} />
+            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed={seed} result="n" />
+            <feDisplacementMap in="SourceGraphic" in2="n" scale={t === 'pen' ? 1.6 : 2 + style.stroke.jitter * 2} />
           </filter>
           <filter id={`grain${id}`}>
-            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" />
+            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed={seed} />
             <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .06 0" />
           </filter>
           <pattern id={`grid${id}`} width="48" height="48" patternUnits="userSpaceOnUse">
@@ -113,7 +132,7 @@ export function Board({ children, camera }: { children?: React.ReactNode; camera
           Array.from({ length: 24 }, (_, i) => <line key={i} x1="0" x2="1920" y1={70 + i * 44} y2={70 + i * 44} stroke={paper} strokeWidth="2" />)}
         {style.id === 'hand-drawn-board' && <radialGradient id={`v${id}`} cx=".5" cy=".45" r=".75"><stop offset=".6" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".6" /></radialGradient>}
         <g
-          filter={t === 'chalk' ? `url(#chalk${id})` : t === 'pencil' || t === 'brush' || t === 'marker' ? `url(#rough${id})` : undefined}
+          filter={t === 'chalk' ? `url(#chalk${id})` : craft.hand ? `url(#rough${id})` : undefined}
           transform={cam}
           stroke={ink}
           fill="none"
@@ -131,15 +150,25 @@ export function Board({ children, camera }: { children?: React.ReactNode; camera
             <rect width="1920" height="1080" fill={`url(#sp${id})`} style={{ mixBlendMode: 'multiply' }} />
           </>
         )}
-        {['ink-wash-cartoon', 'living-ink', 'cut-paper-poster', 'pencil-sketch', 'watercolour', 'risograph', 'sumi-ink', 'paper-cutout', 'notebook-sketch'].includes(style.id) && (
-          <rect width="1920" height="1080" filter={`url(#grain${id})`} />
-        )}
+        {/* A little grain on every style: real paper, chalk and screens are never perfectly flat. */}
+        <rect width="1920" height="1080" filter={`url(#grain${id})`} opacity={['ink-wash-cartoon', 'living-ink', 'cut-paper-poster', 'pencil-sketch', 'watercolour', 'risograph', 'sumi-ink', 'paper-cutout', 'notebook-sketch'].includes(style.id) ? 1 : 0.5} />
       </svg>
     </AbsoluteFill>
   )
 }
 
-/** Draws an SVG path as if by pen, from `start` over `dur` frames. */
+/** A stable number from a string, so rough lines look the same on every render of a frame. */
+function seedOf(s: string) {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return (h >>> 0) % 2147483647 || 1
+}
+
+/**
+ * Draws an SVG path as if by pen, from `start` over `dur` frames. In hand-drawn styles the line gets real hand
+ * irregularity (rough.js): a slightly wandering, sometimes doubled stroke instead of a perfect vector line.
+ * Pass `clean` for lines that must stay exact (charts, grids).
+ */
 export function Draw({
   d,
   start = 0,
@@ -148,7 +177,8 @@ export function Draw({
   width,
   fill,
   fillAfter = true,
-  dashed
+  dashed,
+  clean
 }: {
   d: string
   start?: number
@@ -158,30 +188,42 @@ export function Draw({
   fill?: string
   fillAfter?: boolean
   dashed?: boolean
+  clean?: boolean
 }) {
+  const s = useScene()
   const frame = useCurrentFrame()
   const p = prog(frame, start, dur)
-  const ev = useMemo(() => {
+  const craft = craftOf(s.style)
+  const line = useMemo(() => {
+    if (clean || dashed || !craft.roughness) return d
     try {
-      return { len: getLength(d) }
+      const g = rough.generator()
+      const drawable = g.path(d, { roughness: craft.roughness, bowing: 1.4, maxRandomnessOffset: 2 + craft.roughness * 1.5, seed: seedOf(d), disableMultiStroke: !craft.multi })
+      return g.toPaths(drawable).map((x) => x.d).join(' ') || d
     } catch {
-      return { len: 1000 }
+      return d
     }
-  }, [d])
+  }, [d, clean, dashed, craft.roughness, craft.multi])
   if (p <= 0) return null
-  const { strokeDasharray, strokeDashoffset } = evolvePath(p, d)
+  let evolved: { strokeDasharray: string; strokeDashoffset: number }
+  try {
+    evolved = evolvePath(p, line)
+  } catch {
+    evolved = evolvePath(p, d)
+  }
   const fillOp = fill && fillAfter ? interpolate(frame, [start + dur * 0.8, start + dur + 10], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 1
   return (
-    <path
-      d={d}
-      stroke={color}
-      strokeWidth={width}
-      fill={fill ?? 'none'}
-      fillOpacity={fill ? fillOp : undefined}
-      strokeDasharray={dashed && p >= 1 ? '14 12' : strokeDasharray}
-      strokeDashoffset={dashed && p >= 1 ? 0 : strokeDashoffset}
-      data-len={ev.len}
-    />
+    <>
+      {fill && <path d={d} fill={fill} fillOpacity={fillOp} stroke="none" />}
+      <path
+        d={line}
+        stroke={color}
+        strokeWidth={width}
+        fill="none"
+        strokeDasharray={dashed && p >= 1 ? '14 12' : evolved.strokeDasharray}
+        strokeDashoffset={dashed && p >= 1 ? 0 : evolved.strokeDashoffset}
+      />
+    </>
   )
 }
 
@@ -429,7 +471,7 @@ export function Picture({ name, x, y, w, h, start = 0, frame: framed = true }: {
 /** Wrapper the app uses to give every scene its props. */
 export function makeRoot(scenes: Record<string, React.ComponentType>) {
   return function PartRoot(props: SceneProps) {
-    useInter()
+    useFonts()
     const Scene = scenes[props.partId]
     return (
       <SceneProvider value={props}>

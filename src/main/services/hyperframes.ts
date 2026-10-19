@@ -13,6 +13,8 @@ const unpacked = (p: string) => p.replace('app.asar', 'app.asar.unpacked')
 export const hfCli = () => join(dirname(req.resolve('hyperframes/package.json')), 'bin', 'hyperframes.mjs')
 export const gsapFile = () => join(dirname(req.resolve('gsap/package.json')), 'dist', 'gsap.min.js')
 export const interFont = () => join(dirname(req.resolve('@fontsource-variable/inter/package.json')), 'files', 'inter-latin-wght-normal.woff2')
+/** Caveat: natural handwriting for the hand-drawn styles (SIL Open Font Licence). */
+export const handFont = () => join(dirname(req.resolve('@fontsource/caveat/package.json')), 'files', 'caveat-latin-600-normal.woff2')
 const ffprobePath = () => unpacked((ffprobeStatic as { path: string }).path)
 
 function env() {
@@ -56,6 +58,7 @@ export function prepareHfScene(sceneDir: string, publicDir: string) {
   copyFileSync(join(dirname(gsapFile()), 'DrawSVGPlugin.min.js'), join(sceneDir, 'DrawSVGPlugin.min.js'))
   // Inter for clean text; handwriting uses the system's Segoe Print (declared with local() in the template).
   copyFileSync(interFont(), join(sceneDir, 'assets', 'inter.woff2'))
+  copyFileSync(handFont(), join(sceneDir, 'assets', 'hand.woff2'))
   if (existsSync(publicDir)) for (const f of readdirSync(publicDir)) copyFileSync(join(publicDir, f), join(sceneDir, 'assets', f))
 }
 

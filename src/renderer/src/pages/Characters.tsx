@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Lightbulb, Plus, Shuffle, Trash2 } from 'lucide-react'
+import { Users } from 'lucide-react'
 import type { CharacterDef } from '@shared/types'
 import { CharacterArt, DRAWN_IN, EXPRESSIONS, POSES, newCharacter } from '@shared/CharacterArt'
 import { useApp } from '@/store/app'
@@ -17,13 +18,25 @@ export default function Characters({ openId }: { openId?: string }) {
   if (editing) return <CharacterEditor key={editing.id} initial={editing} />
   return (
     <div className="px-12 pb-6 pt-12">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-[34px] font-bold tracking-tight">Characters</h1>
           <p className="mt-1 text-[17px] text-muted">Make a cast once and use them in any video. They follow each video's style by themselves.</p>
         </div>
+        <div className="mt-2 flex shrink-0 gap-2">
         <button
-          className="btn-accent mt-2 px-5 py-3 text-[16px]"
+          className="btn px-4 py-3 text-[15px]"
+          title="Adds the ready-made cast members you do not have yet"
+          onClick={async () => {
+            const n = await window.api.characters.addCast()
+            useApp.setState({ characters: await window.api.characters.list() })
+            useApp.getState().showToast(n ? `Added ${n} characters` : 'You already have the whole starter cast')
+          }}
+        >
+          <Users size={16} /> Add the starter cast
+        </button>
+        <button
+          className="btn-accent px-5 py-3 text-[16px]"
           onClick={async () => {
             const c = await window.api.characters.save(newCharacter(crypto.randomUUID(), NAMES[characters.length % NAMES.length]))
             useApp.setState({ characters: await window.api.characters.list() })
@@ -32,6 +45,7 @@ export default function Characters({ openId }: { openId?: string }) {
         >
           <Plus size={17} /> New character
         </button>
+        </div>
       </div>
       <div className="mt-8 grid grid-cols-2 gap-5 md:grid-cols-3 xl:grid-cols-5">
         {characters.map((c) => (
@@ -42,7 +56,7 @@ export default function Characters({ openId }: { openId?: string }) {
             <div className="px-4 py-3">
               <div className="text-[17px] font-semibold">{c.name}</div>
               <div className="text-[14px] text-muted">
-                {c.outfit} · drawn in {c.drawnIn}
+                {c.description ? c.description : `${c.outfit} · drawn in ${c.drawnIn}`}
               </div>
             </div>
           </button>
@@ -92,10 +106,13 @@ function CharacterEditor({ initial }: { initial: CharacterDef }) {
       eyeColour: pick(EYE_COLOURS),
       eyebrows: pick(['None', 'Soft', 'Thick', 'Arched'] as const),
       nose: pick(['None', 'Dot', 'Button', 'Long'] as const),
-      hair: pick(['Bob', 'Short', 'Long', 'Bun', 'Bald', 'Curly'] as const),
+      hair: pick(['Bob', 'Short', 'Long', 'Bun', 'Bald', 'Curly', 'Ponytail', 'Afro', 'Spiky', 'Side part'] as const),
+      facialHair: pick(['None', 'None', 'Stubble', 'Beard', 'Mustache'] as const),
+      hat: pick(['None', 'None', 'None', 'Cap', 'Beanie', 'Hard hat'] as const),
+      headphones: Math.random() > 0.8,
       hairColour: pick(HAIR_COLOURS),
       glasses: Math.random() > 0.6,
-      outfit: pick(['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron'] as const),
+      outfit: pick(['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron', 'Jacket', 'Dress', 'Overalls', 'Sweater'] as const),
       outfitColour: pick(OUTFIT_COLOURS),
       body: pick(['Slim', 'Average', 'Broad'] as const)
     })
@@ -228,11 +245,14 @@ function CharacterEditor({ initial }: { initial: CharacterDef }) {
             {open.body && (
               <div className="space-y-4 border-t border-line/70 px-6 py-5">
                 <Field label="Body"><Opts v={c.body} o={['Slim', 'Average', 'Broad']} on={(body) => set({ body })} /></Field>
-                <Field label="Outfit"><Opts v={c.outfit} o={['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron']} on={(outfit) => set({ outfit })} /></Field>
+                <Field label="Age"><Opts v={c.age ?? 'Adult'} o={['Kid', 'Adult', 'Older']} on={(age) => set({ age })} /></Field>
+                <Field label="Outfit"><Opts v={c.outfit} o={['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron', 'Jacket', 'Dress', 'Overalls', 'Sweater']} on={(outfit) => set({ outfit })} /></Field>
                 <Field label="Outfit colour"><Swatches v={c.outfitColour} o={OUTFIT_COLOURS} on={(outfitColour) => set({ outfitColour })} /></Field>
-                <Field label="Hair"><Opts v={c.hair} o={['Bob', 'Short', 'Long', 'Bun', 'Curly', 'Bald']} on={(hair) => set({ hair })} /></Field>
+                <Field label="Hair"><Opts v={c.hair} o={['Bob', 'Short', 'Long', 'Bun', 'Ponytail', 'Curly', 'Afro', 'Spiky', 'Side part', 'Bald']} on={(hair) => set({ hair })} /></Field>
                 <Field label="Hair colour"><Swatches v={c.hairColour} o={HAIR_COLOURS} on={(hairColour) => set({ hairColour })} /></Field>
                 <Field label="Glasses"><Opts v={c.glasses ? 'Yes' : 'No'} o={['No', 'Yes']} on={(g) => set({ glasses: g === 'Yes' })} /></Field>
+                <Field label="Hat"><Opts v={c.hat ?? 'None'} o={['None', 'Cap', 'Beanie', 'Hard hat']} on={(hat) => set({ hat })} /></Field>
+                <Field label="Headphones"><Opts v={c.headphones ? 'Yes' : 'No'} o={['No', 'Yes']} on={(h) => set({ headphones: h === 'Yes' })} /></Field>
               </div>
             )}
             <button className="flex w-full items-center justify-between border-t border-line/70 px-6 py-4 text-[17px] font-semibold" onClick={() => setOpen({ ...open, face: !open.face })}>
@@ -246,6 +266,7 @@ function CharacterEditor({ initial }: { initial: CharacterDef }) {
                 <Field label="Eye colour"><Swatches v={c.eyeColour} o={EYE_COLOURS} on={(eyeColour) => set({ eyeColour })} /></Field>
                 <Field label="Eyebrows"><Opts v={c.eyebrows} o={['None', 'Soft', 'Thick', 'Arched']} on={(eyebrows) => set({ eyebrows })} /></Field>
                 <Field label="Nose"><Opts v={c.nose} o={['None', 'Dot', 'Button', 'Long']} on={(nose) => set({ nose })} /></Field>
+                <Field label="Facial hair"><Opts v={c.facialHair ?? 'None'} o={['None', 'Stubble', 'Beard', 'Mustache']} on={(facialHair) => set({ facialHair })} /></Field>
               </div>
             )}
           </div>

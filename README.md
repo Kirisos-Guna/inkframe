@@ -24,6 +24,11 @@ you click any part, leave a comment, and only that part is made again.
 - **Engaging finish:** animated captions (Clean, Bold pop, Karaoke), transitions between parts, and background music
   that ducks under the voice.
 - **Pause and resume** while it works.
+- **Hand-made look:** lines in the hand-drawn styles get natural pen irregularity and a gentle line boil, text is
+  written in a real handwriting font, and the method steers Claude away from the usual AI clichés.
+- **Characters:** a ready-made cast of 12 (scientist, engineer, student, coder, teacher, kid, chef, nurse, grandad…),
+  with hair, outfits, facial hair, hats, headphones and age to make your own.
+- **Updates inside the app:** new versions are found on GitHub and installed with one click.
 - **Publish:** thumbnails drawn in the video's style; titles, a description with chapters, and tags; captions as .srt
   and .vtt. Writing is done by **Codex** (your ChatGPT plan) or Claude Code.
 - **Script writer:** research a topic on the web and write the voiceover script before you record.
@@ -83,4 +88,4 @@ node scripts/drive.mjs make run voice.wav  # makes a whole video end to end (use
 Remotion is free for individuals and companies of up to 3 people; larger companies need a
 [Remotion company licence](https://www.remotion.dev/license). whisper.cpp and FFmpeg are open source.
 HyperFrames is Apache-2.0 (its anonymous telemetry is turned off by Inkframe). GSAP is free to use under its
-[standard licence](https://gsap.com/standard-license). three.js is MIT; the Inter font is under the SIL Open Font Licence.
+[standard licence](https://gsap.com/standard-license). three.js and rough.js are MIT; the Inter and Caveat fonts are under the SIL Open Font Licence.

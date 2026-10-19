@@ -20,6 +20,9 @@ the size of a stamp, next to a dozen others, by someone scrolling. It has half a
 8. If the video has characters, a character with a **strong expression** (Surprised, Worried, Laughing) looking or
    pointing at the subject beats anything else.
 
+9. **Not AI-looking:** no glowing brains, robots, node networks, sparkles or gradient blobs. A real, specific object
+   (the actual chip, the actual app screen, the actual place) drawn in the video's hand beats any symbol.
+
 ## Concepts (each variant uses a different one)
 - **The glowing object:** the one thing the video is about, huge and glowing, with 2 words. ("ONE CHIP")
 - **Reaction:** a character with a big expression next to the subject, 2–3 words. ("WAIT, WHAT?")
