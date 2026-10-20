@@ -73,11 +73,11 @@ export interface SceneTarget {
 }
 const methodOf = (t: SceneTarget) => (t.engine === 'hyperframes' ? 'HYPERFRAMES.md (how to draw an HTML part)' : 'METHOD.md (how to draw a part with the kit)')
 
-function partContext(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
+/** What one part says and when, and its idea. */
+function partSection(p: Project, part: Part, target: SceneTarget) {
   const fps = p.settings.quality.fps
   const frames = Math.round((part.end - part.start) * fps)
-  const n = p.parts.length
-  return `You are drawing part ${part.index + 1} of ${n}: "${part.title}" (${t(part.start)}s to ${t(part.end)}s of the voiceover, ${frames} frames at ${fps} fps).
+  return `Part ${part.index + 1} of ${p.parts.length}: "${part.title}" (${t(part.start)}s to ${t(part.end)}s of the voiceover, ${frames} frames at ${fps} fps).
 
 What the voiceover says in this part:
 "${part.text || '(not heard; follow the idea)'}"
@@ -90,9 +90,14 @@ ${wordsLine(p, part.start, part.end, undefined, part.start) || '(none)'}`
 ${wordsLine(p, part.start, part.end, fps, part.start) || '(none)'}`
   }
 
-The idea for this part: ${part.idea || 'your choice, following the direction'}
+The idea for this part: ${part.idea || 'your choice, following the direction'}${
+    part.material.length ? `\nThe user dragged these onto this part, so show them: ${part.material.map((m) => m.split(/[\\/]/).pop()).join(', ')}` : ''
+  }`
+}
 
-The whole video, for context (do not draw the other parts):
+/** What every part of the video shares: the outline, the direction, characters and material. */
+function videoContext(p: Project, chars: CharacterDef[]) {
+  return `The whole video, for context:
 ${p.parts.map((x) => `${x.index + 1}. ${x.title}: ${x.text.slice(0, 90)}`).join('\n')}
 
 Direction from the user: ${p.direction || '(none)'}${
@@ -101,9 +106,57 @@ Direction from the user: ${p.direction || '(none)'}${
       : ''
   }
 Characters in this video: ${chars.length ? chars.map((c) => `${c.name} (${c.outfit.toLowerCase()}, ${c.hair.toLowerCase()} hair${c.glasses ? ', glasses' : ''})`).join('; ') : 'none, do not use <Character>'}
-Material files you can show with <Picture name="...">: ${[...new Set([...part.material, ...p.material].map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}${
-    part.material.length ? `\nThe user dragged these onto this part, so show them: ${part.material.map((m) => m.split(/[\\/]/).pop()).join(', ')}` : ''
-  }`
+Material files you can show with <Picture name="...">: ${[...new Set(p.material.map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}`
+}
+
+function partContext(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
+  return `You are drawing ${partSection(p, part, target)}
+
+${videoContext(p, chars)}`
+}
+
+/**
+ * Several parts in one session: the method, the style and the video's context are read once instead of once per
+ * part, and Claude sees the neighbouring parts, which also helps the video flow.
+ */
+export function designBatchPrompt(p: Project, parts: Part[], chars: CharacterDef[], targets: SceneTarget[]) {
+  const usesReact = targets.some((x) => x.engine === 'remotion')
+  const usesHtml = targets.some((x) => x.engine === 'hyperframes')
+  const methods = [usesReact ? 'METHOD.md (React scenes, .tsx)' : '', usesHtml ? 'HYPERFRAMES.md (HTML scenes)' : ''].filter(Boolean).join(' and ')
+  return `First read ${methods} and STYLE.md (the look of this video). Read each once.
+
+You are drawing ${parts.length} parts of one video, in order. Make them feel like one continuous piece: the same scale and line
+weight, recurring visual motifs, and where it helps, start a part from what the previous part left on screen.
+
+${videoContext(p, chars)}
+
+${parts
+  .map(
+    (x, i) => `---------------------------------------------------------------
+${partSection(p, x, targets[i])}
+Write this part ${targets[i].engine === 'hyperframes' ? `by filling in the starter at ${targets[i].file}` : `to ${targets[i].file}`}.`
+  )
+  .join('\n\n')}
+
+Write every scene to its own file, one after the other. Do not create or change any other file.
+When all ${parts.length} are written, reply with one short sentence.`
+}
+
+/**
+ * Checks for several parts at once. Each picture is a strip of three moments (early, middle, end) of one part, so one
+ * small image per part instead of three.
+ */
+export function checkBatchPrompt(items: { part: Part; sheet: string }[], level: string) {
+  return `You are checking parts of an explainer video before it ships. Each picture is one part: three moments side by side
+(early, middle, end). Read each picture.
+
+${items.map(({ part, sheet }) => `Part ${part.index + 1} "${part.title}": ${sheet}. The voiceover says: "${part.text.slice(0, 220)}"`).join('\n')}
+
+For each part, check: text cut off or running off the frame, drawings that leave the frame, overlapping text, text too
+small to read on a phone, an empty or unbalanced frame, and whether the end frame clearly shows what the words say.
+${level === 'Low' ? 'Only flag problems that are obvious at first glance.' : level === 'High' ? 'Be strict.' : ''}
+
+Reply with JSON only: {"parts": [{"part": <number>, "ok": true or false, "notes": ["short note", ...]}]}  (notes empty when ok)`
 }
 
 export function designPrompt(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget) {

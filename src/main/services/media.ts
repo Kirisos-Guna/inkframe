@@ -193,3 +193,12 @@ export async function finishVideo(o: {
   if (r.code !== 0) throw new Error('FFmpeg: ' + r.stderr.split('\n').filter(Boolean).slice(-4).join(' '))
   return o.out
 }
+
+/** Three stills side by side in one small JPG (one picture for the checker instead of three). */
+export async function stripImage(files: string[], out: string) {
+  const args: string[] = []
+  for (const f of files) args.push('-i', f)
+  const scaled = files.map((_, i) => `[${i}:v]scale=480:270[s${i}]`).join(';')
+  await ffmpeg([...args, '-filter_complex', `${scaled};${files.map((_, i) => `[s${i}]`).join('')}hstack=inputs=${files.length}`, '-frames:v', '1', '-q:v', '4', out])
+  return out
+}

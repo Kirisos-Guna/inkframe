@@ -1,5 +1,6 @@
 import { spawn, execFile } from 'child_process'
-import { existsSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { app } from 'electron'
 import { basename, join } from 'path'
 import type { Effort, Provider } from '../../shared/types'
 import { claudePath, codexPath } from './tools'
@@ -75,11 +76,14 @@ async function runClaude(o: AgentOpts): Promise<string> {
   const exe = await claudePath()
   if (!exe) throw new Error('Claude Code is not installed on this computer. Install it, sign in once, or set its path in Settings.')
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
+  // Lean sessions: only the tools this job needs, none of the user's MCP servers or skills, a short task-specific
+  // system prompt instead of the general coding one, and nothing saved. Same work, far fewer tokens per call.
+  args.push('--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file', systemPromptFile())
   if (o.tools) {
-    args.push('--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit', 'Glob', 'Grep')
+    args.push('--tools', 'Read,Write,Edit,Glob,Grep', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit', 'Glob', 'Grep')
     for (const d of o.addDirs ?? []) args.push('--add-dir', d)
   } else {
-    args.push('--allowedTools', 'Read')
+    args.push('--tools', 'Read', '--allowedTools', 'Read')
   }
   return new Promise((resolve, reject) => {
     const shell = /\.(cmd|bat)$/i.test(exe)
@@ -183,3 +187,19 @@ async function runCodex(o: AgentOpts): Promise<string> {
 }
 
 export { extractJson } from '../../shared/json'
+
+/** The short system prompt for every Inkframe session (written once to the app's data folder). */
+const SYSTEM_PROMPT = `You are the drawing and writing engine inside ${'Inkframe'}, a desktop app that turns a voiceover into an animated video.
+You work only on files in the current folder, with the Read, Write, Edit, Glob and Grep tools.
+Follow the method and style files you are pointed to exactly; they describe the scene kit, the look and the rules.
+Never ask questions: make sensible choices yourself. Do not explain your work.
+When you are done, reply with one short sentence, or with exactly the JSON that was asked for.`
+let promptPath: string | null = null
+function systemPromptFile() {
+  if (promptPath && existsSync(promptPath)) return promptPath
+  const dir = join(app.getPath('userData'))
+  mkdirSync(dir, { recursive: true })
+  promptPath = join(dir, 'agent-system-prompt.txt')
+  writeFileSync(promptPath, SYSTEM_PROMPT)
+  return promptPath
+}

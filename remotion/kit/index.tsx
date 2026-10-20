@@ -1,7 +1,7 @@
 // Scene kit: the building blocks Claude uses to draw each part.
 // Everything is drawn in a 1920x1080 SVG space, whatever the output size.
-import React, { createContext, useContext, useId, useMemo } from 'react'
-import { AbsoluteFill, continueRender, delayRender, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
+import React, { createContext, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AbsoluteFill, continueRender, delayRender, Freeze, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { evolvePath } from '@remotion/paths'
 import rough from 'roughjs'
 import type { CharacterDef, StyleDef } from '../../src/shared/types'
@@ -94,6 +94,30 @@ function craftOf(style: StyleDef) {
   }
 }
 
+// Everything stays inside this box (the 1920x1080 frame minus a margin).
+const SAFE = { x0: 80, y0: 60, x1: 1840, y1: 1020 }
+const fits = new Map<string, string>()
+const FitContext = createContext<{ mode: 'measure' | 'draw'; fit: string; report?: (t: string) => void }>({ mode: 'draw', fit: '' })
+
+/**
+ * Keeps the drawing inside the frame. Before the first frame of a part renders, the part's finished last frame is
+ * drawn invisibly and measured; if anything would leave the frame, the whole drawing is scaled down and moved inside
+ * the safe box. The same correction is used for every frame of the part, so nothing jumps.
+ */
+function fitFor(box: { x: number; y: number; width: number; height: number }) {
+  const m = 6 // room for the stroke, which the measurement leaves out
+  const x = box.x - m
+  const y = box.y - m
+  const w = box.width + m * 2
+  const h = box.height + m * 2
+  if (!w || !h || (x >= SAFE.x0 && y >= SAFE.y0 && x + w <= SAFE.x1 && y + h <= SAFE.y1)) return ''
+  const k = Math.min(1, (SAFE.x1 - SAFE.x0) / w, (SAFE.y1 - SAFE.y0) / h)
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  const cx = clamp(x + w / 2, SAFE.x0 + (k * w) / 2, SAFE.x1 - (k * w) / 2)
+  const cy = clamp(y + h / 2, SAFE.y0 + (k * h) / 2, SAFE.y1 - (k * h) / 2)
+  return `translate(${(cx - k * (x + w / 2)).toFixed(2)} ${(cy - k * (y + h / 2)).toFixed(2)}) scale(${k.toFixed(4)})`
+}
+
 /** The background of the style, with its texture, and a 1920x1080 SVG for the drawing. */
 export function Board({ children, camera }: { children?: React.ReactNode; camera?: { zoom: number; x: number; y: number } }) {
   const { style, frame, dur } = useScene()
@@ -103,8 +127,22 @@ export function Board({ children, camera }: { children?: React.ReactNode; camera
   const craft = craftOf(style)
   // A slow drift, so no frame is ever perfectly still (a camera on a tripod still breathes).
   const drift = interpolate(frame, [0, Math.max(1, dur)], [0, 1])
-  const breathe = `translate(960 540) scale(${1 + drift * 0.018}) translate(${-960 - drift * 6} ${-540 + drift * 3})`
+  const breathe = `translate(960 540) scale(${1 + drift * 0.01}) translate(-960 -540)`
   const cam = camera ? `translate(960 540) scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})` : breathe
+  // Fit to the frame (skipped when the scene moves its own camera: a close-up is meant to crop).
+  const fitCtx = useContext(FitContext)
+  const measure = useRef<SVGGElement>(null)
+  useLayoutEffect(() => {
+    if (fitCtx.mode !== 'measure') return
+    let t = ''
+    try {
+      if (!camera) t = fitFor(measure.current!.getBBox())
+    } catch {
+      t = ''
+    }
+    fitCtx.report?.(t)
+  }, [])
+  const fit = camera ? '' : fitCtx.fit
   // Line boil: the texture shifts every 3 frames, like lines redrawn by hand on each drawing.
   const seed = craft.boil ? Math.floor(frame / 3) % 7 : 0
   return (
@@ -141,7 +179,7 @@ export function Board({ children, camera }: { children?: React.ReactNode; camera
           strokeWidth={Math.max(1.5, style.stroke.width * 1.6)}
           opacity={t === 'pencil' ? 0.85 : 1}
         >
-          {children}
+          {fitCtx.mode === 'measure' ? <g ref={measure}>{children}</g> : <g transform={fit || undefined}>{children}</g>}
         </g>
         {style.id === 'hand-drawn-board' && <rect width="1920" height="1080" fill={`url(#v${id})`} />}
         {style.id === 'shadow-puppets' && (
@@ -473,9 +511,33 @@ export function makeRoot(scenes: Record<string, React.ComponentType>) {
   return function PartRoot(props: SceneProps) {
     useFonts()
     const Scene = scenes[props.partId]
+    const [fit, setFit] = useState<string | null>(() => fits.get(props.partId) ?? null)
+    const [handle] = useState(() => (fit === null && Scene ? delayRender('Fitting the drawing in the frame') : null))
+    const reported = useRef<string | null>(null)
+    // Children's layout effects run first: if no Board reported (a 3D scene, say), there is nothing to fit.
+    useLayoutEffect(() => {
+      if (handle === null) return
+      const t = reported.current ?? ''
+      fits.set(props.partId, t)
+      setFit(t)
+      continueRender(handle)
+    }, [handle, props.partId])
+    if (!Scene) return <AbsoluteFill style={{ background: '#000', color: '#fff', fontSize: 60, alignItems: 'center', justifyContent: 'center' }}>Missing scene</AbsoluteFill>
     return (
       <SceneProvider value={props}>
-        {Scene ? <Scene /> : <AbsoluteFill style={{ background: '#000', color: '#fff', fontSize: 60, alignItems: 'center', justifyContent: 'center' }}>Missing scene</AbsoluteFill>}
+        {fit === null ? (
+          <AbsoluteFill style={{ visibility: 'hidden' }}>
+            <Freeze frame={Math.max(0, props.frames - 1)}>
+              <FitContext.Provider value={{ mode: 'measure', fit: '', report: (t) => (reported.current = t) }}>
+                <Scene />
+              </FitContext.Provider>
+            </Freeze>
+          </AbsoluteFill>
+        ) : (
+          <FitContext.Provider value={{ mode: 'draw', fit }}>
+            <Scene />
+          </FitContext.Provider>
+        )}
       </SceneProvider>
     )
   }

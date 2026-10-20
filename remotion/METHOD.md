@@ -8,7 +8,8 @@ together and lays the voiceover on top.
 1. **One idea at a time.** One clear picture per part, built up in 2 to 4 beats. No clutter.
 2. **In sync with the words.** Every beat starts on the word that introduces it: `at('tower')` gives the frame where
    "tower" is spoken. Draw things *as they are said*, never before.
-3. **Fill the frame, stay inside it.** The drawing space is 1920 x 1080. Keep everything between x 120–1800 and
+3. **Fill the frame, stay inside it** (if anything would leave the frame, the kit shrinks the whole drawing to fit,
+   which makes it smaller than you planned, so plan inside the box below). The drawing space is 1920 x 1080. Keep everything between x 120–1800 and
    y 100–980. Text is at least 44 px, titles 80–120 px. At most ~8 words of on-screen text at a time.
 4. **Use the style.** Colours come from `palette` (`bg`, `ink`, `accent`). The Board already sets stroke colour and
    texture; only use `accent` for the one thing the eye must find.

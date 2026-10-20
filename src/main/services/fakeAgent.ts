@@ -92,18 +92,20 @@ export default function Scene() {
     )
     return 'Drew a 3D part.'
   }
-  const file = p.match(/scenes\/([\w-]+)\.tsx/)?.[1]
-  if (!file) throw new Error('Fake agent: unknown prompt')
-  const target = join(o.cwd, 'scenes', `${file}.tsx`)
-  mkdirSync(dirname(target), { recursive: true })
+  // Every scene file the prompt names (a batch names several).
+  const files = [...new Set([...p.matchAll(/scenes\/([\w-]+)\.tsx/g)].map((m) => m[1]))]
+  if (!files.length) throw new Error('Fake agent: unknown prompt')
   o.onStep?.('Reading the method')
   o.onStep?.('Reading the style')
-  const title = p.match(/: "([^"]+)" \(/)?.[1] ?? p.match(/line, in this style:\n"([^"]+)"/)?.[1]?.slice(0, 30) ?? 'Test'
-  const bigger = /bigger|label/i.test(p) && existsSync(target)
-  o.onStep?.(existsSync(target) ? `Changing ${file}` : `Drawing ${file}`)
-  writeFileSync(
-    target,
-    `import { useScene, Board, Draw, shape, Write, Pop, Travel } from '@kit'
+  for (const file of files) {
+    const target = join(o.cwd, 'scenes', `${file}.tsx`)
+    mkdirSync(dirname(target), { recursive: true })
+    const title = p.match(/: "([^"]+)" \(/)?.[1] ?? p.match(/line, in this style:\n"([^"]+)"/)?.[1]?.slice(0, 30) ?? 'Test'
+    const bigger = /bigger|label/i.test(p) && existsSync(target)
+    o.onStep?.(existsSync(target) ? `Changing ${file}` : `Drawing ${file}`)
+    writeFileSync(
+      target,
+      `import { useScene, Board, Draw, shape, Write, Pop, Travel } from '@kit'
 
 export default function Scene() {
   const { dur, palette } = useScene()
@@ -114,6 +116,8 @@ export default function Scene() {
   const path = shape.curve(420, 640, 1500, 640, 0.3)
   return (
     <Board>
+      {/* On purpose, the box runs off the left and bottom edges: the kit must fit it back in. */}
+      <Draw d={shape.rect(-120, 560, 520 * s, 620, 30)} start={a} dur={Math.round(dur * 0.25)} />
       <Draw d={shape.rect(960 - 260 * s, 300, 520 * s, 300 * s, 30)} start={a} dur={Math.round(dur * 0.25)} />
       <Write text=${JSON.stringify(title)} x={960} y={250} size={84} start={a + 4} align="middle" />
       <Draw d={path} start={b} dur={Math.round(dur * 0.2)} color={palette.accent} dashed />
@@ -125,8 +129,9 @@ export default function Scene() {
   )
 }
 `
-  )
-  return bigger ? 'Made the box bigger and labelled it.' : `Drew ${title}.`
+    )
+  }
+  return `Drew ${files.length} part${files.length > 1 ? 's' : ''}.`
 }
 
 export const fakeEnabled = () => process.env.INKFRAME_FAKE_AGENT === '1'
