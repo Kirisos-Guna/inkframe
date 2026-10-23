@@ -116,12 +116,14 @@ export function Timeline({
           }}
           onMouseMove={(e) => cut?.dragging && setCut({ ...cut, b: tAt(e.clientX) })}
           onMouseUp={() => {
-            if (!cut) return
+            if (!cut?.dragging) return
             if (Math.abs(cut.b - cut.a) < 0.15) {
               onSeek(cut.a)
               setCut(null)
             } else setCut({ ...cut, dragging: false })
           }}
+          // Letting go outside the wave ends the drag too, instead of leaving it stuck to the mouse.
+          onMouseLeave={() => cut?.dragging && (Math.abs(cut.b - cut.a) < 0.15 ? setCut(null) : setCut({ ...cut, dragging: false }))}
         >
           <Waveform peaks={peaks} progress={time / dur} height={56} color="#6b6b72" played="#d8d8dc" className="h-14 w-full" />
           {cut && Math.abs(cut.b - cut.a) >= 0.15 && (

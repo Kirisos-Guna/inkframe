@@ -50,6 +50,9 @@ export const useApp = create<AppState>((set, get) => ({
     })
 }))
 
+/** The message of an error from the app's back end, without Electron's "Error invoking remote method" prefix. */
+export const errorText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+
 export const fmtTime = (s: number) => {
   const m = Math.floor(s / 60)
   const r = Math.floor(s % 60)

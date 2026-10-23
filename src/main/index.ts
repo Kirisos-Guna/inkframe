@@ -7,6 +7,7 @@ import { APP_NAME } from '../shared/brand'
 import * as store from './services/store'
 import { getStatus, resetToolCache } from './services/tools'
 import { duration, peaks } from './services/media'
+import { engineOf } from './services/engines'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { extractJson, runAgent } from './services/agent'
@@ -167,9 +168,12 @@ function registerIpc() {
       for (const incoming of parts) {
         const cur = p.parts.find((x) => x.id === incoming.id)
         if (!cur) continue
+        const before = { engine: engineOf(p, cur), render: store.getStyle(cur.styleId ?? p.settings.styleId).render ?? 'svg', styleId: cur.styleId }
         for (const k of USER_PART_FIELDS) if (k in incoming) (cur as unknown as Record<string, unknown>)[k] = incoming[k]
-        if ('styleId' in incoming && cur.status === 'Up to date') cur.status = 'Designed'
-        if ('engine' in incoming && incoming.engine !== undefined && cur.status !== 'Not designed yet') cur.status = 'Not designed yet'
+        const render = store.getStyle(cur.styleId ?? p.settings.styleId).render ?? 'svg'
+        // A different engine, or 2D ↔ 3D, needs a new drawing; another flat style only needs rendering again.
+        if (engineOf(p, cur) !== before.engine || render !== before.render) cur.status = 'Not designed yet'
+        else if (cur.styleId !== before.styleId && cur.status === 'Up to date') cur.status = 'Designed'
       }
     }
     if (newVoice) {

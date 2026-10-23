@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Copy, Download, Image as ImageIcon, Music, RefreshCw, Sparkles, X } from 'lucide-react'
 import type { CaptionStyle, Project, Transition } from '@shared/types'
 import { fmtTime, useApp } from '@/store/app'
@@ -100,11 +100,7 @@ export function Publish({ p }: { p: Project }) {
                 <IconBtn onClick={() => copy(p.publish!.description, 'Description')} label="Copy" icon={<Copy size={13} />} />
                 <IconBtn onClick={() => window.api.file.saveText(p.publish!.description, `${p.title} description`)} label="Save" icon={<Download size={13} />} />
               </div>
-              <textarea
-                className="input h-56 resize-none text-[13.5px] leading-relaxed"
-                value={p.publish.description}
-                onChange={(e) => window.api.projects.update(p.id, { publish: { ...p.publish!, description: e.target.value } })}
-              />
+              <Description p={p} />
             </div>
             <div>
               <div className="mb-2 flex items-center">
@@ -165,7 +161,7 @@ export function Publish({ p }: { p: Project }) {
                 <X size={13} className="text-muted" />
               </button>
             </span>
-            <input type="range" min={0.05} max={0.6} step={0.05} value={p.settings.music.volume} onChange={(e) => setSettings({ music: { ...p.settings.music!, volume: +e.target.value } })} className="accent-accent" />
+            <Volume value={p.settings.music.volume} onCommit={(volume) => setSettings({ music: { ...p.settings.music!, volume } })} />
           </div>
         ) : (
           <button
@@ -188,6 +184,58 @@ export function Publish({ p }: { p: Project }) {
         {!p.output && <div className="mt-2 text-[13px] text-dim">Make the video first.</div>}
       </Section>
     </>
+  )
+}
+
+/**
+ * The description is edited here and saved a moment after typing stops (and on leaving the box). Saving on every key
+ * made the box follow the saved copy, which arrives a little later, so fast typing lost letters.
+ */
+function Description({ p }: { p: Project }) {
+  const [text, setText] = useState(p.publish!.description)
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+  const latest = useRef(p)
+  latest.current = p
+  // New text from "Write again" replaces what is in the box.
+  useEffect(() => setText(p.publish!.description), [p.publish!.at])
+  const save = (description: string) => {
+    clearTimeout(timer.current)
+    const cur = latest.current
+    if (cur.publish && cur.publish.description !== description) window.api.projects.update(cur.id, { publish: { ...cur.publish, description } })
+  }
+  useEffect(() => () => clearTimeout(timer.current), [])
+  return (
+    <textarea
+      className="input h-56 resize-none text-[13.5px] leading-relaxed"
+      value={text}
+      onChange={(e) => {
+        const v = e.target.value
+        setText(v)
+        clearTimeout(timer.current)
+        timer.current = setTimeout(() => save(v), 600)
+      }}
+      onBlur={(e) => save(e.target.value)}
+    />
+  )
+}
+
+/** Music volume: moves freely while dragging, saved when let go. */
+function Volume({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+  const [v, setV] = useState(value)
+  useEffect(() => setV(value), [value])
+  return (
+    <input
+      type="range"
+      min={0.05}
+      max={0.6}
+      step={0.05}
+      value={v}
+      onChange={(e) => setV(+e.target.value)}
+      onPointerUp={() => v !== value && onCommit(v)}
+      onKeyUp={() => v !== value && onCommit(v)}
+      className="accent-accent"
+      title={`Music volume ${Math.round(v * 100)}%`}
+    />
   )
 }
 

@@ -82,7 +82,11 @@ export function getProject(id: string, dir?: string): Project | undefined {
   return p ?? undefined
 }
 
+// Deleted videos: a job that is still winding down must not write them back.
+const removed = new Set<string>()
+
 export function saveProject(p: Project) {
+  if (removed.has(p.id)) return p
   p.updatedAt = Date.now()
   cache.set(p.id, p)
   writeJson(join(p.dir, 'project.json'), p)
@@ -130,6 +134,7 @@ export function createProject(partial: Partial<Project>): Project {
 
 export function removeProject(id: string) {
   const p = getProject(id)
+  removed.add(id)
   const idx = index()
   delete idx[id]
   writeJson(indexFile(), idx)

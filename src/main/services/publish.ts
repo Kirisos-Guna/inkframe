@@ -184,7 +184,7 @@ Write the scene to ${file}. Do not create or change any other file. Reply with o
       err = await checkScene(abs)
     }
     onStatus?.('Drawing the thumbnail')
-    const url = await bundleProject(p)
+    const url = await bundleProject(p, undefined, 'bundle-thumbs')
     const out = join(p.dir, 'thumbs', `${tid}.png`)
     await stillScene(p, url, tid, out, { width: 1280, height: 720, frames: 20 })
     made.push({ id: tid, file: out, scene: abs, note: note ? `${concept} · ${note}` : concept, at: Date.now() })

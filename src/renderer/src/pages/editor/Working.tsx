@@ -6,20 +6,26 @@ import { fmtTime } from '@/store/app'
 
 const STAGES: Stage[] = ['Voiceover', 'Parts', 'Design', 'Render', 'Video']
 
-export function useElapsed(from: number, running: boolean) {
+/** Working time of the job: stands still while paused, and keeps the total once the job ends. */
+export function useElapsed(j: Project['job']) {
+  const ticking = j.running && !j.paused
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
-    if (!running) return
+    if (!ticking) return
+    setNow(Date.now())
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [running])
-  return running && from ? fmtTime((now - from) / 1000) : '0:00'
+  }, [ticking])
+  if (!j.startedAt) return '0:00'
+  const end = j.running ? (j.paused && j.pausedAt ? j.pausedAt : Math.max(now, j.startedAt)) : (j.endedAt ?? j.startedAt)
+  return fmtTime(Math.max(0, end - j.startedAt - (j.pausedMs ?? 0)) / 1000)
 }
 
 export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
   const j = p.job
   const n = p.parts.length
-  const elapsed = useElapsed(j.startedAt, j.running)
+  const elapsed = useElapsed(j)
+  const stopped = !j.running && !j.error && j.title === 'Stopped'
   const stageIdx = STAGES.indexOf(j.stage)
   const latest = [...p.parts].reverse().find((x) => x.status === 'Designing' || x.status === 'Making it again' || x.status === 'Rendering')
   const picture = latest?.thumb ?? [...p.parts].reverse().find((x) => x.thumb)?.thumb
@@ -58,11 +64,11 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
 
   return (
     <div className="relative mx-auto h-fit w-full max-w-[1030px] overflow-hidden rounded-2xl border border-line bg-[#0e0e10] px-5 py-5 2xl:px-8 2xl:py-7">
-      <div className="absolute left-0 top-0 h-[2px] w-1/3 animate-pulse bg-gradient-to-r from-transparent via-accent to-transparent" />
+      {j.running && !j.paused && <div className="absolute left-0 top-0 h-[2px] w-1/3 animate-pulse bg-gradient-to-r from-transparent via-accent to-transparent" />}
       <div className="flex items-center gap-3">
-        <span className={`h-2.5 w-2.5 rounded-full ${j.error ? 'bg-red-500' : 'bg-accent'}`} />
-        <div className={`min-w-0 flex-1 truncate text-[20px] font-semibold 2xl:text-[23px] ${j.error ? 'text-red-400' : 'text-accent'}`}>
-          {j.error ? 'Something went wrong' : j.paused ? 'Paused' : `${APP_NAME} is working`}
+        <span className={`h-2.5 w-2.5 rounded-full ${j.error ? 'bg-red-500' : j.running ? 'bg-accent' : stopped ? 'bg-dim' : 'bg-ok'}`} />
+        <div className={`min-w-0 flex-1 truncate text-[20px] font-semibold 2xl:text-[23px] ${j.error ? 'text-red-400' : j.running ? 'text-accent' : stopped ? 'text-muted' : 'text-ok'}`}>
+          {j.error ? 'Something went wrong' : !j.running ? (stopped ? 'Stopped' : 'Done') : j.paused ? 'Paused' : `${APP_NAME} is working`}
         </div>
         <span className="hidden whitespace-nowrap rounded-lg border border-line px-3 py-1 text-[13.5px] text-muted lg:inline">
           {p.settings.provider} · {p.settings.model} · {p.settings.effort}
@@ -76,7 +82,7 @@ export function Working({ p, onWatch }: { p: Project; onWatch?: () => void }) {
         )}
       </div>
       <div className="mt-4 flex items-center gap-2.5">
-        {j.running && j.paused ? <Pause size={16} className="text-accent" fill="currentColor" /> : j.running ? <div className="spinner" /> : j.error ? <X size={16} className="text-red-400" /> : <Check size={16} className="text-ok" />}
+        {j.running && j.paused ? <Pause size={16} className="text-accent" fill="currentColor" /> : j.running ? <div className="spinner" /> : j.error ? <X size={16} className="text-red-400" /> : stopped ? <Pause size={16} className="text-muted" /> : <Check size={16} className="text-ok" />}
         <div className="text-[19px] font-semibold">{j.error ? (steps.find((s) => !s.done)?.label ?? 'Stopped') : j.title}</div>
         {j.error && (
           <button className="btn-accent ml-auto px-3 py-1.5 text-[14px]" onClick={() => window.api.job.start(p.id)}>

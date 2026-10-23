@@ -96,18 +96,6 @@ export async function cutsPerMinute(video: string, signal?: AbortSignal) {
   return d ? (cuts / d) * 60 : 0
 }
 
-/** Joins the part clips and lays the voiceover on top. */
-export async function assemble(clips: string[], audio: string, out: string, opts: { height?: number; fps?: number } = {}, signal?: AbortSignal) {
-  const list = join(out + '.txt')
-  writeFileSync(list, clips.map((c) => `file '${c.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))
-  const scale = opts.height ? ['-vf', `scale=-2:${opts.height}${opts.fps ? `,fps=${opts.fps}` : ''}`] : []
-  const vcodec = opts.height ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p'] : ['-c:v', 'copy']
-  await ffmpeg(
-    ['-f', 'concat', '-safe', '0', '-i', list, '-i', audio, '-map', '0:v', '-map', '1:a', ...scale, ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out],
-    signal
-  )
-}
-
 /** A short clip of a voiceover range, for a style test. */
 export const audioRange = (input: string, from: number, to: number, out: string) =>
   ffmpeg(['-ss', from.toFixed(3), '-to', to.toFixed(3), '-i', input, '-c:a', 'pcm_s16le', out])
@@ -178,7 +166,8 @@ export async function finishVideo(o: {
   writeFileSync(script, lines.join(';\n'))
   const total = o.clips.reduce((s, c) => s + c.dur, 0)
   const args = ['-hide_banner', '-y']
-  for (const c of o.clips) args.push('-i', c.file)
+  // Every part is open at once: with many parts, fewer decoder threads each keeps memory in check.
+  for (const c of o.clips) args.push(...(n > 16 ? ['-threads', '2'] : []), '-i', c.file)
   args.push('-i', o.voice)
   if (o.music) args.push('-stream_loop', '-1', '-i', o.music.file)
   args.push(

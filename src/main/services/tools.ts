@@ -10,7 +10,11 @@ export const ffmpegPath = () => (ffmpegStatic as unknown as string).replace('app
 
 function which(cmd: string): Promise<string | null> {
   return new Promise((res) =>
-    execFile('where.exe', [cmd], { windowsHide: true }, (err, out) => res(err ? null : out.split(/\r?\n/).find(Boolean)?.trim() ?? null))
+    execFile('where.exe', [cmd], { windowsHide: true }, (err, out) => {
+      // npm puts an extension-less shell script first (for Git Bash); Windows can only start the .exe/.cmd.
+      const found = err ? [] : out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      res(found.find((f) => /\.(exe|cmd|bat)$/i.test(f)) ?? null)
+    })
   )
 }
 

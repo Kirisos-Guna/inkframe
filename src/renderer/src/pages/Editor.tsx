@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import type { Comment, Project } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
-import { fmtTime, useApp } from '@/store/app'
+import { errorText, fmtTime, useApp } from '@/store/app'
 import { Working } from './editor/Working'
 import { Timeline } from './editor/Timeline'
 import { SidePanel, type Tab } from './editor/SidePanel'
@@ -66,7 +66,18 @@ export default function Editor({ id }: { id: string }) {
   const selParts = parts.filter((x) => selected.includes(x.id))
   const changedIds = [...new Set(pending.flatMap((c) => c.partIds))]
 
-  const src = p?.output ? window.api.media.url(p.output) + `?v=${p.updatedAt}` : p?.voiceover ? window.api.media.url(p.voiceover.file) : ''
+  // Keyed by when the video was written, not by every save: otherwise playback restarts on each progress update.
+  const src = p?.output ? window.api.media.url(p.output) + `?v=${p.outputAt ?? 0}` : p?.voiceover ? window.api.media.url(p.voiceover.file) : ''
+  /** Runs an edit, and shows why if the app refuses it (for example while it is working). */
+  const act = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn()
+      return true
+    } catch (e) {
+      showToast(errorText(e))
+      return false
+    }
+  }
 
   const seek = useCallback((t: number) => {
     setTime(t)
@@ -115,7 +126,8 @@ export default function Editor({ id }: { id: string }) {
   // Keyboard: Space play, ←/→ parts, C comment, L lock.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') return
+      const el = e.target as HTMLElement
+      if (['TEXTAREA', 'INPUT', 'SELECT'].includes(el.tagName) || el.isContentEditable || e.ctrlKey || e.altKey || e.metaKey) return
       if (e.code === 'Space') {
         e.preventDefault()
         toggle()
@@ -310,30 +322,29 @@ export default function Editor({ id }: { id: string }) {
                 <ToolBtn
                   icon={Scissors}
                   label="Split"
-                  disabled={selected.length !== 1}
+                  disabled={selected.length !== 1 || p.job.running}
                   onClick={async () => {
                     const part = selParts[0]
                     const at = time > part.start + 0.5 && time < part.end - 0.5 ? time : (part.start + part.end) / 2
-                    await window.api.parts.split(p.id, part.id, at)
+                    await act(() => window.api.parts.split(p.id, part.id, at))
                   }}
                 />
                 <ToolBtn
                   icon={Merge}
                   label="Merge with next"
-                  disabled={selected.length !== 1 || selParts[0]?.index === parts.length - 1}
+                  disabled={selected.length !== 1 || selParts[0]?.index === parts.length - 1 || p.job.running}
                   onClick={async () => {
-                    await window.api.parts.merge(p.id, selected[0])
-                    setSelected([])
+                    if (await act(() => window.api.parts.merge(p.id, selected[0]))) setSelected([])
                   }}
                 />
                 <ToolBtn
                   icon={Trash2}
                   label="Delete"
                   danger
+                  disabled={p.job.running}
                   onClick={async () => {
                     if (!confirm('Delete the selected parts? Their words are cut from the voiceover.')) return
-                    await window.api.parts.remove(p.id, selected)
-                    setSelected([])
+                    if (await act(() => window.api.parts.remove(p.id, selected))) setSelected([])
                   }}
                 />
                 <button className="ml-3 px-2 text-muted hover:text-ink" onClick={() => setSelected([])}>
@@ -393,8 +404,7 @@ export default function Editor({ id }: { id: string }) {
                 showToast(`Added ${file.split(/[\\/]/).pop()} to part ${parts.find((x) => x.id === partId)!.index + 1}`)
               }}
               onCut={async (from, to) => {
-                await window.api.parts.cut(p.id, from, to)
-                showToast(`Cut ${fmtTime(from)}–${fmtTime(to)}. Those parts will be timed again.`)
+                if (await act(() => window.api.parts.cut(p.id, from, to))) showToast(`Cut ${fmtTime(from)}–${fmtTime(to)}. Those parts will be timed again.`)
               }}
             />
           </div>
@@ -430,7 +440,7 @@ function Preview({ p, time }: { p: Project; time: number }) {
       {part?.video ? (
         <video
           ref={ref}
-          src={window.api.media.url(part.video) + `?v=${part.history.length}`}
+          src={window.api.media.url(part.video) + `?v=${part.renderedAt ?? part.history.length}`}
           poster={part.thumb ? window.api.media.url(part.thumb) + `?v=${part.history.length}` : undefined}
           muted
           className="h-full w-full object-contain"

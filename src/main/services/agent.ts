@@ -66,6 +66,17 @@ function friendly(tool: string, input: Record<string, unknown>) {
   }
 }
 
+/** Starts the CLI. A .cmd needs a shell, and then every argument with a space must be quoted by hand. */
+function start(exe: string, args: string[], cwd: string) {
+  const shell = /\.(cmd|bat)$/i.test(exe)
+  const q = (a: string) => (shell && /[\s&()^|<>"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a)
+  const p = spawn(shell ? `"${exe}"` : exe, args.map(q), { cwd, env: cleanEnv(), windowsHide: true, shell })
+  // Decode as one UTF-8 stream, so a character split between two chunks is not garbled.
+  p.stdout.setEncoding('utf8')
+  p.stderr.setEncoding('utf8')
+  return p
+}
+
 /** Runs one headless agent turn and returns its final text. */
 export async function runAgent(o: AgentOpts): Promise<string> {
   if (fakeEnabled()) return fakeAgent(o)
@@ -86,8 +97,7 @@ async function runClaude(o: AgentOpts): Promise<string> {
     args.push('--tools', 'Read', '--allowedTools', 'Read')
   }
   return new Promise((resolve, reject) => {
-    const shell = /\.(cmd|bat)$/i.test(exe)
-    const p = spawn(shell ? `"${exe}"` : exe, args, { cwd: o.cwd, env: cleanEnv(), windowsHide: true, shell })
+    const p = start(exe, args, o.cwd)
     let buf = ''
     let result: string | null = null
     let error: string | null = null
@@ -97,8 +107,8 @@ async function runClaude(o: AgentOpts): Promise<string> {
       reject(new Error('Stopped'))
     }
     o.signal?.addEventListener('abort', onAbort, { once: true })
-    p.stdout.on('data', (d: Buffer) => {
-      buf += d.toString()
+    p.stdout.on('data', (d: string) => {
+      buf += d
       let i: number
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i).trim()
@@ -145,8 +155,7 @@ async function runCodex(o: AgentOpts): Promise<string> {
   if (o.model && !/default/i.test(o.model)) args.push('-m', o.model)
   args.push('-s', o.tools ? 'workspace-write' : 'read-only', '-')
   return new Promise((resolve, reject) => {
-    const shell = /\.(cmd|bat)$/i.test(exe)
-    const p = spawn(shell ? `"${exe}"` : exe, args, { cwd: o.cwd, env: cleanEnv(), windowsHide: true, shell })
+    const p = start(exe, args, o.cwd)
     let stderr = ''
     let buf = ''
     const onAbort = () => {
@@ -154,8 +163,8 @@ async function runCodex(o: AgentOpts): Promise<string> {
       reject(new Error('Stopped'))
     }
     o.signal?.addEventListener('abort', onAbort, { once: true })
-    p.stdout.on('data', (d: Buffer) => {
-      buf += d.toString()
+    p.stdout.on('data', (d: string) => {
+      buf += d
       let i: number
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i)

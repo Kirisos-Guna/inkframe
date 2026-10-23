@@ -20,7 +20,8 @@ let n = 0
 const shot = async (name) => {
   await page.waitForTimeout(400)
   const f = join(outDir, `${String(++n).padStart(2, '0')}-${name}.png`)
-  await page.screenshot({ path: f })
+  // A locked or sleeping display cannot be captured; the run itself does not need the picture.
+  await page.screenshot({ path: f, timeout: 8000 }).catch(() => console.log("(no screenshot: display not available)"))
   console.log('shot', f)
 }
 
@@ -100,8 +101,8 @@ if (mode === 'make') {
       last = status
       await shot(status.replace(/\W+/g, '-').toLowerCase())
     }
-    // PAUSE=1: pause while part 2 is being designed, then resume.
-    if (process.env.PAUSE && !pausedOnce && /Coming up with ideas for part 2/.test(txt)) {
+    // PAUSE=1: pause while part 2 is rendering, then resume.
+    if (process.env.PAUSE && !pausedOnce && /Rendering part 2/.test(txt)) {
       pausedOnce = true
       await page.locator('button[title="Pause"]').first().click()
       await page.waitForTimeout(3000)

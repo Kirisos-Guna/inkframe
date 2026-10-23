@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, CheckCircle2, FileText, Paperclip, RotateCcw, Square, Trash2, X } from 'lucide-react'
 import type { Comment, Part, Project } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
-import { fmtTime, useApp } from '@/store/app'
+import { errorText, fmtTime, useApp } from '@/store/app'
 import { PauseButton, useElapsed } from './Working'
 import { Publish } from './Publish'
 
@@ -53,7 +53,7 @@ export function SidePanel({
 }
 
 function JobCard({ p }: { p: Project }) {
-  const elapsed = useElapsed(p.job.startedAt, p.job.running)
+  const elapsed = useElapsed(p.job)
   if (!p.job.running) return null
   return (
     <div className="relative overflow-hidden rounded-xl border border-accent/70 bg-[#121214] px-5 py-4">
@@ -424,6 +424,7 @@ function Checks({ p }: { p: Project }) {
 }
 
 function History({ p, selected }: { p: Project; selected: Part[] }) {
+  const { showToast } = useApp()
   const parts = selected.length ? selected : p.parts
   return (
     <>
@@ -448,7 +449,12 @@ function History({ p, selected }: { p: Project; selected: Part[] }) {
                       <Check size={13} /> Now
                     </span>
                   ) : (
-                    <button className="flex items-center gap-1 font-medium text-accent" onClick={() => window.api.parts.restore(p.id, x.id, h.file)}>
+                    <button
+                      className="flex items-center gap-1 font-medium text-accent disabled:opacity-40"
+                      disabled={p.job.running}
+                      title={p.job.running ? 'Wait until the work is done' : undefined}
+                      onClick={() => window.api.parts.restore(p.id, x.id, h.file).catch((e) => showToast(errorText(e)))}
+                    >
                       <RotateCcw size={13} /> Go back
                     </button>
                   )}
@@ -478,6 +484,8 @@ function RenderTab({ p }: { p: Project }) {
   const [fps, setFps] = useState<number>(p.settings.quality.fps)
   const [busy, setBusy] = useState(false)
   const rendered = p.parts.filter((x) => x.video).length
+  const allRendered = rendered > 0 && rendered === p.parts.length
+  const changed = p.parts.some((x) => x.status !== 'Up to date')
   return (
     <>
       <div className="rounded-xl border border-line bg-[#121214] px-5 py-4">
@@ -505,7 +513,8 @@ function RenderTab({ p }: { p: Project }) {
         <div className="mt-4 flex gap-2">
           <button
             className="btn-accent flex-1"
-            disabled={busy || p.job.running || !rendered}
+            disabled={busy || p.job.running || !allRendered || changed}
+            title={p.job.running ? 'Wait until the work is done' : !allRendered ? 'Make the video first' : changed ? 'Some parts changed: press Update first' : undefined}
             onClick={async () => {
               setBusy(true)
               try {
@@ -515,7 +524,7 @@ function RenderTab({ p }: { p: Project }) {
                   window.api.shell.reveal(out)
                 }
               } catch (e) {
-                showToast((e as Error).message)
+                showToast(errorText(e))
               } finally {
                 setBusy(false)
               }
@@ -529,6 +538,7 @@ function RenderTab({ p }: { p: Project }) {
             </button>
           )}
         </div>
+        {!p.job.running && allRendered && changed && <div className="mt-2 text-[13px] text-dim">Some parts changed since the video was made. Press Update first.</div>}
       </div>
       {p.parts.map((x) => (
         <div key={x.id} className="flex items-center gap-3 rounded-lg border border-line bg-[#121214] px-4 py-2.5 text-[14px]">

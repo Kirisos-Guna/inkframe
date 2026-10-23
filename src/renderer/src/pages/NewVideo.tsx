@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import type { Effort, Project, ProjectSettings, Provider, VideoKind } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
-import { fmtTime, useApp } from '@/store/app'
+import { errorText, fmtTime, useApp } from '@/store/app'
 import { Chips, Row, Select, StepBadge, Waveform } from '@/components/ui'
 import { CharacterSvg } from '@/components/CharacterSvg'
 import { StylePreview } from '@/components/StylePreview'
@@ -164,6 +164,8 @@ export default function NewVideo() {
       await window.api.job.start(p.id)
       showToast(`${APP_NAME} is making your video`)
       go({ name: 'editor', id: p.id })
+    } catch (e) {
+      showToast(errorText(e))
     } finally {
       setBusy(false)
     }

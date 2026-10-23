@@ -39,6 +39,8 @@ export interface Part {
   material: string[]
   thumb?: string
   video?: string
+  /** When the clip was last rendered (so the page loads the new one). */
+  renderedAt?: number
   history: PartVersion[]
   checks?: { ok: boolean; notes: string[]; at: number }
   /** Which renderer draws this part. Unset = the video's default. */
@@ -97,6 +99,10 @@ export interface JobState {
   error?: string
   /** Paused by the user: the current step was stopped and will be done again on Resume. */
   paused?: boolean
+  /** Time spent paused, when the current pause began, and when the job ended (for the elapsed clock). */
+  pausedMs?: number
+  pausedAt?: number
+  endedAt?: number
 }
 
 export interface ProjectSettings {
@@ -137,6 +143,8 @@ export interface Project {
   settings: ProjectSettings
   job: JobState
   output?: string
+  /** When the final video was last written (so the page loads the new one). */
+  outputAt?: number
   thumbnails?: Thumbnail[]
   publish?: PublishKit
   /** Caption lines (cleaned up by the writer), in seconds. */

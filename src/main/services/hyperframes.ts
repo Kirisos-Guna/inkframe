@@ -1,7 +1,7 @@
 // HyperFrames: renders HTML + GSAP scenes to video. We run its CLI with the app's own runtime
 // (Electron as Node 22) and the bundled ffmpeg/ffprobe, with its telemetry turned off.
 import { createRequire } from 'module'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
 import { basename, dirname, join } from 'path'
 import ffprobeStatic from 'ffprobe-static'
 import { ffmpegPath } from './tools'
@@ -54,12 +54,17 @@ export function ensureHfBrowser(onStatus?: (s: string) => void) {
 /** Puts GSAP, the fonts and the project's material next to a scene so it renders offline. */
 export function prepareHfScene(sceneDir: string, publicDir: string) {
   mkdirSync(join(sceneDir, 'assets'), { recursive: true })
-  copyFileSync(gsapFile(), join(sceneDir, 'gsap.min.js'))
-  copyFileSync(join(dirname(gsapFile()), 'DrawSVGPlugin.min.js'), join(sceneDir, 'DrawSVGPlugin.min.js'))
-  // Inter for clean text; handwriting uses the system's Segoe Print (declared with local() in the template).
-  copyFileSync(interFont(), join(sceneDir, 'assets', 'inter.woff2'))
-  copyFileSync(handFont(), join(sceneDir, 'assets', 'hand.woff2'))
-  if (existsSync(publicDir)) for (const f of readdirSync(publicDir)) copyFileSync(join(publicDir, f), join(sceneDir, 'assets', f))
+  // Copied only when missing or changed: this runs before every check and render, and material can be large.
+  const put = (from: string, to: string) => {
+    if (!statSync(from).isFile()) return
+    if (!existsSync(to) || statSync(to).size !== statSync(from).size) copyFileSync(from, to)
+  }
+  put(gsapFile(), join(sceneDir, 'gsap.min.js'))
+  put(join(dirname(gsapFile()), 'DrawSVGPlugin.min.js'), join(sceneDir, 'DrawSVGPlugin.min.js'))
+  // Inter for clean text, Caveat for handwriting.
+  put(interFont(), join(sceneDir, 'assets', 'inter.woff2'))
+  put(handFont(), join(sceneDir, 'assets', 'hand.woff2'))
+  if (existsSync(publicDir)) for (const f of readdirSync(publicDir)) put(join(publicDir, f), join(sceneDir, 'assets', f))
 }
 
 /** Lint errors that stop a scene from rendering correctly, or null. */

@@ -67,7 +67,10 @@ const hearing = new Map<string, Promise<void>>()
 export function startTranscription(id: string) {
   const p = getProject(id)
   if (!p?.voiceover) return
+  // A new voiceover dropped while the old one is still being heard waits for it: both write the same work files.
+  const prev = hearing.get(id)
   const run = (async () => {
+    await prev?.catch(() => {})
     p.transcribing = true
     p.transcribeError = undefined
     emit(p, true)
@@ -115,6 +118,7 @@ export function pauseJob(id: string) {
   const p = getProject(id)
   if (!p || !jobs.has(id) || p.job.paused) return
   p.job.paused = true
+  p.job.pausedAt = Date.now()
   step(p, 'Paused', { detail: 'Paused. Press Resume to carry on from here; finished parts are kept.' })
   for (const ac of stepControllers.get(id) ?? []) ac.abort()
   emit(p, true)
@@ -124,6 +128,8 @@ export function resumeJob(id: string) {
   const p = getProject(id)
   if (!p || !p.job.paused) return
   p.job.paused = false
+  if (p.job.pausedAt) p.job.pausedMs = (p.job.pausedMs ?? 0) + Date.now() - p.job.pausedAt
+  p.job.pausedAt = undefined
   step(p, 'Carrying on')
   emit(p, true)
   for (const go of resumeWaiters.get(id) ?? []) go()
@@ -172,14 +178,16 @@ const target = (p: Project, x: Part): SceneTarget => ({ file: sceneRel(p, x), en
 /** Starts (or continues) making the video. `force` designs every unlocked part again. */
 export function startJob(id: string, force = false) {
   const p = getProject(id)
-  if (!p || jobs.has(id)) return
+  if (!p || jobs.has(id) || finishing.has(id)) return
   const ac = new AbortController()
   jobs.set(id, ac)
   p.job = { running: true, title: 'Getting ready', detail: '', stage: 'Voiceover', designDone: 0, renderDone: 0, steps: [], startedAt: Date.now() }
   if (force) for (const x of p.parts) if (!x.locked) x.status = 'Not designed yet'
   emit(p, true)
+  let ok = false
   runJob(p, ac.signal)
     .then(() => {
+      ok = true
       p.job.running = false
       p.job.title = 'Your video is ready'
       p.job.detail = `${p.parts.length} parts, ${Math.round(p.voiceover?.duration ?? 0)} seconds. Click a part to change it.`
@@ -198,13 +206,17 @@ export function startJob(id: string, force = false) {
       }
     })
     .finally(() => {
+      if (p.job.paused && p.job.pausedAt) p.job.pausedMs = (p.job.pausedMs ?? 0) + Date.now() - p.job.pausedAt
       p.job.paused = false
+      p.job.pausedAt = undefined
+      p.job.endedAt = Date.now()
       jobs.delete(id)
       stepControllers.delete(id)
       resumeWaiters.delete(id)
       emit(p, true)
-      // A change sent at the very end gets its own run.
-      if (!ac.signal.aborted && p.comments.some((c) => c.state === 'Waiting')) startJob(id)
+      // A change sent at the very end gets its own run. Not after a failure: that would fail again, over and over;
+      // the change waits for Try again instead.
+      if (ok && p.comments.some((c) => c.state === 'Waiting')) startJob(id)
     })
 }
 
@@ -233,10 +245,12 @@ async function runJob(p: Project, signal: AbortSignal) {
 
   // 1 · Voiceover
   p.job.stage = 'Voiceover'
-  if (!p.words.length && !p.transcribeError) {
+  if (!p.words.length) {
+    // Also tries again when hearing failed before (often a download that stopped).
     step(p, 'Listening to the voiceover', { title: 'Listening to the voiceover', detail: 'Finding every word and when it is said.' })
     if (!hearing.has(p.id)) startTranscription(p.id)
     await hearing.get(p.id)
+    if (p.transcribeError) throw new Error(`Could not hear the voiceover: ${p.transcribeError}`)
   }
   if (signal.aborted) throw new Error('Stopped')
 
@@ -330,7 +344,7 @@ async function runJob(p: Project, signal: AbortSignal) {
         if (engineOf(p, x) === 'remotion') serveUrl = await bundleProject(p)
         await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s }))
       }
-      setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x) })
+      setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x), renderedAt: Date.now() })
       p.job.renderDone = p.parts.filter((y) => !needsRender(y) || y.status === 'Rendered').length
       emit(p)
     }
@@ -363,6 +377,7 @@ async function runJob(p: Project, signal: AbortSignal) {
   const out = join(p.dir, 'renders', 'video.mp4')
   await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
   p.output = out
+  p.outputAt = Date.now()
   emit(p, true)
 }
 
@@ -550,6 +565,19 @@ function normaliseParts(p: Project, raw: { start: number; end: number; title: st
 // ---------- editing parts ----------
 function busy(p: Project) {
   if (jobs.has(p.id)) throw new Error('Wait until the current work is done, or stop it first.')
+  if (finishing.has(p.id)) throw new Error('Wait until the video is put together.')
+}
+
+// Export and "put it together again" share the work folder: one at a time per video.
+const finishing = new Set<string>()
+async function finishingLock<T>(p: Project, fn: () => Promise<T>) {
+  busy(p)
+  finishing.add(p.id)
+  try {
+    return await fn()
+  } finally {
+    finishing.delete(p.id)
+  }
 }
 
 export function splitPart(id: string, partId: string, at: number) {
@@ -557,9 +585,13 @@ export function splitPart(id: string, partId: string, at: number) {
   busy(p)
   const i = p.parts.findIndex((x) => x.id === partId)
   const a = p.parts[i]
-  // Snap to the nearest word start.
-  const snap = p.words.filter((w) => w.start > a.start + 0.5 && w.start < a.end - 0.5).sort((x, y) => Math.abs(x.start - at) - Math.abs(y.start - at))[0]?.start ?? at
-  const b: Part = { ...a, id: randomUUID(), title: `${a.title} (2)`, start: snap, text: textOf(p, snap, a.end), status: 'Not designed yet', locked: false, history: [], thumb: undefined, video: undefined, checks: undefined }
+  if (!a) throw new Error('That part is gone.')
+  if (a.end - a.start < 1.2) throw new Error('This part is too short to split.')
+  // Snap to the nearest word start; each half keeps at least half a second.
+  const lo = a.start + 0.5
+  const hi = a.end - 0.5
+  const snap = p.words.filter((w) => w.start > lo && w.start < hi).sort((x, y) => Math.abs(x.start - at) - Math.abs(y.start - at))[0]?.start ?? Math.min(hi, Math.max(lo, at))
+  const b: Part = { ...a, id: randomUUID(), title: `${a.title} (2)`, start: snap, text: textOf(p, snap, a.end), status: 'Not designed yet', locked: false, history: [], thumb: undefined, video: undefined, renderedAt: undefined, checks: undefined }
   Object.assign(a, { end: snap, text: textOf(p, a.start, snap), status: existsSync(scenePath(p, a)) ? 'Designed' : 'Not designed yet' })
   p.parts.splice(i + 1, 0, b)
   reindex(p)
@@ -573,7 +605,7 @@ export function mergePart(id: string, partId: string) {
   const i = p.parts.findIndex((x) => x.id === partId)
   const a = p.parts[i]
   const b = p.parts[i + 1]
-  if (!b) return p
+  if (!a || !b) return p
   Object.assign(a, { end: b.end, text: textOf(p, a.start, b.end), title: a.title, idea: [a.idea, b.idea].filter(Boolean).join(' Then: '), status: 'Not designed yet', material: [...new Set([...a.material, ...b.material])] })
   p.parts.splice(i + 1, 1)
   reindex(p)
@@ -585,7 +617,17 @@ export function mergePart(id: string, partId: string) {
 export async function cutRanges(id: string, ranges: [number, number][]) {
   const p = getProject(id)!
   busy(p)
-  ranges = ranges.sort((a, b) => a[0] - b[0])
+  // Sorted, inside the voiceover, and overlapping ranges joined (so nothing is counted twice).
+  const total = p.voiceover!.duration
+  const merged: [number, number][] = []
+  for (const [a, b] of ranges.map(([a, b]) => [Math.max(0, Math.min(a, b)), Math.min(total, Math.max(a, b))] as [number, number]).sort((x, y) => x[0] - y[0])) {
+    if (b - a < 0.01) continue
+    const last = merged[merged.length - 1]
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b)
+    else merged.push([a, b])
+  }
+  ranges = merged
+  if (!ranges.length) return p
   const src = p.voiceover!.file
   const out = join(p.dir, 'work', `voiceover-edit-${Date.now()}.wav`)
   await cutAudio(src, ranges, out)
@@ -597,7 +639,20 @@ export async function cutRanges(id: string, ranges: [number, number][]) {
     }
     return t - s
   }
-  p.words = p.words.filter((w) => !ranges.some(([a, b]) => w.start >= a && w.end <= b + 0.05)).map((w) => ({ ...w, start: shift(w.start), end: shift(w.end) }))
+  const keep = (w: { start: number; end: number }) => !ranges.some(([a, b]) => w.start >= a && w.end <= b + 0.05)
+  const moved = <T extends { start: number; end: number }>(w: T) => ({ ...w, start: shift(w.start), end: shift(w.end) })
+  p.words = p.words.filter(keep).map(moved)
+  // Tidied captions follow the cut too.
+  if (p.captionLines?.length) {
+    p.captionLines = p.captionLines
+      .map((l) => {
+        const words = l.words.filter(keep).map(moved)
+        return words.length ? { ...l, start: words[0].start, end: words[words.length - 1].end, words, text: words.length === l.words.length ? l.text : words.map((w) => w.w).join(' ') } : null
+      })
+      .filter((l): l is NonNullable<typeof l> => !!l)
+  }
+  // The finished video still has the old voiceover.
+  p.output = undefined
   const removed = ranges.reduce((s, [a, b]) => s + (b - a), 0)
   for (const x of p.parts) {
     const touched = ranges.some(([a, b]) => a < x.end && b > x.start)
@@ -624,9 +679,12 @@ export async function cutRanges(id: string, ranges: [number, number][]) {
 
 export async function removeParts(id: string, partIds: string[]) {
   const p = getProject(id)!
-  const ranges = p.parts.filter((x) => partIds.includes(x.id)).map((x) => [x.start, x.end] as [number, number])
-  for (const x of p.parts.filter((x) => partIds.includes(x.id))) rmSync(scenePath(p, x), { force: true })
-  return cutRanges(id, ranges)
+  busy(p)
+  const gone = p.parts.filter((x) => partIds.includes(x.id))
+  const ranges = gone.map((x) => [x.start, x.end] as [number, number])
+  const out = await cutRanges(id, ranges)
+  for (const x of gone) rmSync(scenePath(p, x), { force: true, recursive: true })
+  return out
 }
 
 export function restoreVersion(id: string, partId: string, file: string) {
@@ -646,34 +704,41 @@ export function restoreVersion(id: string, partId: string, file: string) {
 export async function exportVideo(id: string, opts: { height: number; fps: number }, to: string) {
   const p = getProject(id)!
   busy(p)
-  const sameAsParts = opts.height === p.settings.quality.height && opts.fps === p.settings.quality.fps
-  if (sameAsParts && p.output && existsSync(p.output)) {
-    copyFileSync(p.output, to)
-    return to
-  }
-  let clips = p.parts.map((x) => x.video!)
-  if (opts.height > p.settings.quality.height || opts.fps > p.settings.quality.fps) {
-    // Draw again at the larger size so lines stay sharp.
-    const serveUrl = p.parts.some((x) => engineOf(p, x) === 'remotion') ? await bundleProject(p) : undefined
-    clips = []
-    for (const x of p.parts) {
-      const out = join(p.dir, 'work', `export-${x.id}.mp4`)
-      await renderAny(p, x, { serveUrl, ...opts, out })
-      clips.push(out)
+  if (!p.parts.length || p.parts.some((x) => !x.video || !existsSync(x.video))) throw new Error('Make the video first: some parts are not rendered yet.')
+  if (p.parts.some((x) => x.status !== 'Up to date')) throw new Error('Some parts changed since the video was made. Press Update first, then export.')
+  return finishingLock(p, async () => {
+    const sameAsParts = opts.height === p.settings.quality.height && opts.fps === p.settings.quality.fps
+    if (sameAsParts && p.output && existsSync(p.output)) {
+      copyFileSync(p.output, to)
+      return to
     }
-  }
-  await finish(p, to, opts, undefined, clips)
-  return to
+    let clips = p.parts.map((x) => x.video!)
+    if (opts.height > p.settings.quality.height || opts.fps > p.settings.quality.fps) {
+      // Draw again at the larger size so lines stay sharp.
+      const serveUrl = p.parts.some((x) => engineOf(p, x) === 'remotion') ? await bundleProject(p) : undefined
+      clips = []
+      for (const x of p.parts) {
+        const out = join(p.dir, 'work', `export-${x.id}.mp4`)
+        await renderAny(p, x, { serveUrl, height: opts.height, fps: opts.fps, out })
+        clips.push(out)
+      }
+    }
+    await finish(p, to, opts, undefined, clips)
+    return to
+  })
 }
 
 /** Builds the final video again from the rendered parts (after changing captions, music or transitions). */
 export async function refinish(id: string) {
   const p = getProject(id)!
   busy(p)
-  if (p.parts.some((x) => !x.video || !existsSync(x.video))) throw new Error('Make the video first.')
-  const out = join(p.dir, 'renders', 'video.mp4')
-  await finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps })
-  p.output = out
-  emit(p, true)
-  return p
+  if (!p.parts.length || p.parts.some((x) => !x.video || !existsSync(x.video))) throw new Error('Make the video first.')
+  return finishingLock(p, async () => {
+    const out = join(p.dir, 'renders', 'video.mp4')
+    await finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps })
+    p.output = out
+    p.outputAt = Date.now()
+    emit(p, true)
+    return p
+  })
 }

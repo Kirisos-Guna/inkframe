@@ -123,8 +123,20 @@ async function ensureBrowser(onStatus?: (s: string) => void) {
   return browserReady
 }
 
-/** Bundles every scene of the project. Returns a serve URL for rendering. */
-export async function bundleProject(p: Project, onStatus?: (s: string) => void) {
+// Bundles of one project write the same entry file: one at a time.
+const bundling = new Map<string, Promise<unknown>>()
+
+/**
+ * Bundles every scene of the project. Returns a serve URL for rendering. `name` gives the bundle its own folder, so
+ * a bundle made for something else (thumbnails) never replaces the one a running render is reading.
+ */
+export function bundleProject(p: Project, onStatus?: (s: string) => void, name = 'bundle') {
+  const job = (bundling.get(p.dir) ?? Promise.resolve()).catch(() => {}).then(() => bundleNow(p, onStatus, name))
+  bundling.set(p.dir, job)
+  return job
+}
+
+async function bundleNow(p: Project, onStatus: ((s: string) => void) | undefined, name: string) {
   await ensureBrowser(onStatus)
   syncMaterial(p)
   const { bundle } = await import('@remotion/bundler')
@@ -132,7 +144,7 @@ export async function bundleProject(p: Project, onStatus?: (s: string) => void) 
   return bundle({
     entryPoint: entry,
     publicDir: join(p.dir, 'public'),
-    outDir: join(p.dir, 'work', 'bundle'),
+    outDir: join(p.dir, 'work', name),
     webpackOverride: (c) => ({
       ...c,
       resolve: {
