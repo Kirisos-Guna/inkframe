@@ -1,7 +1,9 @@
 import { app } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { basename, join } from 'path'
 import { build } from 'esbuild'
+import { exportsOf, fixImports, LIBRARY_NAMES, type Offered } from './sceneFix'
 import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
 import { getStyle, listCharacters } from './store'
 import { handFont, interFont } from './hyperframes'
@@ -55,12 +57,52 @@ export async function checkScene(file: string): Promise<string | null> {
   }
 }
 
-function writeEntry(p: Project) {
-  // Every React scene in the folder: the parts and any thumbnails.
+// ---------- small fixes without the agent ----------
+// The names each module offers, read from the kit itself (so they never go stale), then React's and Remotion's own.
+let offered: Offered | null = null
+function moduleExports() {
+  const names = (file: string) => exportsOf(readFileSync(join(kitDir(), file), 'utf8'))
+  offered ??= [['@kit', names('index.tsx')], ['@kit/three', names('three.tsx')], ['@kit/thumb', names('thumb.tsx')], ...LIBRARY_NAMES]
+  return offered
+}
+
+/**
+ * Fixes the two slips that most often break a scene, so no repair session is needed for them: a kit (or React or
+ * Remotion) name that is used but not imported, and a missing default export. Anything else is left to the repair.
+ */
+export function fixSceneImports(file: string) {
+  if (!existsSync(file)) return
+  const src = readFileSync(file, 'utf8')
+  const out = fixImports(src, moduleExports())
+  if (out !== src) writeFileSync(file, out)
+}
+
+// checkScene results, by file and its size and time (a bundle checks every scene, most of them unchanged).
+const checked = new Map<string, { key: string; err: string | null }>()
+async function checkSceneCached(file: string) {
+  const st = statSync(file)
+  const key = `${st.size}:${st.mtimeMs}`
+  const hit = checked.get(file)
+  if (hit?.key === key) return hit.err
+  const err = await checkScene(file)
+  checked.set(file, { key, err })
+  return err
+}
+
+/**
+ * The React scenes that go in the bundle: the parts and any thumbnails. A scene that does not build (one the agent is
+ * still writing, or one waiting for repair) is left out, so it cannot break the bundle for every other part.
+ */
+async function bundleScenes(p: Project) {
   const dir = join(p.dir, 'scenes')
-  const ids = readdirSync(dir)
-    .filter((f) => f.endsWith('.tsx') && !f.startsWith('_'))
-    .map((f) => f.replace(/\.tsx$/, ''))
+  const ids: string[] = []
+  for (const f of readdirSync(dir).filter((f) => f.endsWith('.tsx') && !f.startsWith('_')).sort())
+    if ((await checkSceneCached(join(dir, f))) === null) ids.push(f.replace(/\.tsx$/, ''))
+  return ids
+}
+
+function writeEntry(p: Project, ids: string[]) {
+  const dir = join(p.dir, 'scenes')
   const entry = join(dir, '_entry.tsx')
   writeFileSync(
     entry,
@@ -103,8 +145,10 @@ export async function stillScene(p: Project, serveUrl: string, sceneId: string, 
     characters: listCharacters().filter((c) => p.settings.characterIds.includes(c.id)),
     material: [...new Set(p.material.map((m) => basename(m)))]
   }
-  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions })
-  await renderStill({ serveUrl, composition, output: out, inputProps, frame: size.frames - 1, logLevel: 'error', chromiumOptions })
+  await withStillBrowser(async (puppeteerInstance) => {
+    const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions, puppeteerInstance })
+    await renderStill({ serveUrl, composition, output: out, inputProps, frame: size.frames - 1, logLevel: 'error', chromiumOptions, puppeteerInstance })
+  })
   return out
 }
 
@@ -130,21 +174,58 @@ const bundling = new Map<string, Promise<unknown>>()
  * Bundles every scene of the project. Returns a serve URL for rendering. `name` gives the bundle its own folder, so
  * a bundle made for something else (thumbnails) never replaces the one a running render is reading.
  */
-export function bundleProject(p: Project, onStatus?: (s: string) => void, name = 'bundle') {
-  const job = (bundling.get(p.dir) ?? Promise.resolve()).catch(() => {}).then(() => bundleNow(p, onStatus, name))
+export function bundleProject(p: Project, onStatus?: (s: string) => void, name = 'bundle', opts: BundleOpts = {}) {
+  const job = (bundling.get(p.dir) ?? Promise.resolve()).catch(() => {}).then(() => bundleNow(p, onStatus, name, opts))
   bundling.set(p.dir, job)
   return job
 }
 
-async function bundleNow(p: Project, onStatus: ((s: string) => void) | undefined, name: string) {
+interface BundleOpts {
+  /** A folder per set of scenes (name-<hash>), so a newer bundle never replaces one a render is still reading. */
+  versioned?: boolean
+  /** Scenes that must be in the bundle: if one does not build, say why instead of rendering "Missing scene". */
+  need?: string[]
+}
+
+/** Removes the versioned render bundles of a project (at the start and end of a job). */
+export function clearRenderBundles(p: Project) {
+  const work = join(p.dir, 'work')
+  if (!existsSync(work)) return
+  for (const f of readdirSync(work)) if (/^render-[0-9a-f]{8}$/.test(f)) rmSync(join(work, f), { recursive: true, force: true })
+  for (const k of lastBundle.keys()) if (k.startsWith(work)) lastBundle.delete(k)
+}
+
+// The last bundle of each folder and what went into it: when nothing changed, it is used again as it is.
+const lastBundle = new Map<string, { sig: string; url: string; scenes: Map<string, number> }>()
+
+async function bundleNow(p: Project, onStatus: ((s: string) => void) | undefined, name: string, opts: BundleOpts) {
   await ensureBrowser(onStatus)
   syncMaterial(p)
+  const ids = await bundleScenes(p)
+  for (const id of opts.need ?? []) {
+    if (ids.includes(id)) continue
+    const f = join(p.dir, 'scenes', `${id}.tsx`)
+    throw new Error(existsSync(f) ? (await checkSceneCached(f)) ?? 'The scene does not build' : 'The scene file is missing')
+  }
+  const pub = join(p.dir, 'public')
+  const sig = JSON.stringify([
+    ids.map((id) => [id, statSync(join(p.dir, 'scenes', `${id}.tsx`)).mtimeMs]),
+    existsSync(pub) ? readdirSync(pub).map((f) => [f, statSync(join(pub, f)).size]) : []
+  ])
+  const mtimes = new Map(ids.map((id) => [id, statSync(join(p.dir, 'scenes', `${id}.tsx`)).mtimeMs]))
+  // A render needs only a bundle that has its own scene as it is now: an earlier one will do, no new bundle needed.
+  if (opts.versioned && opts.need?.length)
+    for (const [dir, b] of lastBundle)
+      if (dir.startsWith(join(p.dir, 'work', `${name}-`)) && existsSync(dir) && opts.need.every((id) => b.scenes.get(id) === mtimes.get(id))) return b.url
+  const outDir = join(p.dir, 'work', opts.versioned ? `${name}-${createHash('sha1').update(sig).digest('hex').slice(0, 8)}` : name)
+  const last = lastBundle.get(outDir)
+  if (last?.sig === sig && existsSync(outDir)) return last.url
   const { bundle } = await import('@remotion/bundler')
-  const entry = writeEntry(p)
-  return bundle({
+  const entry = writeEntry(p, ids)
+  const url = await bundle({
     entryPoint: entry,
     publicDir: join(p.dir, 'public'),
-    outDir: join(p.dir, 'work', name),
+    outDir,
     webpackOverride: (c) => ({
       ...c,
       resolve: {
@@ -155,6 +236,43 @@ async function bundleNow(p: Project, onStatus: ((s: string) => void) | undefined
       resolveLoader: { ...c.resolveLoader, modules: [join(appRoot(), 'node_modules'), 'node_modules'] }
     })
   })
+  lastBundle.set(outDir, { sig, url, scenes: mtimes })
+  return url
+}
+
+// ---------- one browser for stills ----------
+// Each still (review pictures, checks, thumbnails) used to start its own Chrome; one shared browser saves seconds
+// per picture. It closes itself after a while without use.
+type Browser = Awaited<ReturnType<typeof import('@remotion/renderer')['openBrowser']>>
+let stillBrowser: Promise<Browser> | null = null
+let idle: NodeJS.Timeout | undefined
+function useStillBrowser() {
+  clearTimeout(idle)
+  idle = setTimeout(closeStillBrowser, 120_000)
+  stillBrowser ??= import('@remotion/renderer')
+    .then(({ openBrowser }) => openBrowser('chrome', { chromiumOptions, logLevel: 'error' }))
+    .catch((e) => {
+      stillBrowser = null
+      throw e
+    })
+  return stillBrowser
+}
+export function closeStillBrowser() {
+  clearTimeout(idle)
+  const b = stillBrowser
+  stillBrowser = null
+  b?.then((x) => x.close(true, 'error', false)).catch(() => {})
+}
+/** Runs a still with the shared browser; if that browser has died, once more with a fresh one. */
+async function withStillBrowser<T>(fn: (b: Browser) => Promise<T>) {
+  try {
+    return await fn(await useStillBrowser())
+  } catch (e) {
+    // Errors in the scene itself are passed on as they are; only a lost browser is worth a second try.
+    if (!/target closed|session closed|connection closed|disconnected|browser has been closed|websocket/i.test(String((e as Error)?.message))) throw e
+    closeStillBrowser()
+    return fn(await useStillBrowser())
+  }
 }
 
 export function propsFor(p: Project, part: Part, opts?: { height?: number; fps?: number }) {
@@ -180,8 +298,11 @@ export function propsFor(p: Project, part: Part, opts?: { height?: number; fps?:
 export async function stillPart(p: Project, part: Part, serveUrl: string, at = 0.7, out = thumbFile(p, part)) {
   const { selectComposition, renderStill } = await import('@remotion/renderer')
   const inputProps = propsFor(p, part, { height: 540, fps: 30 })
-  const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions })
-  await renderStill({ serveUrl, composition, output: out, inputProps, frame: Math.min(composition.durationInFrames - 1, Math.floor(composition.durationInFrames * at)), logLevel: 'error', chromiumOptions })
+  await withStillBrowser(async (puppeteerInstance) => {
+    const composition = await selectComposition({ serveUrl, id: 'Part', inputProps, logLevel: 'error', chromiumOptions, puppeteerInstance })
+    const frame = Math.min(composition.durationInFrames - 1, Math.floor(composition.durationInFrames * at))
+    await renderStill({ serveUrl, composition, output: out, inputProps, frame, logLevel: 'error', chromiumOptions, puppeteerInstance })
+  })
   return out
 }
 

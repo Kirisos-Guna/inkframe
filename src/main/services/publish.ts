@@ -1,12 +1,13 @@
 // Writing (script, titles + description, captions) and thumbnails.
-import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { Project, PublishKit, Thumbnail } from '../../shared/types'
-import { getProject, getSettings, getStyle, libDir, listCharacters } from './store'
+import { getProject, getSettings, getStyle, libDir, listCharacters, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
-import { bundleProject, checkScene, stillScene, thumbMethodFile } from './render'
+import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
+import { drawingSystem, styleDoc } from './prompts'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
@@ -155,13 +156,16 @@ export async function makeThumbnails(id: string, count: number, note?: string, o
     .map((x) => `thumbs/${x.id}.png`)
   // Characters make the Reaction concept; without them, skip it.
   const concepts = CONCEPTS.filter((c) => c !== 'Reaction' || chars.length)
+  // The same instructions for every thumbnail session, as the cached system prompt.
+  const system = `${drawingSystem(readFileSync(methodFile(), 'utf8'), null, styleDoc(style, styleGuide(style.id)))}\n\n---\n\n# How to make the thumbnail\n\n${readFileSync(thumbMethodFile(), 'utf8')}`
+  const draw = { provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, system }
   const made: Thumbnail[] = []
   for (let i = 0; i < count; i++) {
     const tid = 'thumb-' + randomUUID().slice(0, 8)
     const file = `scenes/${tid}.tsx`
     const concept = concepts[(i + (p.thumbnails?.length ?? 0)) % concepts.length]
     onStatus?.(`Designing thumbnail ${i + 1} of ${count}`)
-    const prompt = `First read THUMBNAILS.md (how to make a thumbnail that gets clicked, and the thumbnail kit), METHOD.md (the scene kit) and STYLE.md (the look of this video).
+    const prompt = `The thumbnail guide, the scene kit and the style of this video are in your instructions: do not read THUMBNAILS.md, METHOD.md or STYLE.md.
 ${frames.length ? `Then look at these frames from the video (Read each picture) to reuse its key visual: ${frames.join(', ')}\n` : ''}
 Design the YouTube thumbnail for this video.
 Title: ${p.publish?.titles[0] ?? p.title}
@@ -174,13 +178,16 @@ Make it loud and clear: one big subject with a glow or rim, 2–4 huge words wit
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 
 Write the scene to ${file}. Do not create or change any other file. Reply with one sentence about the idea.`
-    await runAgent({ provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, prompt, tools: true })
+    await runAgent({ ...draw, prompt })
     const abs = join(p.dir, file)
     if (!existsSync(abs)) throw new Error('The thumbnail scene was not written')
+    fixSceneImports(abs)
     let err = await checkScene(abs)
     for (let tries = 0; err && tries < 2; tries++) {
       onStatus?.('Repairing the thumbnail')
-      await runAgent({ provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, prompt: `The thumbnail scene ${file} does not build:\n${err}\nRead THUMBNAILS.md if you need the kit, then fix it. Reply with one sentence.` })
+      // A build error is a small fix: a quick model, as for the parts.
+      const quick = p.settings.provider === 'Codex' ? { effort: 'Low' as const } : { model: 'Sonnet 5.5', effort: 'Low' as const }
+      await runAgent({ ...draw, ...quick, prompt: `The thumbnail scene ${file} does not build:\n${err}\nRead it and fix it (the kit is in your instructions). Reply with one sentence.` })
       err = await checkScene(abs)
     }
     onStatus?.('Drawing the thumbnail')

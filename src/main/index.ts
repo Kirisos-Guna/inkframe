@@ -8,6 +8,7 @@ import * as store from './services/store'
 import { getStatus, resetToolCache } from './services/tools'
 import { duration, peaks } from './services/media'
 import { engineOf } from './services/engines'
+import { closeStillBrowser } from './services/render'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { extractJson, runAgent } from './services/agent'
@@ -322,7 +323,10 @@ else {
     registerIpc()
     createWindow()
   })
-  app.on('before-quit', () => (quitting = true))
+  app.on('before-quit', () => {
+    quitting = true
+    closeStillBrowser()
+  })
   app.on('window-all-closed', () => {
     const busy = store.listProjects().some((p) => pipeline.isRunning(p.id))
     if (!busy) app.quit()

@@ -103,9 +103,10 @@ export default function Scene() {
     const title = p.match(/: "([^"]+)" \(/)?.[1] ?? p.match(/line, in this style:\n"([^"]+)"/)?.[1]?.slice(0, 30) ?? 'Test'
     const bigger = /bigger|label/i.test(p) && existsSync(target)
     o.onStep?.(existsSync(target) ? `Changing ${file}` : `Drawing ${file}`)
+    // Pop is left out of the import on purpose: the app must add it back by itself (see sceneFix.ts).
     writeFileSync(
       target,
-      `import { useScene, Board, Draw, shape, Write, Pop, Travel } from '@kit'
+      `import { useScene, Board, Draw, shape, Write, Travel } from '@kit'
 
 export default function Scene() {
   const { dur, palette } = useScene()

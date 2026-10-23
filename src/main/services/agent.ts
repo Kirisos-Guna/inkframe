@@ -1,4 +1,5 @@
 import { spawn, execFile } from 'child_process'
+import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { app } from 'electron'
 import { basename, join } from 'path'
@@ -22,6 +23,8 @@ export interface AgentOpts {
   prompt: string
   /** Let the agent read and write files in cwd (and addDirs). */
   tools?: boolean
+  /** Fixed instructions shared by many sessions (the method and style), sent as the cached system prompt. */
+  system?: string
   addDirs?: string[]
   /** Codex only: allow web search (for research). */
   search?: boolean
@@ -89,9 +92,9 @@ async function runClaude(o: AgentOpts): Promise<string> {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
   // Lean sessions: only the tools this job needs, none of the user's MCP servers or skills, a short task-specific
   // system prompt instead of the general coding one, and nothing saved. Same work, far fewer tokens per call.
-  args.push('--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file', systemPromptFile())
+  args.push('--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file', systemPromptFile(o.system))
   if (o.tools) {
-    args.push('--tools', 'Read,Write,Edit,Glob,Grep', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit', 'Glob', 'Grep')
+    args.push('--tools', 'Read,Write,Edit', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit')
     for (const d of o.addDirs ?? []) args.push('--add-dir', d)
   } else {
     args.push('--tools', 'Read', '--allowedTools', 'Read')
@@ -191,24 +194,31 @@ async function runCodex(o: AgentOpts): Promise<string> {
         resolve(text)
       } else reject(new Error(stderr.trim().split('\n').slice(-3).join(' ') || `Codex exited with code ${code}`))
     })
-    p.stdin.end(o.prompt)
+    // Codex has no system prompt file: the shared instructions go first, so its own prefix cache can reuse them.
+    p.stdin.end(o.system ? `${o.system}\n\n---\n\n${o.prompt}` : o.prompt)
   })
 }
 
 export { extractJson } from '../../shared/json'
 
-/** The short system prompt for every Inkframe session (written once to the app's data folder). */
+/** The short system prompt for every Inkframe session. */
 const SYSTEM_PROMPT = `You are the drawing and writing engine inside ${'Inkframe'}, a desktop app that turns a voiceover into an animated video.
-You work only on files in the current folder, with the Read, Write, Edit, Glob and Grep tools.
-Follow the method and style files you are pointed to exactly; they describe the scene kit, the look and the rules.
+You work only on files in the current folder, with the Read, Write and Edit tools.
+Follow the method and the style exactly; they describe the scene kit, the look and the rules.
 Never ask questions: make sensible choices yourself. Do not explain your work.
+Write each file in one go with Write. Do not read or look for files you were not pointed to, except pictures you need to see.
 When you are done, reply with one short sentence, or with exactly the JSON that was asked for.`
-let promptPath: string | null = null
-function systemPromptFile() {
-  if (promptPath && existsSync(promptPath)) return promptPath
-  const dir = join(app.getPath('userData'))
+
+/**
+ * The system prompt file for a session: the base prompt plus `extra` (a project's method and style). Every session of a
+ * video gets the very same text at the very start, so after the first one Claude reads it from its prompt cache instead
+ * of the agent spending a turn reading the files. One file per distinct text, in the app's data folder.
+ */
+function systemPromptFile(extra = '') {
+  const text = extra ? `${SYSTEM_PROMPT}\n\n${extra}` : SYSTEM_PROMPT
+  const dir = join(app.getPath('userData'), 'agent-prompts')
   mkdirSync(dir, { recursive: true })
-  promptPath = join(dir, 'agent-system-prompt.txt')
-  writeFileSync(promptPath, SYSTEM_PROMPT)
-  return promptPath
+  const file = join(dir, `${createHash('sha1').update(text).digest('hex').slice(0, 16)}.txt`)
+  if (!existsSync(file)) writeFileSync(file, text)
+  return file
 }

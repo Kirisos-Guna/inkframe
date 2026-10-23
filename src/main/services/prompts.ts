@@ -71,7 +71,21 @@ export interface SceneTarget {
   file: string // relative to the project folder
   engine: 'remotion' | 'hyperframes'
 }
-const methodOf = (t: SceneTarget) => (t.engine === 'hyperframes' ? 'HYPERFRAMES.md (how to draw an HTML part)' : 'METHOD.md (how to draw a part with the kit)')
+/**
+ * The fixed instructions for every drawing session of a video: the method(s) and the style. They go in the system
+ * prompt (identical for every session of the video, so cached), instead of the agent reading the files each time.
+ */
+export function drawingSystem(method: string, htmlMethod: string | null, style: string) {
+  return [
+    '# How to draw a part (the method)\n\n' + method,
+    htmlMethod ? '# How to draw an HTML part (HyperFrames)\n\n' + htmlMethod : '',
+    style
+  ]
+    .filter(Boolean)
+    .join('\n\n---\n\n')
+}
+
+const NO_READ = 'The method and the style of this video are in your instructions: do not read METHOD.md, HYPERFRAMES.md or STYLE.md.'
 
 /** What one part says and when, and its idea. */
 function partSection(p: Project, part: Part, target: SceneTarget) {
@@ -120,10 +134,7 @@ ${videoContext(p, chars)}`
  * part, and Claude sees the neighbouring parts, which also helps the video flow.
  */
 export function designBatchPrompt(p: Project, parts: Part[], chars: CharacterDef[], targets: SceneTarget[]) {
-  const usesReact = targets.some((x) => x.engine === 'remotion')
-  const usesHtml = targets.some((x) => x.engine === 'hyperframes')
-  const methods = [usesReact ? 'METHOD.md (React scenes, .tsx)' : '', usesHtml ? 'HYPERFRAMES.md (HTML scenes)' : ''].filter(Boolean).join(' and ')
-  return `First read ${methods} and STYLE.md (the look of this video). Read each once.
+  return `${NO_READ}
 
 You are drawing ${parts.length} parts of one video, in order. Make them feel like one continuous piece: the same scale and line
 weight, recurring visual motifs, and where it helps, start a part from what the previous part left on screen.
@@ -138,7 +149,7 @@ Write this part ${targets[i].engine === 'hyperframes' ? `by filling in the start
   )
   .join('\n\n')}
 
-Write every scene to its own file, one after the other. Do not create or change any other file.
+Write every scene to its own file with one Write each, one after the other. Do not create or change any other file.
 When all ${parts.length} are written, reply with one short sentence.`
 }
 
@@ -160,7 +171,7 @@ Reply with JSON only: {"parts": [{"part": <number>, "ok": true or false, "notes"
 }
 
 export function designPrompt(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget) {
-  return `First read ${methodOf(target)} and STYLE.md (the look of this video).
+  return `${NO_READ}
 
 ${partContext(p, part, chars, target)}
 
@@ -170,7 +181,7 @@ When you are done, reply with one short sentence that says what the part shows.`
 
 export function fixPrompt(p: Project, part: Part, chars: CharacterDef[], c: Comment, attachments: string[], target: SceneTarget) {
   const others = p.parts.length - 1
-  return `First read ${target.engine === 'hyperframes' ? 'HYPERFRAMES.md' : 'METHOD.md'} and STYLE.md, then the current scene, ${target.file}.
+  return `${NO_READ} First read the current scene, ${target.file}.
 
 ${partContext(p, part, chars, target)}
 
@@ -191,19 +202,8 @@ export function repairPrompt(part: Part, error: string, target: SceneTarget) {
 
 ${error.slice(0, 3000)}
 
-Read ${target.engine === 'hyperframes' ? 'HYPERFRAMES.md' : 'METHOD.md'} if you need the rules, then fix ${target.file} so it builds and renders. Keep the drawing the same.
+Read ${target.file}, then fix it so it builds and renders (the method in your instructions has the rules and the kit). Keep the drawing the same: change only what the error needs.
 Reply with one short sentence.`
-}
-
-export function checkPrompt(part: Part, frames: string[], level: string) {
-  return `You are checking part ${part.index + 1}, "${part.title}", of an explainer video before it ships.
-The voiceover says: "${part.text}"
-Look at these frames from early, middle and end of the part: ${frames.join(', ')} (Read each picture).
-
-Check for: text cut off or running off the frame, overlapping text, things outside the frame, text too small to read on a phone, an empty or unbalanced frame, and whether the end frame clearly shows what the words say.
-${level === 'Low' ? 'Only flag problems that are obvious at first glance.' : level === 'High' ? 'Be strict.' : ''}
-
-Reply with JSON only: {"ok": true or false, "notes": ["short note", ...]}  (notes empty when ok)`
 }
 
 export function characterPrompt(current: CharacterDef, text: string) {

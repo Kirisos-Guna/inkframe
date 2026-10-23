@@ -8,13 +8,13 @@ import { getProject, getStyle, listCharacters, saveProject, styleGuide } from '.
 import { extractJson, runAgent } from './agent'
 import { transcribe } from './transcribe'
 import { cutAudio, finishVideo, stripImage } from './media'
-import { bundleProject, clipFile, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
+import { bundleProject, clearRenderBundles, clipFile, fixSceneImports, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
 import { checkAny, engineOf, renderAny, scenePath, sceneRel, stillAny, writeHfStarter } from './engines'
 import { captionFilters, linesFromWords, prepareCaptionFonts } from './captions'
 import { createRequire } from 'module'
 
 const req = createRequire(__filename)
-import { checkBatchPrompt, designBatchPrompt, designPrompt, fixPrompt, repairPrompt, splitPrompt, styleDoc, type SceneTarget } from './prompts'
+import { checkBatchPrompt, designBatchPrompt, designPrompt, drawingSystem, fixPrompt, repairPrompt, splitPrompt, styleDoc, type SceneTarget } from './prompts'
 
 // ---------- events ----------
 const pendingEmit = new Map<string, NodeJS.Timeout>()
@@ -100,6 +100,8 @@ const HELPERS = 4
 // Parts drawn in one session, and parts checked in one call.
 const DESIGN_BATCH = 4
 const CHECK_BATCH = 6
+// Parts rendered at the same time (each render already uses half the processor cores).
+const RENDERS = 2
 export const isRunning = (id: string) => jobs.has(id)
 
 export function stopJob(id: string) {
@@ -229,13 +231,32 @@ export function addComment(id: string, c: Comment) {
   if (!jobs.has(id)) startJob(id)
 }
 
-/** Files the agent reads in the project folder. */
+/** The method and style files in the project folder (for people, and for thumbnails), and the drawing instructions. */
+const systems = new Map<string, string>()
 function writeGuides(p: Project) {
   const style = getStyle(p.settings.styleId)
+  const doc = styleDoc(style, styleGuide(style.id))
   copyFileSync(methodFile(), join(p.dir, 'METHOD.md'))
   copyFileSync(hfMethodFile(), join(p.dir, 'HYPERFRAMES.md'))
-  writeFileSync(join(p.dir, 'STYLE.md'), styleDoc(style, styleGuide(style.id)))
+  writeFileSync(join(p.dir, 'STYLE.md'), doc)
   syncMaterial(p)
+  // The HTML method only when this video can have HTML parts (decided once per job, so the text stays the same).
+  const html = p.settings.engine === 'HyperFrames' || style.engine === 'hyperframes' || p.parts.some((x) => engineOf(p, x) === 'hyperframes')
+  systems.set(p.id, drawingSystem(readFileSync(methodFile(), 'utf8'), html ? readFileSync(hfMethodFile(), 'utf8') : null, doc))
+}
+
+/** Options for a drawing session: the method and style come along as the (cached) system prompt. */
+function drawOpts(p: Project, signal: AbortSignal, parts: Part[]) {
+  return { ...agentOpts(p, signal, { onStep: batchSteps(p, parts) }), system: systems.get(p.id), tools: true }
+}
+
+/**
+ * Repairs (a scene that does not build or draw) are small mechanical fixes: a quick model does them as well, for a
+ * fraction of the tokens. New ideas and the user's changes still use the chosen model.
+ */
+function repairOpts(p: Project, signal: AbortSignal, x: Part) {
+  const o = drawOpts(p, signal, [x])
+  return p.settings.provider === 'Codex' ? { ...o, effort: 'Low' as const } : { ...o, model: 'Sonnet 5.5', effort: 'Low' as const }
 }
 
 async function runJob(p: Project, signal: AbortSignal) {
@@ -268,108 +289,88 @@ async function runJob(p: Project, signal: AbortSignal) {
   }
   if (signal.aborted) throw new Error('Stopped')
 
-  // 3 · Design, a few parts per session (the method, style and context are read once per batch)
-  p.job.stage = 'Design'
-  const designed = () => p.parts.filter((x) => existsSync(scenePath(p, x)) && x.status !== 'Not designed yet').length
-  p.job.designDone = designed()
-  const todo = p.parts.filter((x) => !x.locked && (x.status === 'Not designed yet' || !existsSync(scenePath(p, x))))
-  await pool(chunk(todo, DESIGN_BATCH), p.settings.helpers ? HELPERS : 1, async (batch) => {
-    const label = batch.length > 1 ? `parts ${batch[0].index + 1}–${batch[batch.length - 1].index + 1}` : `part ${batch[0].index + 1}`
-    step(p, `Coming up with ideas for ${label}`, {
-      title: `Coming up with ideas for ${label}`,
-      detail: clip(`${style.name}, ${p.parts.length} parts. ${batch.map((x) => `Part ${x.index + 1}: ${x.idea || x.title}`).join(' · ')}`, 220)
-    })
-    for (const x of batch) {
-      setPart(p, x.id, { status: 'Designing' })
-      if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x, true)
-    }
-    await guarded(p, signal, async (s) => {
-      // After a pause, only the parts of this batch that are not finished yet are drawn again.
-      const left = batch.filter((x) => part(p, x.id)?.status !== 'Designed')
-      if (!left.length) return
-      await runAgent({ ...agentOpts(p, s, { onStep: batchSteps(p, left) }), prompt: designBatchPrompt(p, left, chars, left.map((x) => target(p, x))), tools: true })
-      for (const x of left) {
-        if (existsSync(scenePath(p, x)) && (engineOf(p, x) !== 'hyperframes' || !isBareStarter(scenePath(p, x)))) await finishScene(p, x, 'First version', s)
-        // A part the batch did not get to is drawn on its own.
-        else await agentScene(p, x, designPrompt(p, x, chars, target(p, x)), 'First version', s)
-        p.job.designDone = designed()
-        emit(p)
-      }
-    })
-  })
-
-  // 4 · Changes from comments
-  for (const c of p.comments.filter((c) => c.state === 'Waiting')) {
-    if (signal.aborted) throw new Error('Stopped')
-    c.state = 'Working'
-    const parts = c.partIds.map((id) => part(p, id)).filter(Boolean) as Part[]
-    for (const x of parts) setPart(p, x.id, { status: 'Making it again' })
-    const attachments = c.attachments.map((a) => {
-      const to = join(p.dir, 'public', basename(a))
-      if (existsSync(a)) copyFileSync(a, to)
-      return basename(a)
-    })
-    await pool(parts, p.settings.helpers ? HELPERS : 1, async (x) => {
-      const others = p.parts.length - 1
-      step(p, `Drawing part ${x.index + 1}`, {
-        title: `Drawing part ${x.index + 1}`,
-        detail: `One note, on part ${x.index + 1}: ${c.text.replace(/\.$/, '')}. The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are.`
+  // Rendering runs alongside the drawing: a part is rendered as soon as it is designed, two at a time.
+  clearRenderBundles(p)
+  const renderedNow = new Set<string>()
+  const bg = new AbortController()
+  const stopBg = () => bg.abort()
+  signal.addEventListener('abort', stopBg, { once: true })
+  const renderSlot = limiter(RENDERS)
+  const background: Promise<void>[] = []
+  const needsRender = (x: Part) => !(x.status === 'Up to date' || x.status === 'Rendered') || !x.video || !existsSync(x.video)
+  const countRendered = () => (p.job.renderDone = p.parts.filter((y) => !needsRender(y)).length)
+  const bundleFor = (x: Part) => (engineOf(p, x) === 'remotion' ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true, need: [x.id] }) : Promise.resolve(undefined))
+  const renderOne = async (x: Part, sig: AbortSignal, foreground: boolean) => {
+    if (sig.aborted) throw new Error('Stopped')
+    setPart(p, x.id, { status: 'Rendering' })
+    step(p, `Rendering part ${x.index + 1}`, foreground ? { title: `Rendering part ${x.index + 1}`, detail: `${x.title}. ${p.job.renderDone} of ${p.parts.length} done.` } : {})
+    try {
+      await guarded(p, sig, async (s) => renderAny(p, x, { serveUrl: await bundleFor(x), signal: s, onStatus: (t) => step(p, t) }))
+    } catch (e) {
+      if (sig.aborted) throw e
+      // A scene that draws as a still can still fail over time: let the agent repair it once.
+      step(p, `Repairing part ${x.index + 1}`)
+      await guarded(p, sig, async (s) => {
+        await runAgent({ ...repairOpts(p, s, x), prompt: repairPrompt(x, (e as Error).message, target(p, x)) })
+        await finishScene(p, x, 'Repaired', s, false)
       })
-      if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x)
-      await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, c, attachments, target(p, x)), c.text, s))
-    })
-    c.state = 'Done'
+      await guarded(p, sig, async (s) => renderAny(p, x, { serveUrl: await bundleFor(x), signal: s }))
+    }
+    renderedNow.add(x.id)
+    setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x), renderedAt: Date.now() })
+    countRendered()
     emit(p)
   }
+  const renderSoon = (x: Part) => {
+    const job = renderSlot(() => renderOne(x, bg.signal, false))
+    job.catch(() => {}) // collected below; not an unhandled rejection meanwhile
+    background.push(job)
+  }
+  /** Waits for the background renders; a failure there fails the job. */
+  const backgroundDone = async () => {
+    const results = await Promise.allSettled(background)
+    background.length = 0
+    const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+    if (failed) throw failed.reason
+  }
+  try {
+    await designAndChange()
+  } catch (e) {
+    // Stop the renders too, and let them wind down before reporting.
+    bg.abort()
+    await Promise.allSettled(background)
+    throw e
+  } finally {
+    signal.removeEventListener('abort', stopBg)
+  }
 
-  // 5 · Render every part, then check them together
+  // 5 · Render what is left (changed parts, parts made earlier), then check everything rendered in this job
   p.job.stage = 'Render'
-  const needsRender = (x: Part) => x.status !== 'Up to date' || !x.video || !existsSync(x.video)
-  p.job.renderDone = p.parts.filter((x) => !needsRender(x)).length
+  countRendered()
   const renderList = p.parts.filter(needsRender)
-  if (renderList.length) {
-    step(p, 'Putting the drawings together', { title: 'Rendering', detail: `${renderList.length} part${renderList.length > 1 ? 's' : ''} at ${p.settings.quality.height}p · ${p.settings.quality.fps} fps` })
-    let serveUrl = renderList.some((x) => engineOf(p, x) === 'remotion') ? await bundleProject(p, (s) => step(p, s)) : undefined
-    const renderOne = async (x: Part) => {
-      if (signal.aborted) throw new Error('Stopped')
-      setPart(p, x.id, { status: 'Rendering' })
-      step(p, `Rendering part ${x.index + 1}`, { title: `Rendering part ${x.index + 1}`, detail: `${x.title}. ${p.job.renderDone} of ${p.parts.length} done.` })
-      try {
-        await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s, onStatus: (t) => step(p, t) }))
-      } catch (e) {
-        if (signal.aborted) throw e
-        // A scene that draws as a still can still fail over time: let the agent repair it once.
-        step(p, `Repairing part ${x.index + 1}`)
-        await guarded(p, signal, (s) => agentScene(p, x, repairPrompt(x, (e as Error).message, target(p, x)), 'Repaired', s, false))
-        if (engineOf(p, x) === 'remotion') serveUrl = await bundleProject(p)
-        await guarded(p, signal, (s) => renderAny(p, x, { serveUrl, signal: s }))
-      }
-      setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x), renderedAt: Date.now() })
-      p.job.renderDone = p.parts.filter((y) => !needsRender(y) || y.status === 'Rendered').length
-      emit(p)
-    }
-    for (const x of renderList) await renderOne(x)
+  if (renderList.length) step(p, 'Putting the drawings together', { title: 'Rendering', detail: `${renderList.length} part${renderList.length > 1 ? 's' : ''} at ${p.settings.quality.height}p · ${p.settings.quality.fps} fps` })
+  await pool(renderList, RENDERS, (x) => renderOne(x, signal, true))
 
+  const toCheck = p.parts.filter((x) => renderedNow.has(x.id) && !x.locked)
+  if (p.settings.checks !== 'Off' && toCheck.length) {
     // Checks: one small picture per part, several parts per call, on a quick model.
-    const toCheck = renderList.filter((x) => !x.locked)
-    if (p.settings.checks !== 'Off' && toCheck.length) {
-      const results = await guarded(p, signal, (s) => checkParts(p, toCheck, serveUrl, s))
-      const bad = p.settings.checks === 'High' ? toCheck.filter((x) => results.get(x.id) && !results.get(x.id)!.ok) : []
-      if (bad.length) {
-        step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: bad.map((x) => `Part ${x.index + 1}: ${results.get(x.id)!.notes.join('; ')}`).join(' · ') })
-        await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {
-          const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${results.get(x.id)!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
-          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
-        })
-        if (bad.some((x) => engineOf(p, x) === 'remotion')) serveUrl = await bundleProject(p)
-        for (const x of bad) await renderOne(x)
-        await guarded(p, signal, (s) => checkParts(p, bad, serveUrl, s))
-      }
+    const url = () => (toCheck.some((x) => engineOf(p, x) === 'remotion') ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true }) : Promise.resolve(undefined))
+    const results = await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s))
+    const bad = p.settings.checks === 'High' ? toCheck.filter((x) => results.get(x.id) && !results.get(x.id)!.ok) : []
+    if (bad.length) {
+      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: bad.map((x) => `Part ${x.index + 1}: ${results.get(x.id)!.notes.join('; ')}`).join(' · ') })
+      await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {
+        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${results.get(x.id)!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
+        await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
+      })
+      await pool(bad, RENDERS, (x) => renderOne(x, signal, true))
+      await guarded(p, signal, async (s) => checkParts(p, bad, await url(), s))
     }
-    for (const x of renderList) setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
-    p.job.renderDone = p.parts.length
-    emit(p)
   }
+  for (const x of p.parts) if (renderedNow.has(x.id) || x.status === 'Rendered') setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
+  p.job.renderDone = p.parts.length
+  emit(p)
+  clearRenderBundles(p)
 
   // 6 · Video
   p.job.stage = 'Video'
@@ -379,6 +380,67 @@ async function runJob(p: Project, signal: AbortSignal) {
   p.output = out
   p.outputAt = Date.now()
   emit(p, true)
+
+  async function designAndChange() {
+    // 3 · Design, a few parts per session (the method and style come cached in the system prompt)
+    p.job.stage = 'Design'
+    const designed = () => p.parts.filter((x) => existsSync(scenePath(p, x)) && x.status !== 'Not designed yet').length
+    p.job.designDone = designed()
+    const todo = p.parts.filter((x) => !x.locked && (x.status === 'Not designed yet' || !existsSync(scenePath(p, x))))
+    await pool(chunk(todo, DESIGN_BATCH), p.settings.helpers ? HELPERS : 1, async (batch) => {
+      const label = batch.length > 1 ? `parts ${batch[0].index + 1}–${batch[batch.length - 1].index + 1}` : `part ${batch[0].index + 1}`
+      step(p, `Coming up with ideas for ${label}`, {
+        title: `Coming up with ideas for ${label}`,
+        detail: clip(`${style.name}, ${p.parts.length} parts. ${batch.map((x) => `Part ${x.index + 1}: ${x.idea || x.title}`).join(' · ')}`, 220)
+      })
+      const finished = new Set<string>()
+      for (const x of batch) {
+        setPart(p, x.id, { status: 'Designing' })
+        if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x, true)
+      }
+      await guarded(p, signal, async (s) => {
+        // After a pause, only the parts of this batch that are not finished yet are drawn again.
+        const left = batch.filter((x) => !finished.has(x.id))
+        if (!left.length) return
+        await runAgent({ ...drawOpts(p, s, left), prompt: designBatchPrompt(p, left, chars, left.map((x) => target(p, x))) })
+        for (const x of left) {
+          if (existsSync(scenePath(p, x)) && (engineOf(p, x) !== 'hyperframes' || !isBareStarter(scenePath(p, x)))) await finishScene(p, x, 'First version', s)
+          // A part the batch did not get to is drawn on its own.
+          else await agentScene(p, x, designPrompt(p, x, chars, target(p, x)), 'First version', s)
+          finished.add(x.id)
+          p.job.designDone = designed()
+          emit(p)
+          // Rendered right away, unless a change for it is waiting (then it is drawn again first).
+          if (!p.comments.some((c) => c.state === 'Waiting' && c.partIds.includes(x.id))) renderSoon(x)
+        }
+      })
+    })
+    await backgroundDone()
+
+    // 4 · Changes from comments
+    for (const c of p.comments.filter((c) => c.state === 'Waiting')) {
+      if (signal.aborted) throw new Error('Stopped')
+      c.state = 'Working'
+      const parts = c.partIds.map((id) => part(p, id)).filter(Boolean) as Part[]
+      for (const x of parts) setPart(p, x.id, { status: 'Making it again' })
+      const attachments = c.attachments.map((a) => {
+        const to = join(p.dir, 'public', basename(a))
+        if (existsSync(a)) copyFileSync(a, to)
+        return basename(a)
+      })
+      await pool(parts, p.settings.helpers ? HELPERS : 1, async (x) => {
+        const others = p.parts.length - 1
+        step(p, `Drawing part ${x.index + 1}`, {
+          title: `Drawing part ${x.index + 1}`,
+          detail: `One note, on part ${x.index + 1}: ${c.text.replace(/\.$/, '')}. The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are.`
+        })
+        if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x)
+        await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, c, attachments, target(p, x)), c.text, s))
+      })
+      c.state = 'Done'
+      emit(p)
+    }
+  }
 }
 
 const finishDetail = (p: Project) =>
@@ -417,7 +479,7 @@ async function finish(p: Project, out: string, size: { height: number; fps: numb
 
 /** Runs the agent on one scene, then checks it builds and draws. */
 async function agentScene(p: Project, x: Part, prompt: string, note: string, signal: AbortSignal, keepHistory = true) {
-  await runAgent({ ...agentOpts(p, signal, { onStep: batchSteps(p, [x]) }), prompt, tools: true })
+  await runAgent({ ...drawOpts(p, signal, [x]), prompt })
   if (!existsSync(scenePath(p, x))) throw new Error(`Part ${x.index + 1}: the scene was not written`)
   await finishScene(p, x, note, signal, keepHistory)
 }
@@ -426,12 +488,14 @@ async function agentScene(p: Project, x: Part, prompt: string, note: string, sig
 async function finishScene(p: Project, x: Part, note: string, signal: AbortSignal, keepHistory = true) {
   const file = scenePath(p, x)
   for (let tries = 0; ; tries++) {
+    // Common slips (a kit name used but not imported, no default export) are fixed here, without a repair session.
+    if (engineOf(p, x) === 'remotion') fixSceneImports(file)
     const err = (await checkAny(p, x)) ?? (await stillOrError(p, x, signal))
     if (!err) break
     if (signal.aborted) throw new Error('Stopped')
     if (tries >= 2) throw new Error(`Part ${x.index + 1} does not draw: ${err.slice(0, 300)}`)
     step(p, `Repairing part ${x.index + 1}`)
-    await runAgent({ ...agentOpts(p, signal, { onStep: batchSteps(p, [x]) }), prompt: repairPrompt(x, err, target(p, x)), tools: true })
+    await runAgent({ ...repairOpts(p, signal, x), prompt: repairPrompt(x, err, target(p, x)) })
   }
   if (keepHistory) {
     const ext = engineOf(p, x) === 'hyperframes' ? 'html' : 'tsx'
@@ -518,6 +582,29 @@ function stillOrError(p: Project, x: Part, signal?: AbortSignal): Promise<string
   })
   bundleLock = job.catch(() => {})
   return job
+}
+
+/** Runs at most `n` of the given tasks at once, in the order they are handed in. */
+function limiter(n: number) {
+  let active = 0
+  const queue: (() => void)[] = []
+  const next = () => {
+    if (active >= n || !queue.length) return
+    active++
+    queue.shift()!()
+  }
+  return <T,>(fn: () => Promise<T>) =>
+    new Promise<T>((resolve, reject) => {
+      queue.push(() =>
+        fn()
+          .then(resolve, reject)
+          .finally(() => {
+            active--
+            next()
+          })
+      )
+      next()
+    })
 }
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
