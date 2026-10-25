@@ -68,7 +68,8 @@ export async function codexPath() {
 export async function ytDlpPath() {
   const s = getSettings()
   if (s.ytDlpPath && existsSync(s.ytDlpPath)) return s.ytDlpPath
-  if (resolved.yt === undefined) resolved.yt = await which('yt-dlp')
+  // Installed by the user, or the copy the app fetched into its library.
+  if (resolved.yt === undefined) resolved.yt = (await which('yt-dlp')) ?? [join(libDir('yt-dlp'), 'yt-dlp.exe')].find(existsSync) ?? null
   return resolved.yt
 }
 

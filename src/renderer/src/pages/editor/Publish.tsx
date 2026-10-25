@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Copy, Download, Image as ImageIcon, Music, RefreshCw, Sparkles, X } from 'lucide-react'
-import type { CaptionStyle, Project, Transition } from '@shared/types'
+import type { CaptionStyle, Project, SfxLevel, Transition } from '@shared/types'
 import { fmtTime, useApp } from '@/store/app'
 import { Chips } from '@/components/ui'
 
 const TRANSITIONS: Transition[] = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom']
 const CAPTIONS: CaptionStyle[] = ['Off', 'Clean', 'Bold pop', 'Karaoke']
+const SFX: SfxLevel[] = ['Off', 'Subtle', 'Lively']
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /** Everything for putting the video out: thumbnail, title and description, captions, and the finishing pass. */
@@ -149,9 +150,17 @@ export function Publish({ p }: { p: Project }) {
       </Section>
 
       {/* Finish */}
-      <Section title="Finish" sub="Transitions and music are added over the drawn parts. No part is drawn again.">
+      <Section title="Finish" sub="Transitions, sound effects and music are added over the drawn parts. No part is drawn again.">
         <div className="label mb-2">Between parts</div>
         <Chips options={TRANSITIONS} value={p.settings.transition ?? 'None'} onToggle={(transition) => setSettings({ transition })} size="sm" />
+        <div className="label mb-2 mt-4">Sound effects</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Chips options={SFX} value={p.settings.sfx ?? 'Off'} onToggle={(sfx) => setSettings({ sfx })} size="sm" />
+          {(p.settings.sfx ?? 'Off') !== 'Off' && (
+            <Volume value={p.settings.sfxVolume ?? 0.6} min={0.1} max={1} onCommit={(sfxVolume) => setSettings({ sfxVolume })} label="Sound effects volume" />
+          )}
+        </div>
+        <div className="mt-1.5 text-[12.5px] text-dim">Timed to what happens on screen: pops, whooshes, typing, counters{p.settings.sfx === 'Lively' ? ' and the pen as it draws' : ''}.</div>
         <div className="label mb-2 mt-4">Music</div>
         {p.settings.music ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -161,7 +170,7 @@ export function Publish({ p }: { p: Project }) {
                 <X size={13} className="text-muted" />
               </button>
             </span>
-            <Volume value={p.settings.music.volume} onCommit={(volume) => setSettings({ music: { ...p.settings.music!, volume } })} />
+            <Volume value={p.settings.music.volume} min={0.05} max={0.6} onCommit={(volume) => setSettings({ music: { ...p.settings.music!, volume } })} label="Music volume" />
           </div>
         ) : (
           <button
@@ -219,22 +228,22 @@ function Description({ p }: { p: Project }) {
   )
 }
 
-/** Music volume: moves freely while dragging, saved when let go. */
-function Volume({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+/** A volume slider: moves freely while dragging, saved when let go. */
+function Volume({ value, min, max, label, onCommit }: { value: number; min: number; max: number; label: string; onCommit: (v: number) => void }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
   return (
     <input
       type="range"
-      min={0.05}
-      max={0.6}
+      min={min}
+      max={max}
       step={0.05}
       value={v}
       onChange={(e) => setV(+e.target.value)}
       onPointerUp={() => v !== value && onCommit(v)}
       onKeyUp={() => v !== value && onCommit(v)}
       className="accent-accent"
-      title={`Music volume ${Math.round(v * 100)}%`}
+      title={`${label} ${Math.round(v * 100)}%`}
     />
   )
 }

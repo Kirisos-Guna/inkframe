@@ -54,6 +54,7 @@ const CREATIVITY = [
 const ENGINES = ['Auto', 'Remotion', 'HyperFrames'] as const
 const TRANSITIONS = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom'] as const
 const CAPTIONS = ['Off', 'Clean', 'Bold pop', 'Karaoke'] as const
+const SFX = ['Off', 'Subtle', 'Lively'] as const
 const MODELS = ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']
 const CODEX_MODELS = ['Codex default']
 
@@ -72,6 +73,8 @@ const defaultSettings = (): ProjectSettings => ({
   engine: 'Auto',
   transition: 'Fade',
   captions: 'Off',
+  sfx: 'Subtle',
+  sfxVolume: 0.6,
   music: null
 })
 
@@ -268,15 +271,16 @@ export default function NewVideo() {
             <span className="text-muted">· names and numbers come out exactly right</span>
             <span className="flex-1" />
             <button className="flex items-center gap-1.5 font-semibold text-accent" onClick={() => setWriting(true)}>
-              <Sparkles size={15} /> Write the script with AI
+              <Sparkles size={15} /> Write or recreate a script with AI
             </button>
           </div>
           {writing && (
             <ScriptWriter
               onClose={() => setWriting(false)}
-              onUse={(text, title) => {
+              onUse={(text, title, dir) => {
                 setScript(text)
-                if (title && !direction.trim()) setDirection(title)
+                // A recreated video comes with a visual direction; otherwise the title is a start.
+                if (!direction.trim()) setDirection(dir?.trim() ? `${title ? `${title}. ` : ''}${dir.trim()}` : title)
                 setWriting(false)
               }}
             />
@@ -501,6 +505,15 @@ export default function NewVideo() {
                 <Chips options={CAPTIONS} value={s.captions ?? 'Off'} onToggle={(captions) => set({ captions })} size="sm" />
               </div>
             </div>
+            <div>
+              <div className="text-[15px] font-semibold text-ink/90">Sound effects</div>
+              <div className="mt-3">
+                <Chips options={SFX} value={s.sfx ?? 'Off'} onToggle={(sfx) => set({ sfx })} size="sm" />
+              </div>
+              <div className="mt-2 text-[13px] text-dim">
+                {(s.sfx ?? 'Off') === 'Off' ? 'Only your voice (and music, if you add it).' : s.sfx === 'Lively' ? 'Pops, whooshes and the scratch of the pen as things are drawn.' : 'Pops, whooshes, typing and counters on the big moments.'} Made on this computer, timed to every frame.
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -517,6 +530,7 @@ export default function NewVideo() {
           <Row k="Creativity" v={s.creativity} />
           <Row k="Style" v={style?.name ?? '—'} />
           <Row k="Captions" v={s.captions ?? 'Off'} />
+          <Row k="Sound effects" v={s.sfx ?? 'Off'} />
           <Row k="Characters" v={s.characterIds.length ? characters.filter((c) => s.characterIds.includes(c.id)).map((c) => c.name).join(', ') : '—'} />
           <Row
             k="Quality"

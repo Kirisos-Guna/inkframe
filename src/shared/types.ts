@@ -51,6 +51,7 @@ export interface Part {
 export type Engine = 'remotion' | 'hyperframes'
 export type Transition = 'None' | 'Fade' | 'Flash' | 'Wipe' | 'Slide' | 'Zoom'
 export type CaptionStyle = 'Off' | 'Clean' | 'Bold pop' | 'Karaoke'
+export type SfxLevel = 'Off' | 'Subtle' | 'Lively'
 
 export interface Thumbnail {
   id: string
@@ -121,6 +122,9 @@ export interface ProjectSettings {
   engine?: 'Auto' | 'Remotion' | 'HyperFrames'
   transition?: Transition
   captions?: CaptionStyle
+  /** Sound effects timed to what happens on screen, and their volume (0..1). */
+  sfx?: SfxLevel
+  sfxVolume?: number
   music?: { file: string; volume: number } | null
 }
 

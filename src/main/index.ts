@@ -9,6 +9,7 @@ import { getStatus, resetToolCache } from './services/tools'
 import { duration, peaks } from './services/media'
 import { engineOf } from './services/engines'
 import { closeStillBrowser } from './services/render'
+import { recreateVideo, type RecreateRequest } from './services/recreate'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { extractJson, runAgent } from './services/agent'
@@ -209,6 +210,11 @@ function registerIpc() {
   h('job:refinish', (id: string) => pipeline.refinish(id))
 
   h('writer:script', (r: ScriptRequest) => writeScript(r))
+  h('writer:recreate', (r: RecreateRequest) =>
+    recreateVideo(r, (s) => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('recreate:status', s)
+    })
+  )
   h('writer:publish', (id: string) => writePublishKit(id))
   h('writer:captions', (id: string, tidy: boolean) => writeCaptions(id, tidy))
   h('captions:save', async (id: string, format: 'srt' | 'vtt') => {

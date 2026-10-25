@@ -122,6 +122,8 @@ export async function finishVideo(o: {
   /** drawtext filters for burned-in captions (see captions.ts). */
   captions?: string[]
   music?: { file: string; volume: number } | null
+  /** The sound-effects track (see sfx.ts), already timed to the whole video. */
+  sfx?: { file: string; volume: number } | null
   signal?: AbortSignal
 }) {
   const W = Math.round((o.height * 16) / 9 / 2) * 2
@@ -154,13 +156,27 @@ export async function finishVideo(o: {
     lines.push(`[${last}]${o.captions.join(",")}[cap]`)
     last = 'cap'
   }
+  // Audio: the voice, plus music that ducks hard under it and sound effects that dip a little when it speaks.
   const vi = n
-  if (o.music) {
-    const mi = n + 1
-    lines.push(`[${vi}:a]asplit=2[voice][side]`)
-    lines.push(`[${mi}:a]volume=${o.music.volume.toFixed(2)}[mus]`)
-    lines.push(`[mus][side]sidechaincompress=threshold=0.03:ratio=10:attack=15:release=400[duck]`)
-    lines.push(`[voice][duck]amix=inputs=2:duration=first:normalize=0[aout]`)
+  const mi = o.music ? n + 1 : -1
+  const si = o.sfx ? n + 1 + (o.music ? 1 : 0) : -1
+  const extra = (o.music ? 1 : 0) + (o.sfx ? 1 : 0)
+  if (extra) {
+    const sides = ['side0', 'side1'].slice(0, extra)
+    lines.push(`[${vi}:a]asplit=${extra + 1}[voice]${sides.map((s) => `[${s}]`).join('')}`)
+    const mixIn = ['[voice]']
+    let side = 0
+    if (o.music) {
+      lines.push(`[${mi}:a]volume=${o.music.volume.toFixed(2)}[mus]`)
+      lines.push(`[mus][${sides[side++]}]sidechaincompress=threshold=0.03:ratio=10:attack=15:release=400[duck]`)
+      mixIn.push('[duck]')
+    }
+    if (o.sfx) {
+      lines.push(`[${si}:a]aresample=48000,volume=${o.sfx.volume.toFixed(2)}[fx]`)
+      lines.push(`[fx][${sides[side++]}]sidechaincompress=threshold=0.05:ratio=3:attack=10:release=250[fxd]`)
+      mixIn.push('[fxd]')
+    }
+    lines.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:duration=first:normalize=0[aout]`)
   } else lines.push(`[${vi}:a]anull[aout]`)
   const script = join(o.workDir, 'finish.filter')
   writeFileSync(script, lines.join(';\n'))
@@ -170,6 +186,7 @@ export async function finishVideo(o: {
   for (const c of o.clips) args.push(...(n > 16 ? ['-threads', '2'] : []), '-i', c.file)
   args.push('-i', o.voice)
   if (o.music) args.push('-stream_loop', '-1', '-i', o.music.file)
+  if (o.sfx) args.push('-i', o.sfx.file)
   args.push(
     '-filter_complex_script', 'finish.filter',
     '-map', `[${last}]`, '-map', '[aout]',

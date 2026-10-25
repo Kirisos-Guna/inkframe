@@ -84,6 +84,7 @@ if (mode === 'make') {
   if (process.env.ENGINE) await chip(process.env.ENGINE)
   if (process.env.CAPTIONS) await chip(process.env.CAPTIONS)
   if (process.env.TRANSITION) await chip(process.env.TRANSITION)
+  if (process.env.SFX) await chip(process.env.SFX)
   // Wait until the voiceover has been heard (first run downloads whisper.cpp).
   for (let i = 0; i < 90 && (await page.evaluate(() => document.body.innerText.includes('Working…'))); i++) await page.waitForTimeout(10000)
   console.log('heard:', (await page.evaluate(() => document.body.innerText.match(/Heard[^\n]*|Could not hear[^\n]*/)?.[0])) ?? '?')

@@ -11,6 +11,7 @@ import { cutAudio, finishVideo, stripImage } from './media'
 import { bundleProject, clearRenderBundles, clipFile, fixSceneImports, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
 import { checkAny, engineOf, renderAny, scenePath, sceneRel, stillAny, writeHfStarter } from './engines'
 import { captionFilters, linesFromWords, prepareCaptionFonts } from './captions'
+import { buildSfxTrack } from './sfx'
 import { createRequire } from 'module'
 
 const req = createRequire(__filename)
@@ -448,7 +449,8 @@ const finishDetail = (p: Project) =>
     'Joining the parts and laying the voiceover on top',
     p.settings.transition && p.settings.transition !== 'None' ? `${p.settings.transition.toLowerCase()} between parts` : '',
     p.settings.captions && p.settings.captions !== 'Off' ? `${p.settings.captions.toLowerCase()} captions` : '',
-    p.settings.music ? 'music under the voice' : ''
+    p.settings.music ? 'music under the voice' : '',
+    p.settings.sfx && p.settings.sfx !== 'Off' ? `${p.settings.sfx.toLowerCase()} sound effects` : ''
   ]
     .filter(Boolean)
     .join(', ') + '.'
@@ -463,7 +465,14 @@ async function finish(p: Project, out: string, size: { height: number; fps: numb
     const H = size.height
     captions = captionFilters(lines, p.settings.captions, { W: Math.round((H * 16) / 9 / 2) * 2, H, accent: getStyle(p.settings.styleId).palette.accent, workDir })
   }
+  // Sound effects, found from the scenes and made here (no AI): one track for the whole video.
+  let sfx: { file: string; volume: number } | null = null
+  if (p.settings.sfx && p.settings.sfx !== 'Off') {
+    const track = await buildSfxTrack(p, p.settings.sfx, join(workDir, 'sfx.wav'))
+    if (track) sfx = { file: track.file, volume: p.settings.sfxVolume ?? 0.6 }
+  }
   return finishVideo({
+    sfx,
     clips: p.parts.map((x, i) => ({ file: clips[i], dur: x.end - x.start })),
     voice: p.voiceover!.file,
     out,

@@ -30,6 +30,14 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
   if (p.includes('voiceover scripts for faceless explainer')) {
     return JSON.stringify({ title: 'Where Your Prompt Actually Goes', script: 'You type a question and hit send.\n\nIt leaves as radio waves.', sources: ['example.com'] })
   }
+  if (p.includes('make their own version of a YouTube video')) {
+    return JSON.stringify({
+      analysis: { concept: 'Follow one prompt from phone to chip', audience: 'Curious beginners', hook: 'Opens on the moment you hit send', structure: [{ at: '0:00', beat: 'You hit send', purpose: 'Hook' }, { at: '0:30', beat: 'The data center', purpose: 'Reveal' }], devices: ['A journey', 'A reveal'] },
+      title: 'The Secret Trip of Your Question',
+      script: 'You press send.\n\nYour words fly off as radio waves.',
+      direction: 'A pen follows the question from phone to tower to cable to server.'
+    })
+  }
   if (p.includes('YouTube upload text')) {
     return JSON.stringify({
       titles: ['Where Your Prompt Really Goes', 'The Trip Your Prompt Takes'],

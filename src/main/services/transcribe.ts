@@ -29,7 +29,7 @@ const ATTEMPTS = 5
  * Downloads to `to`, resuming a half-finished `.part` file. If no data arrives for 30 seconds the
  * connection is dropped and picked up again where it stopped, up to 5 times.
  */
-async function download(url: string, to: string, onProgress?: (pct: number) => void) {
+export async function download(url: string, to: string, onProgress?: (pct: number) => void) {
   const tmp = to + '.part'
   for (let attempt = 1; ; attempt++) {
     const have = existsSync(tmp) ? statSync(tmp).size : 0

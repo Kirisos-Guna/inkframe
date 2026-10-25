@@ -90,6 +90,16 @@ const api = {
   writer: {
     script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
       invoke<{ title: string; script: string; sources: string[]; by: string }>('writer:script', r),
+    recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean }) =>
+      invoke<{
+        title: string
+        script: string
+        direction: string
+        analysis: { concept: string; audience: string; hook: string; structure: { at: string; beat: string; purpose: string }[]; devices: string[] }
+        source: { title: string; channel: string; duration: number; url: string }
+        by: string
+      }>('writer:recreate', r),
+    onRecreate: (cb: (status: string) => void) => on<string>('recreate:status', cb),
     publish: (id: string) => invoke<Project>('writer:publish', id),
     captions: (id: string, tidy: boolean) => invoke<Project>('writer:captions', id, tidy)
   },
