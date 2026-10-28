@@ -5,6 +5,7 @@ import { dirname, join } from 'path'
 import type { AgentOpts } from './agent'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+let limitHit = false
 
 export async function fakeAgent(o: AgentOpts): Promise<string> {
   await wait(300)
@@ -21,7 +22,14 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     }))
     return '```json\n' + JSON.stringify({ title: 'Where Your Prompt Actually Goes', parts }) + '\n```'
   }
-  if (p.includes('before it ships')) return '{"ok": true, "notes": []}'
+  if (p.includes('before it ships')) {
+    // INKFRAME_FAKE_LIMIT=1: the first check hits the usage limit, which resets 5 seconds later.
+    if (process.env.INKFRAME_FAKE_LIMIT === '1' && !limitHit) {
+      limitHit = true
+      throw new Error(`Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 5}`)
+    }
+    return '{"ok": true, "notes": []}'
+  }
   if (p.includes('Design a cartoon character')) return '{"name":"Rosa","hair":"Curly","hairColour":"#b3423a","outfit":"Apron","outfitColour":"#2f9e6b","glasses":true,"expression":"Happy","pose":"Wave"}'
   if (p.includes('learning a visual style')) {
     writeFileSync(join(o.cwd, 'STYLE_GUIDE.md'), 'Thin white lines on deep blue-black. Things are drawn on as they are said.')

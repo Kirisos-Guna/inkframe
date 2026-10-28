@@ -377,8 +377,12 @@ function Material({ p }: { p: Project }) {
 }
 
 function Checks({ p }: { p: Project }) {
-  const checked = p.parts.filter((x) => x.checks)
+  // Older versions saved a check that could not run as passed: it counts as not checked.
+  const ran = (x: Part) => !!x.checks && x.checks.notes[0] !== 'The check could not run'
+  const checked = p.parts.filter(ran)
   const bad = checked.filter((x) => !x.checks!.ok)
+  const missing = p.parts.filter((x) => !x.locked && (!ran(x) || !x.checks!.ok)).length
+  const rendered = p.parts.length > 0 && p.parts.every((x) => x.video)
   return (
     <>
       <div className="rounded-xl border border-line bg-[#121214] px-5 py-4">
@@ -402,11 +406,28 @@ function Checks({ p }: { p: Project }) {
       <div className="text-[14.5px] text-muted">
         {checked.length} of {p.parts.length} parts checked · {bad.length} with notes
       </div>
+      {p.settings.checks !== 'Off' && rendered && (
+        <div className="rounded-xl border border-line bg-[#121214] px-5 py-4">
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-accent" disabled={p.job.running || !missing} onClick={() => window.api.job.check(p.id, 'missing')}>
+              Check {missing || ''} part{missing === 1 ? '' : 's'} again
+            </button>
+            <button className="btn" disabled={p.job.running} onClick={() => window.api.job.check(p.id, 'all')}>
+              Check every part
+            </button>
+          </div>
+          <div className="mt-2 text-[13px] text-dim">
+            {p.job.running
+              ? 'Wait until the current work is done.'
+              : `Checks the parts that are not checked yet or have notes, on a quick model.${p.settings.checks === 'High' ? ' On High, parts with notes are fixed, rendered again and checked once more, then the video is put together again.' : ''}`}
+          </div>
+        </div>
+      )}
       {p.parts.map((x) => (
         <div key={x.id} className="flex gap-3 rounded-xl border border-line bg-[#121214] px-4 py-3">
-          {!x.checks ? (
+          {!ran(x) ? (
             <span className="mt-0.5 h-4 w-4 rounded-full border-2 border-line" />
-          ) : x.checks.ok ? (
+          ) : x.checks!.ok ? (
             <CheckCircle2 size={17} className="mt-0.5 text-ok" />
           ) : (
             <AlertTriangle size={17} className="mt-0.5 text-accent" />
@@ -415,7 +436,7 @@ function Checks({ p }: { p: Project }) {
             <div className="text-[15px] font-medium">
               Part {x.index + 1} · {x.title}
             </div>
-            <div className="text-[13.5px] text-muted">{x.checks ? (x.checks.notes.length ? x.checks.notes.join(' · ') : 'Looks good') : 'Not checked yet'}</div>
+            <div className="text-[13.5px] text-muted">{ran(x) ? (x.checks!.notes.length ? x.checks!.notes.join(' · ') : 'Looks good') : 'Not checked yet'}</div>
           </div>
         </div>
       ))}

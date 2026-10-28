@@ -13,7 +13,33 @@ export interface Usage {
 }
 let usageListener: ((u: Usage) => void) | null = null
 export const onUsage = (fn: (u: Usage) => void) => (usageListener = fn)
-const reportUsage = (u: Usage) => usageListener?.(u)
+let lastUsage: Usage | null = null
+const reportUsage = (u: Usage) => {
+  lastUsage = u
+  usageListener?.(u)
+}
+
+/**
+ * The AI's usage limit is reached (Claude's 5-hour window, or Codex's plan limit). `resetsAt` (ms) is when it opens
+ * again, when known. The pipeline waits for it instead of failing.
+ */
+export class LimitError extends Error {
+  constructor(
+    message: string,
+    readonly resetsAt?: number
+  ) {
+    super(message)
+  }
+}
+
+/** A usage-limit message from either CLI, as a LimitError; null for any other error. */
+export function asLimit(text: string): LimitError | null {
+  if (!/usage limit|rate.?limit|limit reached|hit your (usage )?limit|quota exceeded|too many requests|\b429\b/i.test(text)) return null
+  // Claude Code says "Claude AI usage limit reached|1761600000" (seconds); otherwise use the last reported window.
+  const epoch = Number(text.match(/\|(\d{10})\b/)?.[1] ?? 0) * 1000
+  const resetsAt = epoch > Date.now() ? epoch : lastUsage && lastUsage.resetsAt > Date.now() ? lastUsage.resetsAt : undefined
+  return new LimitError(text.split('|')[0].trim().slice(0, 200), resetsAt)
+}
 
 export interface AgentOpts {
   provider: Provider
@@ -82,7 +108,8 @@ function start(exe: string, args: string[], cwd: string) {
 
 /** Runs one headless agent turn and returns its final text. */
 export async function runAgent(o: AgentOpts): Promise<string> {
-  if (fakeEnabled()) return fakeAgent(o)
+  // The stand-in's errors go through the same limit check as the real CLIs'.
+  if (fakeEnabled()) return fakeAgent(o).catch((e: Error) => Promise.reject(asLimit(e.message) ?? e))
   return o.provider === 'Codex' ? runCodex(o) : runClaude(o)
 }
 
@@ -139,7 +166,9 @@ async function runClaude(o: AgentOpts): Promise<string> {
     p.on('close', (code) => {
       o.signal?.removeEventListener('abort', onAbort)
       if (o.signal?.aborted) return
+      const limit = result === null ? asLimit(`${error ?? ''} ${stderr}`) : null
       if (result !== null) resolve(result)
+      else if (limit) reject(limit)
       else if (/not logged in|\/login/i.test(error ?? '')) reject(new Error('Claude Code is not signed in. Open a terminal, run claude, and sign in once. Then press Try again.'))
       else reject(new Error(error ?? (stderr.trim().split('\n').slice(-3).join(' ') || `Claude Code exited with code ${code}`)))
     })
@@ -161,6 +190,7 @@ async function runCodex(o: AgentOpts): Promise<string> {
     const p = start(exe, args, o.cwd)
     let stderr = ''
     let buf = ''
+    let failure = ''
     const onAbort = () => {
       killTree(p.pid)
       reject(new Error('Stopped'))
@@ -178,6 +208,7 @@ async function runCodex(o: AgentOpts): Promise<string> {
           const t = item.type ?? ev.type
           if (t === 'file_change' || t === 'patch_apply_begin') o.onStep?.('Drawing the scene')
           else if (t === 'command_execution' || t === 'exec_command_begin') o.onStep?.('Checking the files')
+          else if (t === 'error' || t === 'turn.failed' || t === 'stream_error') failure = String(ev.message ?? ev.error?.message ?? item.message ?? '')
         } catch {
           /* ignore */
         }
@@ -192,7 +223,10 @@ async function runCodex(o: AgentOpts): Promise<string> {
         const text = readFileSync(last, 'utf8')
         rmSync(last, { force: true })
         resolve(text)
-      } else reject(new Error(stderr.trim().split('\n').slice(-3).join(' ') || `Codex exited with code ${code}`))
+      } else {
+        const msg = failure || stderr.trim().split('\n').slice(-3).join(' ') || `Codex exited with code ${code}`
+        reject(asLimit(`${msg} ${stderr}`) ?? new Error(msg))
+      }
     })
     // Codex has no system prompt file: the shared instructions go first, so its own prefix cache can reuse them.
     p.stdin.end(o.system ? `${o.system}\n\n---\n\n${o.prompt}` : o.prompt)

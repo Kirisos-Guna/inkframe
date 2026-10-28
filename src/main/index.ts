@@ -204,6 +204,7 @@ function registerIpc() {
   })
 
   h('job:start', (id: string, force?: boolean) => pipeline.startJob(id, !!force))
+  h('job:check', (id: string, which: 'missing' | 'all') => pipeline.startJob(id, false, which))
   h('job:stop', (id: string) => pipeline.stopJob(id))
   h('job:pause', (id: string) => pipeline.pauseJob(id))
   h('job:resume', (id: string) => pipeline.resumeJob(id))

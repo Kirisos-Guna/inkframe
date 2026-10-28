@@ -54,6 +54,7 @@ const api = {
   pathOf: (f: File) => webUtils.getPathForFile(f),
   job: {
     start: (id: string, force = false) => invoke<void>('job:start', id, force),
+    check: (id: string, which: 'missing' | 'all') => invoke<void>('job:check', id, which),
     stop: (id: string) => invoke<void>('job:stop', id),
     pause: (id: string) => invoke<void>('job:pause', id),
     resume: (id: string) => invoke<void>('job:resume', id),

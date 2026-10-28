@@ -5,13 +5,14 @@ import { randomUUID } from 'crypto'
 import type { Comment, Part, Project } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 import { getProject, getStyle, listCharacters, saveProject, styleGuide } from './store'
-import { extractJson, runAgent } from './agent'
+import { extractJson, LimitError, runAgent } from './agent'
 import { transcribe } from './transcribe'
 import { cutAudio, finishVideo, stripImage } from './media'
 import { bundleProject, clearRenderBundles, clipFile, fixSceneImports, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
 import { checkAny, engineOf, renderAny, scenePath, sceneRel, stillAny, writeHfStarter } from './engines'
 import { captionFilters, linesFromWords, prepareCaptionFonts } from './captions'
 import { buildSfxTrack } from './sfx'
+import { fakeEnabled } from './fakeAgent'
 import { createRequire } from 'module'
 
 const req = createRequire(__filename)
@@ -130,6 +131,8 @@ export function pauseJob(id: string) {
 export function resumeJob(id: string) {
   const p = getProject(id)
   if (!p || !p.job.paused) return
+  clearTimeout(limitTimers.get(id))
+  limitTimers.delete(id)
   p.job.paused = false
   if (p.job.pausedAt) p.job.pausedMs = (p.job.pausedMs ?? 0) + Date.now() - p.job.pausedAt
   p.job.pausedAt = undefined
@@ -164,12 +167,46 @@ async function guarded<T>(p: Project, job: AbortSignal, fn: (signal: AbortSignal
       return await fn(ac.signal)
     } catch (e) {
       if (p.job.paused && !job.aborted) continue
+      // The AI's usage limit: hold the job and carry on by itself when the limit resets, instead of failing.
+      if (e instanceof LimitError && !job.aborted) {
+        waitForLimit(p, e)
+        continue
+      }
       throw e
     } finally {
       set.delete(ac)
       job.removeEventListener('abort', onJobAbort)
     }
   }
+}
+
+// ---------- usage limits ----------
+const limitTimers = new Map<string, NodeJS.Timeout>()
+
+/**
+ * Pauses the job until the usage limit resets (a minute and a half after the reset time, to be safe), then resumes it.
+ * When the reset time is not known, it tries again every 30 minutes. Resume tries at once; Stop stops as usual.
+ */
+function waitForLimit(p: Project, e: LimitError) {
+  if (!p.job.paused) pauseJob(p.id)
+  // The stand-in's limit resets in seconds; the real ones get a safety margin.
+  const [least, margin] = fakeEnabled() ? [1000, 1000] : [60_000, 90_000]
+  const at = Math.max(Date.now() + least, (e.resetsAt ?? Date.now() + 30 * 60_000) + margin)
+  const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const who = p.settings.provider === 'Codex' ? 'Codex' : 'Claude'
+  step(p, `Waiting for the ${who} limit to reset`, {
+    title: `Waiting for the ${who} limit to reset`,
+    detail: `${who}'s usage limit is reached. Nothing is lost: ${APP_NAME} carries on by itself at about ${when}${e.resetsAt ? '' : ' (and tries again every 30 minutes)'}. Press Resume to try now.`
+  })
+  clearTimeout(limitTimers.get(p.id))
+  limitTimers.set(
+    p.id,
+    setTimeout(() => {
+      limitTimers.delete(p.id)
+      resumeJob(p.id)
+    }, at - Date.now())
+  )
+  emit(p, true)
 }
 
 function agentOpts(p: Project, signal: AbortSignal, extra: { onStep?: (s: string) => void } = {}) {
@@ -179,7 +216,11 @@ function agentOpts(p: Project, signal: AbortSignal, extra: { onStep?: (s: string
 const target = (p: Project, x: Part): SceneTarget => ({ file: sceneRel(p, x), engine: engineOf(p, x) })
 
 /** Starts (or continues) making the video. `force` designs every unlocked part again. */
-export function startJob(id: string, force = false) {
+/**
+ * Starts (or continues) making the video. `force` designs every unlocked part again. `recheck` also checks parts
+ * that were made before: 'missing' those not checked yet or with notes, 'all' every part.
+ */
+export function startJob(id: string, force = false, recheck?: 'missing' | 'all') {
   const p = getProject(id)
   if (!p || jobs.has(id) || finishing.has(id)) return
   const ac = new AbortController()
@@ -188,7 +229,7 @@ export function startJob(id: string, force = false) {
   if (force) for (const x of p.parts) if (!x.locked) x.status = 'Not designed yet'
   emit(p, true)
   let ok = false
-  runJob(p, ac.signal)
+  runJob(p, ac.signal, recheck)
     .then(() => {
       ok = true
       p.job.running = false
@@ -260,7 +301,7 @@ function repairOpts(p: Project, signal: AbortSignal, x: Part) {
   return p.settings.provider === 'Codex' ? { ...o, effort: 'Low' as const } : { ...o, model: 'Sonnet 5.5', effort: 'Low' as const }
 }
 
-async function runJob(p: Project, signal: AbortSignal) {
+async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'all') {
   const style = getStyle(p.settings.styleId)
   const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   writeGuides(p)
@@ -352,11 +393,15 @@ async function runJob(p: Project, signal: AbortSignal) {
   if (renderList.length) step(p, 'Putting the drawings together', { title: 'Rendering', detail: `${renderList.length} part${renderList.length > 1 ? 's' : ''} at ${p.settings.quality.height}p · ${p.settings.quality.fps} fps` })
   await pool(renderList, RENDERS, (x) => renderOne(x, signal, true))
 
-  const toCheck = p.parts.filter((x) => renderedNow.has(x.id) && !x.locked)
+  // Parts rendered in this job, plus (on Check again) earlier parts that were not checked or have notes.
+  const asked = (x: Part) => recheck === 'all' || (recheck === 'missing' && (unchecked(x) || !x.checks!.ok))
+  const toCheck = p.parts.filter((x) => !x.locked && (renderedNow.has(x.id) || asked(x)))
   if (p.settings.checks !== 'Off' && toCheck.length) {
     // Checks: one small picture per part, several parts per call, on a quick model.
     const url = () => (toCheck.some((x) => engineOf(p, x) === 'remotion') ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true }) : Promise.resolve(undefined))
-    const results = await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s))
+    step(p, `Checking ${toCheck.length} part${toCheck.length > 1 ? 's' : ''}`, { title: 'Checking the parts', detail: `${toCheck.length} part${toCheck.length > 1 ? 's' : ''}, ${CHECK_BATCH} per look, on a quick model.` })
+    const since = p.job.startedAt
+    const results = await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s, since))
     const bad = p.settings.checks === 'High' ? toCheck.filter((x) => results.get(x.id) && !results.get(x.id)!.ok) : []
     if (bad.length) {
       step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: bad.map((x) => `Part ${x.index + 1}: ${results.get(x.id)!.notes.join('; ')}`).join(' · ') })
@@ -364,8 +409,9 @@ async function runJob(p: Project, signal: AbortSignal) {
         const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${results.get(x.id)!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
         await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
       })
+      const fixedAt = Date.now()
       await pool(bad, RENDERS, (x) => renderOne(x, signal, true))
-      await guarded(p, signal, async (s) => checkParts(p, bad, await url(), s))
+      await guarded(p, signal, async (s) => checkParts(p, bad, await url(), s, fixedAt))
     }
   }
   for (const x of p.parts) if (renderedNow.has(x.id) || x.status === 'Rendered') setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
@@ -373,8 +419,9 @@ async function runJob(p: Project, signal: AbortSignal) {
   emit(p)
   clearRenderBundles(p)
 
-  // 6 · Video
+  // 6 · Video (a Check again that changed nothing keeps the video as it is)
   p.job.stage = 'Video'
+  if (recheck && !renderedNow.size && p.output && existsSync(p.output)) return
   step(p, 'Putting it together with your voiceover', { title: 'Putting the video together', detail: finishDetail(p) })
   const out = join(p.dir, 'renders', 'video.mp4')
   await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
@@ -538,11 +585,19 @@ const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length
 const checkModel = (p: Project) =>
   p.settings.provider === 'Codex' ? p.settings.model : p.settings.checks === 'High' ? 'Sonnet 5.5' : 'Haiku 5.5'
 
-/** Checks several parts with one picture each (three moments side by side), a few parts per call. */
-async function checkParts(p: Project, parts: Part[], serveUrl: string | undefined, signal: AbortSignal) {
+/**
+ * Checks several parts with one picture each (three moments side by side), a few parts per call. Parts already checked
+ * since `since` keep that result: after waiting for a usage limit, only the rest are checked.
+ */
+async function checkParts(p: Project, parts: Part[], serveUrl: string | undefined, signal: AbortSignal, since = 0) {
   const results = new Map<string, { ok: boolean; notes: string[]; at: number }>()
   const items: { part: Part; sheet: string }[] = []
   for (const x of parts) {
+    const done = part(p, x.id)?.checks
+    if (since && done && done.at >= since) {
+      results.set(x.id, done)
+      continue
+    }
     step(p, `Checking part ${x.index + 1}`)
     const frames: string[] = []
     for (const [i, at] of [0.2, 0.55, 0.97].entries()) {
@@ -565,16 +620,18 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
         setPart(p, x.id, { checks })
       }
     } catch (e) {
-      if (signal.aborted) throw e
-      for (const { part: x } of group) {
-        const checks = { ok: true, notes: ['The check could not run'], at: Date.now() }
-        results.set(x.id, checks)
-        setPart(p, x.id, { checks })
-      }
+      // A usage limit waits and carries on (see guarded); this group is checked then.
+      if (signal.aborted || e instanceof LimitError) throw e
+      // Any other failure leaves these parts not checked (not "fine"), so Check again picks them up.
+      for (const { part: x } of group) setPart(p, x.id, { checks: undefined })
+      step(p, `Could not check part${group.length > 1 ? 's' : ''} ${group.map((g) => g.part.index + 1).join(', ')}: ${(e as Error).message.slice(0, 120)}`)
     }
   }
   return results
 }
+
+/** A check that never ran (older versions saved these as passed). */
+const unchecked = (x: Part) => !x.checks || x.checks.notes[0] === 'The check could not run'
 
 // Bundling writes one shared entry; do it one at a time.
 let bundleLock: Promise<unknown> = Promise.resolve()
