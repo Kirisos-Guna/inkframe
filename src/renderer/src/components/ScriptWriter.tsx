@@ -143,7 +143,19 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
           ) : (
             <div>
               {out.recreated && <Analysis r={out.recreated} />}
-              <input className="input mb-3 text-[17px] font-semibold" value={out.title} onChange={(e) => setOut({ ...out, title: e.target.value })} />
+              <div className="mb-3 flex gap-2">
+                <input className="input text-[17px] font-semibold" value={out.title} onChange={(e) => setOut({ ...out, title: e.target.value })} />
+                <button
+                  className="btn shrink-0 px-3"
+                  title="Copy the title"
+                  onClick={() => {
+                    navigator.clipboard.writeText(out.title)
+                    showToast('Title copied')
+                  }}
+                >
+                  <Copy size={15} />
+                </button>
+              </div>
               <textarea className="input h-[44vh] resize-none text-[15px] leading-relaxed" value={out.script} onChange={(e) => setOut({ ...out, script: e.target.value })} />
               <div className="mt-2 flex justify-between text-[13px] text-dim">
                 <span>

@@ -14,6 +14,8 @@ export const hfCli = () => join(dirname(req.resolve('hyperframes/package.json'))
 export const gsapFile = () => join(dirname(req.resolve('gsap/package.json')), 'dist', 'gsap.min.js')
 export const interFont = () => join(dirname(req.resolve('@fontsource-variable/inter/package.json')), 'files', 'inter-latin-wght-normal.woff2')
 /** Caveat: natural handwriting for the hand-drawn styles (SIL Open Font Licence). */
+/** Permanent Marker: bold marker lettering for the marker styles (Apache 2.0). */
+export const markerFont = () => join(dirname(req.resolve('@fontsource/permanent-marker/package.json')), 'files', 'permanent-marker-latin-400-normal.woff2')
 export const handFont = () => join(dirname(req.resolve('@fontsource/caveat/package.json')), 'files', 'caveat-latin-600-normal.woff2')
 const ffprobePath = () => unpacked((ffprobeStatic as { path: string }).path)
 
@@ -64,6 +66,7 @@ export function prepareHfScene(sceneDir: string, publicDir: string) {
   // Inter for clean text, Caveat for handwriting.
   put(interFont(), join(sceneDir, 'assets', 'inter.woff2'))
   put(handFont(), join(sceneDir, 'assets', 'hand.woff2'))
+  put(markerFont(), join(sceneDir, 'assets', 'marker.woff2'))
   if (existsSync(publicDir)) for (const f of readdirSync(publicDir)) put(join(publicDir, f), join(sceneDir, 'assets', f))
 }
 

@@ -167,6 +167,8 @@ export interface StyleDef {
   source?: string
   /** 'three' styles are real 3D scenes built with three.js. */
   render?: 'svg' | 'three'
+  /** Lettering: 'marker' writes labels and titles with a bold marker font (Permanent Marker). */
+  font?: 'marker'
   /** The engine this style looks best in. */
   engine?: Engine
   /** Extra direction for the designer, written into STYLE.md. */

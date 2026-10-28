@@ -162,6 +162,53 @@ export function StylePreview({ id }: { id: string }) {
           <circle cx="280" cy="35" r="5" fill={accent} />
         </g>
       )}
+      {id === 'systems-diagram' && (
+        <g fontFamily="'Permanent Marker', cursive">
+          {/* Browser */}
+          <rect x="28" y="30" width="130" height="62" rx="7" fill={paper} />
+          <rect x="34" y="34" width="40" height="9" rx="3" fill="#26272c" />
+          <text x="38" y="41" fontSize="5" fill="#c9c9d1" fontFamily="Inter, sans-serif">New Tab</text>
+          <rect x="34" y="46" width="118" height="10" rx="5" fill="#26272c" />
+          <text x="40" y="53.5" fontSize="5.5" fontFamily="Inter, sans-serif">
+            <tspan fill="#f6b73c">https://</tspan>
+            <tspan fill="#ececf1"> example.com</tspan>
+          </text>
+          {/* Connector with data on it */}
+          <rect x="88" y="98" width="6" height="34" rx="3" fill={accent} />
+          <circle cx="91" cy="98" r="4" fill={bg} stroke={accent} strokeWidth="2" />
+          <circle cx="91" cy="132" r="4" fill={bg} stroke={accent} strokeWidth="2" />
+          <rect x="44" y="108" width="28" height="12" rx="6" fill={accent} />
+          <text x="58" y="117" fontSize="7" textAnchor="middle" fill="#101014">TCP</text>
+          <rect x="108" y="108" width="34" height="12" rx="6" fill="#f6b73c" />
+          <text x="125" y="117" fontSize="7" textAnchor="middle" fill="#101014">HTTP</text>
+          {/* Server */}
+          <rect x="62" y="138" width="60" height="34" rx="6" fill={paper} />
+          <circle cx="76" cy="155" r="8" fill="#26272c" />
+          <path d="M76 149a6 6 0 1 0 6 6h-6" fill="none" stroke="#f0569a" strokeWidth="2" />
+          {[145, 154, 163].map((y) => (
+            <rect key={y} x="88" y={y - 3} width="28" height="6" rx="2" fill="#26272c" />
+          ))}
+          {/* Layers on the right */}
+          <text x="236" y="26" fontSize="10" textAnchor="middle" fill={ink}>SECURE THIS</text>
+          <line x1="206" y1="30" x2="266" y2="30" stroke={ink} strokeWidth="0.8" />
+          {[
+            ['HTTP', '#f6b73c'],
+            ['TLS', '#f0569a'],
+            ['TCP', accent],
+            ['IP', '#9b7cf0']
+          ].map(([t, c], i) => (
+            <g key={t}>
+              <rect x="180" y={42 + i * 30} width="120" height="22" rx="5" fill={paper} />
+              <text x="187" y={57 + i * 30} fontSize="9" fill={c}>
+                {t}
+              </text>
+            </g>
+          ))}
+          <rect x="226" y="80" width="50" height="5" rx="2.5" fill="#f0569a" />
+          <circle cx="226" cy="82.5" r="3.5" fill={bg} stroke="#f0569a" strokeWidth="1.6" />
+          <circle cx="276" cy="82.5" r="3.5" fill={bg} stroke="#f0569a" strokeWidth="1.6" />
+        </g>
+      )}
       {id === 'watercolour' && (
         <g>
           <ellipse cx="90" cy="70" rx="90" ry="40" fill="#8fb6de" opacity=".45" />

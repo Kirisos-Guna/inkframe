@@ -82,16 +82,21 @@ export function Publish({ p }: { p: Project }) {
         {p.publish && (
           <div className="mt-4 space-y-4">
             <div>
-              <div className="label mb-2">Titles · click one to use it as the video's name</div>
+              <div className="label mb-2">Titles · click one to use it as the video's name, or copy it</div>
               <div className="space-y-1.5">
                 {p.publish.titles.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => window.api.projects.update(p.id, { title: t }).then(() => showToast('Renamed the video'))}
-                    className={`block w-full rounded-lg border px-3 py-2 text-left text-[14.5px] ${t === p.title ? 'border-accent' : 'border-line hover:border-[#45454c]'}`}
-                  >
-                    {t} <span className="text-[12px] text-dim">{t.length}</span>
-                  </button>
+                  <div key={t} className={`flex items-center rounded-lg border ${t === p.title ? 'border-accent' : 'border-line hover:border-[#45454c]'}`}>
+                    <button
+                      onClick={() => window.api.projects.update(p.id, { title: t }).then(() => showToast('Renamed the video'))}
+                      className="min-w-0 flex-1 px-3 py-2 text-left text-[14.5px]"
+                      title="Use as the video's name"
+                    >
+                      {t} <span className="text-[12px] text-dim">{t.length}</span>
+                    </button>
+                    <button onClick={() => copy(t, 'Title')} className="shrink-0 px-2.5 py-2 text-muted hover:text-ink" title="Copy this title">
+                      <Copy size={14} />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

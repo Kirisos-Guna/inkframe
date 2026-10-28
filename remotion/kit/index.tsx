@@ -58,20 +58,22 @@ export function useScene() {
   }, [p, frame, fps])
 }
 
-/** Hand styles write with a real handwriting font (Caveat, bundled); the rest use Inter. */
+/** Hand styles write with a real handwriting font (Caveat, bundled), marker styles with Permanent Marker; the rest use Inter. */
 export const hand = (s: StyleDef) =>
-  ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture) ? "'Hand', 'Segoe Print', cursive" : "'Inter', 'Segoe UI', sans-serif"
+  s.font === 'marker' ? "'Marker', 'Hand', cursive" : ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture) ? "'Hand', 'Segoe Print', cursive" : "'Inter', 'Segoe UI', sans-serif"
 
-// Fonts ship with every project (public/_inter.woff2, public/_hand.woff2), so text never depends on the PC's fonts.
+// Fonts ship with every project (public/_inter.woff2, _hand.woff2, _marker.woff2), so text never depends on the PC's fonts.
 let fontsLoad: Promise<void> | null = null
 function useFonts() {
   const [handle] = React.useState(() => delayRender('Loading fonts'))
   React.useEffect(() => {
     fontsLoad ??= Promise.all([
       new FontFace('Inter', `url(${staticFile('_inter.woff2')}) format('woff2')`, { weight: '100 900' }).load(),
-      new FontFace('Hand', `url(${staticFile('_hand.woff2')}) format('woff2')`).load()
+      new FontFace('Hand', `url(${staticFile('_hand.woff2')}) format('woff2')`).load(),
+      // Projects made before the marker font was added may not have it: never hold up rendering for it.
+      new FontFace('Marker', `url(${staticFile('_marker.woff2')}) format('woff2')`).load().catch(() => null)
     ])
-      .then((faces) => faces.forEach((f) => document.fonts.add(f)))
+      .then((faces) => faces.forEach((f) => f && document.fonts.add(f)))
       .catch(() => {})
     fontsLoad.then(() => continueRender(handle))
   }, [handle])

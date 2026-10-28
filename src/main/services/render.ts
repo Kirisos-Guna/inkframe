@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { exportsOf, fixImports, LIBRARY_NAMES, type Offered } from './sceneFix'
 import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
 import { getStyle, listCharacters } from './store'
-import { handFont, interFont } from './hyperframes'
+import { handFont, interFont, markerFont } from './hyperframes'
 
 export const appRoot = () => app.getAppPath()
 export const kitDir = () => join(appRoot(), 'remotion', 'kit')
@@ -32,6 +32,8 @@ export function syncMaterial(p: Project) {
   if (!existsSync(inter)) copyFileSync(interFont(), inter)
   const handw = join(pub, '_hand.woff2')
   if (!existsSync(handw)) copyFileSync(handFont(), handw)
+  const marker = join(pub, '_marker.woff2')
+  if (!existsSync(marker)) copyFileSync(markerFont(), marker)
   for (const m of p.material) {
     const to = join(pub, basename(m))
     if (existsSync(m) && !existsSync(to)) copyFileSync(m, to)

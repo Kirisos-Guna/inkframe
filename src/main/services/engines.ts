@@ -37,8 +37,9 @@ export function writeHfStarter(p: Project, x: Part, force = false) {
 <style>
   @font-face { font-family: 'Inter'; src: url('assets/inter.woff2') format('woff2'); font-weight: 100 900; }
   @font-face { font-family: 'Hand'; src: url('assets/hand.woff2') format('woff2'); }
+  @font-face { font-family: 'Marker'; src: url('assets/marker.woff2') format('woff2'); }
   html, body { margin: 0; background: ${st.palette.bg}; }
-  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: ${st.palette.bg}; color: ${st.palette.ink}; font-family: 'Hand', 'Inter'; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: ${st.palette.bg}; color: ${st.palette.ink}; font-family: ${st.font === 'marker' ? "'Marker', " : ''}'Hand', 'Inter'; }
   .clip { position: absolute; }
   :root { --bg: ${st.palette.bg}; --ink: ${st.palette.ink}; --accent: ${st.palette.accent}; --paper: ${st.palette.paper ?? st.palette.bg}; }
   /* Part ${x.index + 1}: "${x.title.replace(/\*\//g, '')}" (${dur} s) */
