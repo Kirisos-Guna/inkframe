@@ -32,7 +32,7 @@ export interface RecreateResult {
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 /** yt-dlp from the user's PC, or the official build fetched once into the app's library. */
-async function ensureYtDlp(onStatus: (s: string) => void) {
+export async function ensureYtDlp(onStatus: (s: string) => void) {
   const have = await ytDlpPath()
   if (have) return have
   onStatus('Getting the video downloader (once)')

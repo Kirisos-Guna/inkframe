@@ -412,6 +412,17 @@ function Checks({ p }: { p: Project }) {
           ))}
         </div>
       </div>
+      {p.finalCheck && (
+        <div className="flex gap-3 rounded-xl border border-line bg-[#121214] px-4 py-3">
+          {p.finalCheck.notes.length ? <AlertTriangle size={17} className="mt-0.5 shrink-0 text-accent" /> : <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-ok" />}
+          <div className="min-w-0">
+            <div className="text-[15px] font-medium">The finished video</div>
+            <div className="text-[13.5px] text-muted">
+              {p.finalCheck.notes.length ? p.finalCheck.notes.join(' · ') : 'No black frames or frozen pictures; the sound and the length are right.'}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="text-[14.5px] text-muted">
         {checked.length} of {p.parts.length} parts checked · {bad.length} with notes
       </div>

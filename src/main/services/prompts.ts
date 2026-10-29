@@ -10,6 +10,27 @@ function wordsLine(p: Project, from = 0, to = Infinity, fps?: number, offset = 0
     .join(' ')
 }
 
+/**
+ * The voiceover as phrases, each with the second it starts: "[12.34] and then it leaves the phone,". Parts may only
+ * start where a sentence or clause starts, so that is all the plan needs; a time on every word cost far more tokens.
+ */
+export function phrasesLine(words: Project['words']) {
+  const out: string[] = []
+  let cur: Project['words'] = []
+  const flush = () => {
+    if (cur.length) out.push(`[${t(cur[0].start)}] ${cur.map((w) => w.w).join(' ')}`)
+    cur = []
+  }
+  for (const [i, w] of words.entries()) {
+    // A pause also starts a new phrase: speakers often breathe where a sentence starts, punctuation or not.
+    if (cur.length && w.start - words[i - 1].end > 0.45) flush()
+    cur.push(w)
+    if (/[.!?;:,]$/.test(w.w)) flush()
+  }
+  flush()
+  return out.join('\n')
+}
+
 function brief(p: Project, style: StyleDef) {
   const s = p.settings
   return `Kind of video: ${s.kind}
@@ -34,12 +55,12 @@ ${p.direction || '(none, use your judgement)'}
 """
 ${p.script ? `\nThe script the voiceover reads (use its exact spelling for names and numbers):\n"""\n${p.script}\n"""\n` : ''}
 Voiceover length: ${t(dur)} seconds.
-${p.words.length ? `Words and the second each one starts:\n${wordsLine(p)}` : 'The words could not be heard, so split by time and base the ideas on the direction and script.'}
+${p.words.length ? `The voiceover, phrase by phrase, with the second each phrase starts:\n${phrasesLine(p.words)}` : 'The words could not be heard, so split by time and base the ideas on the direction and script.'}
 
 Rules:
 - About ${target} parts (between ${Math.max(1, target - 3)} and ${target + 3}), each 5 to 14 seconds.
 - Parts are back to back: the first starts at 0, each starts where the last ended, the last ends at ${t(dur)}.
-- Cut only at the start time of a word that begins a sentence or clause.
+- Cut only at the start time of a phrase (the times above).
 - Each part gets: a short title (2 to 4 words, like "Into the air"), the words it covers, and an idea: one or two sentences that say what we see and how it builds, beat by beat, in sync with the words.
 - Ideas follow the user's direction. Together they tell one story from the first part to the last.
 
@@ -75,11 +96,12 @@ export interface SceneTarget {
  * The fixed instructions for every drawing session of a video: the method(s) and the style. They go in the system
  * prompt (identical for every session of the video, so cached), instead of the agent reading the files each time.
  */
-export function drawingSystem(method: string, htmlMethod: string | null, style: string) {
+export function drawingSystem(method: string, htmlMethod: string | null, style: string, video = '') {
   return [
     '# How to draw a part (the method)\n\n' + method,
     htmlMethod ? '# How to draw an HTML part (HyperFrames)\n\n' + htmlMethod : '',
-    style
+    style,
+    video ? '# This video\n\n' + video : ''
   ]
     .filter(Boolean)
     .join('\n\n---\n\n')
@@ -109,8 +131,11 @@ The idea for this part: ${part.idea || 'your choice, following the direction'}${
   }`
 }
 
-/** What every part of the video shares: the outline, the direction, characters and material. */
-function videoContext(p: Project, chars: CharacterDef[]) {
+/**
+ * What every part of the video shares: the outline, the direction, characters and material. It is the same for every
+ * drawing session of a video, so it goes in the cached system prompt (see drawingSystem), not in each prompt.
+ */
+export function videoContext(p: Project, chars: CharacterDef[]) {
   return `The whole video, for context:
 ${p.parts.map((x) => `${x.index + 1}. ${x.title}: ${x.text.slice(0, 90)}`).join('\n')}
 
@@ -123,10 +148,10 @@ Characters in this video: ${chars.length ? chars.map((c) => `${c.name} (${c.outf
 Material files you can show with <Picture name="...">: ${[...new Set(p.material.map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}`
 }
 
-function partContext(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
+function partContext(p: Project, part: Part, _chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
   return `You are drawing ${partSection(p, part, target)}
 
-${videoContext(p, chars)}`
+(The whole video's outline, direction, characters and material are in your instructions.)`
 }
 
 /**
@@ -138,8 +163,7 @@ export function designBatchPrompt(p: Project, parts: Part[], chars: CharacterDef
 
 You are drawing ${parts.length} parts of one video, in order. Make them feel like one continuous piece: the same scale and line
 weight, recurring visual motifs, and where it helps, start a part from what the previous part left on screen.
-
-${videoContext(p, chars)}
+The whole video's outline, direction, characters and material are in your instructions.
 
 ${parts
   .map(
@@ -157,14 +181,19 @@ When all ${parts.length} are written, reply with one short sentence.`
  * Checks for several parts at once. Each picture is a strip of three moments (early, middle, end) of one part, so one
  * small image per part instead of three.
  */
-export function checkBatchPrompt(items: { part: Part; sheet: string }[], level: string) {
+export function checkBatchPrompt(items: { part: Part; sheet: string; said: string[] }[], level: string) {
   return `You are checking parts of an explainer video before it ships. Each picture is one part: three moments side by side
-(early, middle, end). Read each picture.
+(early, middle, end). Read each picture. Under each part: what the voice is saying at each of the three moments.
 
-${items.map(({ part, sheet }) => `Part ${part.index + 1} "${part.title}": ${sheet}. The voiceover says: "${part.text.slice(0, 220)}"`).join('\n')}
+${items
+  .map(({ part, sheet, said }) => `Part ${part.index + 1} "${part.title}": ${sheet}\n  early: "${said[0] || '…'}"  middle: "${said[1] || '…'}"  end: "${said[2] || '…'}"`)
+  .join('\n')}
 
-For each part, check: text cut off or running off the frame, drawings that leave the frame, overlapping text, text too
-small to read on a phone, an empty or unbalanced frame, and whether the end frame clearly shows what the words say.
+For each part, check:
+- Timing: each moment shows what is being said then. Flag things drawn well before they are said, or a moment that
+  shows nothing for what is being said.
+- The frame: text cut off or running off the frame, drawings that leave it, overlapping text, text too small to read
+  on a phone, an empty or unbalanced frame; and the end frame clearly shows what the part is about.
 ${level === 'Low' ? 'Only flag problems that are obvious at first glance.' : level === 'High' ? 'Be strict.' : ''}
 
 Reply with JSON only: {"parts": [{"part": <number>, "ok": true or false, "notes": ["short note", ...]}]}  (notes empty when ok)`

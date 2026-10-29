@@ -44,6 +44,7 @@ async function reactCues(p: Project, x: Part): Promise<Cue[]> {
       '@kit': join(cues, 'kit.tsx'),
       '@kit/three': join(cues, 'three.tsx'),
       '@kit/thumb': join(cues, 'kit.tsx'),
+      '@kit/systems': join(cues, 'systems.tsx'),
       remotion: join(cues, 'remotion.tsx'),
       '@react-three/fiber': join(cues, 'fiber.tsx')
     },

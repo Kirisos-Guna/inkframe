@@ -148,6 +148,8 @@ export interface Project {
   settings: ProjectSettings
   job: JobState
   output?: string
+  /** The check of the finished video file (black frames, freezes, sound, length): empty notes when all is well. */
+  finalCheck?: { at: number; notes: string[] }
   /** When the final video was last written (so the page loads the new one). */
   outputAt?: number
   thumbnails?: Thumbnail[]

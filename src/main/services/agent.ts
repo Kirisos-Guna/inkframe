@@ -1,4 +1,4 @@
-import { spawn, execFile } from 'child_process'
+import { spawn, execFile, execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { app } from 'electron'
@@ -103,7 +103,26 @@ function start(exe: string, args: string[], cwd: string) {
   // Decode as one UTF-8 stream, so a character split between two chunks is not garbled.
   p.stdout.setEncoding('utf8')
   p.stderr.setEncoding('utf8')
+  // Remembered until it ends, so quitting the app can end it too (Windows does not end child processes with their
+  // parent: a Claude or Codex run would go on, and go on using tokens, after the app is gone).
+  if (p.pid) {
+    live.add(p.pid)
+    p.on('close', () => live.delete(p.pid!))
+  }
   return p
+}
+
+const live = new Set<number>()
+/** Ends every AI run this app started (and anything they started). Called when the app quits. */
+export function killAllAgents() {
+  for (const pid of live) {
+    try {
+      execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+    } catch {
+      /* already ended */
+    }
+  }
+  live.clear()
 }
 
 /** Runs one headless agent turn and returns its final text. */

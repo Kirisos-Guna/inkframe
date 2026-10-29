@@ -16,7 +16,7 @@ import { extractJson, runAgent } from './services/agent'
 import { characterPrompt } from './services/prompts'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
 import { toSrt, toVtt, linesFromWords } from './services/captions'
-import { onUsage, type Usage } from './services/agent'
+import { killAllAgents, onUsage, type Usage } from './services/agent'
 import { checkForUpdates, downloadUpdate, installUpdate, setupUpdates, updateState } from './services/updater'
 import { copyFileSync, readFileSync, writeFileSync } from 'fs'
 
@@ -49,9 +49,15 @@ function registerMedia() {
     const type = MIME[extname(file).toLowerCase()] ?? 'application/octet-stream'
     const range = req.headers.get('range')
     if (range) {
-      const m = range.match(/bytes=(\d*)-(\d*)/)!
-      const start = m[1] ? +m[1] : 0
-      const end = m[2] ? Math.min(+m[2], size - 1) : size - 1
+      const m = range.match(/bytes=(\d*)-(\d*)/)
+      // "bytes=500-" is from 500 to the end; "bytes=-500" is the LAST 500 bytes.
+      let start = m?.[1] ? +m[1] : 0
+      let end = m?.[2] ? Math.min(+m[2], size - 1) : size - 1
+      if (m && !m[1] && m[2]) {
+        start = Math.max(0, size - +m[2])
+        end = size - 1
+      }
+      if (!size || start > end || start >= size) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
       return new Response(Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream, {
         status: 206,
         headers: { 'Content-Type': type, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) }
@@ -245,6 +251,9 @@ function registerIpc() {
   h('update:check', () => checkForUpdates())
   h('update:download', () => downloadUpdate())
   h('update:install', () => {
+    // Installing quits the app: never in the middle of making a video.
+    const working = store.listProjects().filter((p) => pipeline.isRunning(p.id))
+    if (working.length) throw new Error(`"${working[0].title}" is still being made. Let it finish, or stop it, then install the update.`)
     quitting = true
     installUpdate()
   })
@@ -325,6 +334,12 @@ else {
   })
   app.whenReady().then(() => {
     loadUsage()
+    // Drafts never made (older than a day) only take up space.
+    try {
+      store.cleanDrafts()
+    } catch (e) {
+      console.warn('Could not clean up drafts:', (e as Error).message)
+    }
     setupUpdates()
     registerMedia()
     registerIpc()
@@ -332,6 +347,10 @@ else {
   })
   app.on('before-quit', () => {
     quitting = true
+    // Stop every job and every AI run, so nothing keeps working (or using tokens) after the app is gone.
+    for (const p of store.listProjects()) if (pipeline.isRunning(p.id)) pipeline.stopJob(p.id)
+    killAllAgents()
+    pipeline.flushSaves()
     closeStillBrowser()
   })
   app.on('window-all-closed', () => {

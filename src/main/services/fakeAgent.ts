@@ -130,6 +130,44 @@ export default function Scene() {
     )
     return 'Drew a 3D part.'
   }
+  // The Dark Systems Diagram style is drawn with its building blocks (Steps is left out of the import on purpose).
+  const systems = existsSync(join(o.cwd, 'STYLE.md')) && readFileSync(join(o.cwd, 'STYLE.md'), 'utf8').includes('@kit/systems')
+  const sysFiles = [...new Set([...p.matchAll(/scenes\/([\w-]+)\.tsx/g)].map((m) => m[1]))].filter((f) => !f.startsWith('thumb-'))
+  if (systems && sysFiles.length) {
+    for (const file of sysFiles) {
+      o.onStep?.(`Drawing ${file}`)
+      writeFileSync(
+        join(o.cwd, 'scenes', `${file}.tsx`),
+        `import { useScene, Board } from '@kit'
+import { SIGNAL, Browser, Server, Connector, Packet, Pill, SectionTitle, Focus, Layer } from '@kit/systems'
+
+export default function Scene() {
+  const { dur } = useScene()
+  const q = Math.round(dur * 0.55)
+  return (
+    <Board>
+      <Focus start={q} end={q + 30}>
+        <Browser x={160} y={210} w={640} h={330} url="google.com" secure start={0} />
+        <Connector x1={480} y1={560} x2={480} y2={760} color={SIGNAL.cyan} start={12} />
+        <Pill x={330} y={660} text="TCP" color={SIGNAL.cyan} start={20} />
+        <Pill x={630} y={660} text="HTTP" color={SIGNAL.amber} start={26} />
+        <Packet x1={480} y1={570} x2={480} y2={740} text="<html>" start={34} dur={30} />
+        <Server x={330} y={780} logo={[SIGNAL.cyan, SIGNAL.pink, SIGNAL.amber]} start={8} />
+        <Layer x={980} y={260} w={780} name="HTTP" color={SIGNAL.amber} start={10} />
+        <Layer x={980} y={350} w={780} name="TLS" color={SIGNAL.pink} start={14} />
+        <Layer x={980} y={440} w={780} name="TCP" color={SIGNAL.cyan} start={18} />
+        <Pill x={1520} y={475} text="port 443" color={SIGNAL.amber} size={22} mono start={30} />
+      </Focus>
+      <SectionTitle text="How do TCP and HTTP work together?" words={{ TCP: SIGNAL.cyan, HTTP: SIGNAL.amber }} start={q} />
+      <Steps x={1370} y={900} count={4} current={2} label="TCP, then HTTP" start={Math.round(dur * 0.4)} />
+    </Board>
+  )
+}
+`
+      )
+    }
+    return `Drew ${sysFiles.length} part${sysFiles.length > 1 ? 's' : ''} with the building blocks.`
+  }
   // Every scene file the prompt names (a batch names several).
   const files = [...new Set([...p.matchAll(/scenes\/([\w-]+)\.tsx/g)].map((m) => m[1]))]
   if (!files.length) throw new Error('Fake agent: unknown prompt')

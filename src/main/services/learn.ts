@@ -6,7 +6,7 @@ import type { LearnSession, Part, Project, StyleDef } from '../../shared/types'
 import { libDir, saveLearn, saveStyle } from './store'
 import { extractJson, runAgent } from './agent'
 import { cutsPerMinute, frames, run } from './media'
-import { ytDlpPath } from './tools'
+import { ensureYtDlp } from './recreate'
 import { learnPrompt, styleDoc } from './prompts'
 import { bundleProject, methodFile, renderPart, sceneFile, checkScene } from './render'
 
@@ -61,8 +61,10 @@ async function learn(s: LearnSession, signal: AbortSignal) {
   // 3 minutes of each are needed to learn the look.
   let videos = [s.source]
   if (isLink) {
-    const yt = await ytDlpPath()
-    if (!yt) throw new Error('Links need yt-dlp on this computer. Install it, or drop a video file instead.')
+    const yt = await ensureYtDlp((d) => {
+      s.detail = d.toLowerCase()
+      emit(s)
+    })
     const many = /youtube\.com\/(@|channel\/|c\/|user\/|playlist)|[?&]list=/i.test(s.source)
     const total = many ? 5 : 1
     s.detail = `downloading · video 1 of ${total}`

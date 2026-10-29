@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArrowDownToLine, RefreshCw, RotateCw, Sparkles } from 'lucide-react'
+import { errorText, useApp } from '@/store/app'
 
 type UpdateInfo = Awaited<ReturnType<typeof window.api.update.get>>
 
@@ -35,7 +36,7 @@ export function UpdateBanner() {
         </div>
       )}
       {u.state === 'ready' && (
-        <button className="btn-accent mt-2 w-full py-1.5 text-[13.5px]" onClick={() => window.api.update.install()}>
+        <button className="btn-accent mt-2 w-full py-1.5 text-[13.5px]" onClick={() => window.api.update.install().catch((e) => useApp.getState().showToast(errorText(e)))}>
           <RotateCw size={14} /> Restart to update
         </button>
       )}
@@ -71,7 +72,7 @@ export function UpdateSettings() {
           </button>
         )}
         {u.state === 'ready' && (
-          <button className="btn-accent" onClick={() => window.api.update.install()}>
+          <button className="btn-accent" onClick={() => window.api.update.install().catch((e) => useApp.getState().showToast(errorText(e)))}>
             <RotateCw size={15} /> Restart to update
           </button>
         )}

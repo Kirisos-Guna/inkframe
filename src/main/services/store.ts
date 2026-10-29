@@ -74,8 +74,17 @@ export function getProject(id: string, dir?: string): Project | undefined {
   if (!d) return
   const p = readJson<Project | null>(join(d, 'project.json'), null)
   if (p) {
-    // A job cannot survive a restart of the app.
+    // A job cannot survive a restart of the app: put back what it was in the middle of, so nothing looks stuck.
     if (p.job.running) p.job = { ...p.job, running: false, error: 'Stopped when the app closed. Press Make again to carry on.' }
+    p.job.paused = false
+    p.job.pausedAt = undefined
+    const drawn = (id: string) => existsSync(join(d, 'scenes', `${id}.tsx`)) || existsSync(join(d, 'scenes', id, 'index.html'))
+    for (const x of p.parts) {
+      if (x.status === 'Designing' || x.status === 'Making it again') x.status = drawn(x.id) ? 'Designed' : 'Not designed yet'
+      else if (x.status === 'Rendering') x.status = 'Designed'
+    }
+    // A change that was being worked on is done again on the next run.
+    for (const c of p.comments) if (c.state === 'Working') c.state = 'Waiting'
     p.transcribing = false
     cache.set(id, p)
   }
@@ -140,6 +149,23 @@ export function removeProject(id: string) {
   writeJson(indexFile(), idx)
   cache.delete(id)
   if (p && existsSync(p.dir)) rmSync(p.dir, { recursive: true, force: true })
+}
+
+/**
+ * Removes "New video" drafts that were started but never made, once they are a day old. Only the folder the app
+ * created for the draft goes; a draft whose folder holds the voiceover itself is kept. Returns how many went.
+ */
+export function cleanDrafts(maxAgeMs = 24 * 60 * 60 * 1000) {
+  let n = 0
+  for (const [id, dir] of Object.entries(index())) {
+    const p = getProject(id, dir)
+    if (!p?.draft || Date.now() - (p.updatedAt || p.createdAt) < maxAgeMs) continue
+    const inside = (f?: string) => !!f && f.toLowerCase().startsWith(p.dir.toLowerCase() + '\\')
+    if (inside(p.voiceover?.file) || !existsSync(join(p.dir, 'project.json'))) continue
+    removeProject(id)
+    n++
+  }
+  return n
 }
 
 // ---------- styles ----------

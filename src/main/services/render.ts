@@ -64,7 +64,7 @@ export async function checkScene(file: string): Promise<string | null> {
 let offered: Offered | null = null
 function moduleExports() {
   const names = (file: string) => exportsOf(readFileSync(join(kitDir(), file), 'utf8'))
-  offered ??= [['@kit', names('index.tsx')], ['@kit/three', names('three.tsx')], ['@kit/thumb', names('thumb.tsx')], ...LIBRARY_NAMES]
+  offered ??= [['@kit', names('index.tsx')], ['@kit/three', names('three.tsx')], ['@kit/thumb', names('thumb.tsx')], ['@kit/systems', names('systems.tsx')], ...LIBRARY_NAMES]
   return offered
 }
 
