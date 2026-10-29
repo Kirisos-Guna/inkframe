@@ -73,7 +73,7 @@ if (mode === 'make') {
   await page.locator('button', { hasText: 'Sonnet 5.5' }).first().click()
   await page.locator('button', { hasText: 'Intelligence: High' }).first().click()
   await page.locator('button', { hasText: 'Intelligence: Medium' }).first().click()
-  await page.locator('select').nth(1).selectOption('Low')
+  await page.locator('select').nth(1).selectOption(process.env.CHECKS || 'Low')
   await page.locator('select').nth(0).selectOption('1080-30')
   // STYLE=<name> ENGINE=Auto|Remotion|HyperFrames CAPTIONS=Off|Clean|Bold pop|Karaoke TRANSITION=None|Fade|...
   const chip = (text) => page.locator('button.chip', { hasText: new RegExp('^' + text + '$') }).first().click()

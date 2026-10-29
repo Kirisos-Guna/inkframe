@@ -1,11 +1,13 @@
 // Test stand-in for Claude, used when INKFRAME_FAKE_AGENT=1. It answers each kind of prompt the pipeline sends
 // and writes real scenes with the kit, so bundling, rendering, checks and assembly can be tested without an AI.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import type { AgentOpts } from './agent'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 let limitHit = false
+/** INKFRAME_FAKE_LOG=file: one line per check or fix call, so tests can count what ran. */
+const log = (line: string) => process.env.INKFRAME_FAKE_LOG && appendFileSync(process.env.INKFRAME_FAKE_LOG, line + '\n')
 
 export async function fakeAgent(o: AgentOpts): Promise<string> {
   await wait(300)
@@ -23,12 +25,22 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     return '```json\n' + JSON.stringify({ title: 'Where Your Prompt Actually Goes', parts }) + '\n```'
   }
   if (p.includes('before it ships')) {
+    const nums = [...p.matchAll(/^Part (\d+) "/gm)].map((m) => +m[1])
+    log(`check ${nums.join(',')}`)
     // INKFRAME_FAKE_LIMIT=1: the first check hits the usage limit, which resets 5 seconds later.
     if (process.env.INKFRAME_FAKE_LIMIT === '1' && !limitHit) {
       limitHit = true
       throw new Error(`Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 5}`)
     }
-    return '{"ok": true, "notes": []}'
+    // INKFRAME_FAKE_NOTES=2,3: those parts always get a note.
+    const noted = (process.env.INKFRAME_FAKE_NOTES ?? '').split(',').filter(Boolean).map(Number)
+    return JSON.stringify({ parts: nums.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
+  }
+  if (p.includes('A reviewer found')) {
+    const n = Number(p.match(/Part (\d+) of \d+/)?.[1])
+    log(`fix ${n}`)
+    // INKFRAME_FAKE_FIXFAIL=3: the automatic fix of that part fails.
+    if (String(n) === process.env.INKFRAME_FAKE_FIXFAIL) throw new Error('The model stopped half way (test)')
   }
   if (p.includes('Design a cartoon character')) return '{"name":"Rosa","hair":"Curly","hairColour":"#b3423a","outfit":"Apron","outfitColour":"#2f9e6b","glasses":true,"expression":"Happy","pose":"Wave"}'
   if (p.includes('learning a visual style')) {

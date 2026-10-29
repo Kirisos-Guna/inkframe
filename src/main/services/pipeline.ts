@@ -230,11 +230,13 @@ export function startJob(id: string, force = false, recheck?: 'missing' | 'all')
   emit(p, true)
   let ok = false
   runJob(p, ac.signal, recheck)
-    .then(() => {
+    .then((notFixed) => {
       ok = true
       p.job.running = false
       p.job.title = 'Your video is ready'
-      p.job.detail = `${p.parts.length} parts, ${Math.round(p.voiceover?.duration ?? 0)} seconds. Click a part to change it.`
+      p.job.detail =
+        `${p.parts.length} parts, ${Math.round(p.voiceover?.duration ?? 0)} seconds. Click a part to change it.` +
+        (notFixed.length ? ` The automatic fix did not work for ${notFixed.join(', ')}: ${notFixed.length === 1 ? 'it keeps its' : 'they keep their'} last good version (see Checks).` : '')
       for (const s of p.job.steps) s.done = true
     })
     .catch((e: Error) => {
@@ -301,7 +303,7 @@ function repairOpts(p: Project, signal: AbortSignal, x: Part) {
   return p.settings.provider === 'Codex' ? { ...o, effort: 'Low' as const } : { ...o, model: 'Sonnet 5.5', effort: 'Low' as const }
 }
 
-async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'all') {
+async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'all'): Promise<string[]> {
   const style = getStyle(p.settings.styleId)
   const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   writeGuides(p)
@@ -393,25 +395,48 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   if (renderList.length) step(p, 'Putting the drawings together', { title: 'Rendering', detail: `${renderList.length} part${renderList.length > 1 ? 's' : ''} at ${p.settings.quality.height}p · ${p.settings.quality.fps} fps` })
   await pool(renderList, RENDERS, (x) => renderOne(x, signal, true))
 
-  // Parts rendered in this job, plus (on Check again) earlier parts that were not checked or have notes.
-  const asked = (x: Part) => recheck === 'all' || (recheck === 'missing' && (unchecked(x) || !x.checks!.ok))
-  const toCheck = p.parts.filter((x) => !x.locked && (renderedNow.has(x.id) || asked(x)))
-  if (p.settings.checks !== 'Off' && toCheck.length) {
-    // Checks: one small picture per part, several parts per call, on a quick model.
-    const url = () => (toCheck.some((x) => engineOf(p, x) === 'remotion') ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true }) : Promise.resolve(undefined))
-    step(p, `Checking ${toCheck.length} part${toCheck.length > 1 ? 's' : ''}`, { title: 'Checking the parts', detail: `${toCheck.length} part${toCheck.length > 1 ? 's' : ''}, ${CHECK_BATCH} per look, on a quick model.` })
-    const since = p.job.startedAt
-    const results = await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s, since))
-    const bad = p.settings.checks === 'High' ? toCheck.filter((x) => results.get(x.id) && !results.get(x.id)!.ok) : []
+  // Checks. A part is checked only when it has no valid check: none yet, or the drawing changed since (a check is
+  // valid while it is newer than the part's last render). So after a failure or a usage limit, only what is missing
+  // is checked; parts already checked are never checked again for nothing ('all' asks for every part).
+  const notFixed: string[] = []
+  if (p.settings.checks !== 'Off') {
+    const toCheck = p.parts.filter((x) => !x.locked && (recheck === 'all' || !checkValid(x)))
+    const url = () => (p.parts.some((x) => engineOf(p, x) === 'remotion') ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true }) : Promise.resolve(undefined))
+    if (toCheck.length) {
+      // One small picture per part, several parts per call, on a quick model.
+      step(p, `Checking ${toCheck.length} part${toCheck.length > 1 ? 's' : ''}`, { title: 'Checking the parts', detail: `${toCheck.length} part${toCheck.length > 1 ? 's' : ''}, ${CHECK_BATCH} per look, on a quick model.` })
+      await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s, p.job.startedAt))
+    }
+    // On High, parts whose valid check has notes get one automatic fix: straight away, without checking them again
+    // first, and never twice for the same notes (afterFix). Whatever is left, the user can comment on.
+    const bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && !x.checks!.afterFix) : []
     if (bad.length) {
-      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: bad.map((x) => `Part ${x.index + 1}: ${results.get(x.id)!.notes.join('; ')}`).join(' · ') })
+      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: clip(bad.map((x) => `Part ${x.index + 1}: ${x.checks!.notes.join('; ')}`).join(' · '), 400) })
+      const fixed: Part[] = []
       await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {
-        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${results.get(x.id)!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
-        await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
+        // One part's fix failing does not stop the others: it goes back to its last good drawing, with a note.
+        const file = scenePath(p, x)
+        const before = { scene: existsSync(file) ? readFileSync(file) : null, status: x.status }
+        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${x.checks!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
+        try {
+          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
+          fixed.push(x)
+        } catch (e) {
+          if (signal.aborted) throw e
+          if (before.scene) writeFileSync(file, before.scene)
+          const why = (e as Error).message.split('\n')[0].slice(0, 160)
+          setPart(p, x.id, { status: before.status, checks: { ...x.checks!, afterFix: true, notes: [...x.checks!.notes, `The automatic fix did not work (${why}); comment on the part to try again`] } })
+          step(p, `Could not fix part ${x.index + 1}: ${why}`)
+          notFixed.push(`part ${x.index + 1}`)
+        }
       })
-      const fixedAt = Date.now()
-      await pool(bad, RENDERS, (x) => renderOne(x, signal, true))
-      await guarded(p, signal, async (s) => checkParts(p, bad, await url(), s, fixedAt))
+      if (fixed.length) {
+        const fixedAt = Date.now()
+        await pool(fixed, RENDERS, (x) => renderOne(x, signal, true))
+        await guarded(p, signal, async (s) => checkParts(p, fixed, await url(), s, fixedAt))
+        // These were fixed once for their notes: a new note on them waits for the user, not another automatic fix.
+        for (const x of fixed) if (x.checks) setPart(p, x.id, { checks: { ...x.checks, afterFix: true } })
+      }
     }
   }
   for (const x of p.parts) if (renderedNow.has(x.id) || x.status === 'Rendered') setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
@@ -421,13 +446,14 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
 
   // 6 · Video (a Check again that changed nothing keeps the video as it is)
   p.job.stage = 'Video'
-  if (recheck && !renderedNow.size && p.output && existsSync(p.output)) return
+  if (recheck && !renderedNow.size && p.output && existsSync(p.output)) return notFixed
   step(p, 'Putting it together with your voiceover', { title: 'Putting the video together', detail: finishDetail(p) })
   const out = join(p.dir, 'renders', 'video.mp4')
   await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
   p.output = out
   p.outputAt = Date.now()
   emit(p, true)
+  return notFixed
 
   async function designAndChange() {
     // 3 · Design, a few parts per session (the method and style come cached in the system prompt)
@@ -615,7 +641,10 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
       const r = extractJson<{ parts: { part: number; ok: boolean; notes?: string[] }[] }>(reply)
       for (const { part: x } of group) {
         const got = r.parts?.find((y) => Number(y.part) === x.index + 1)
-        const checks = { ok: got ? !!got.ok : true, notes: (got?.notes ?? []).slice(0, 5), at: Date.now() }
+        // Checking the same drawing again keeps "already fixed once": it is not fixed a second time for nothing.
+        const prev = part(p, x.id)
+        const afterFix = !!prev && checkValid(prev) && !!prev.checks!.afterFix
+        const checks = { ok: got ? !!got.ok : true, notes: (got?.notes ?? []).slice(0, 5), at: Date.now(), ...(afterFix ? { afterFix } : {}) }
         results.set(x.id, checks)
         setPart(p, x.id, { checks })
       }
@@ -632,6 +661,8 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
 
 /** A check that never ran (older versions saved these as passed). */
 const unchecked = (x: Part) => !x.checks || x.checks.notes[0] === 'The check could not run'
+/** The part's check still describes its drawing: it ran, and after the part was last rendered. */
+const checkValid = (x: Part) => !unchecked(x) && x.checks!.at >= (x.renderedAt ?? 0)
 
 // Bundling writes one shared entry; do it one at a time.
 let bundleLock: Promise<unknown> = Promise.resolve()

@@ -381,7 +381,13 @@ function Checks({ p }: { p: Project }) {
   const ran = (x: Part) => !!x.checks && x.checks.notes[0] !== 'The check could not run'
   const checked = p.parts.filter(ran)
   const bad = checked.filter((x) => !x.checks!.ok)
-  const missing = p.parts.filter((x) => !x.locked && (!ran(x) || !x.checks!.ok)).length
+  // Same rules as the app's check step: a check is valid while newer than the part's last render; on High, parts with
+  // notes get one automatic fix without being checked again first.
+  const valid = (x: Part) => ran(x) && x.checks!.at >= (x.renderedAt ?? 0)
+  const toCheck = p.parts.filter((x) => !x.locked && !valid(x)).length
+  const toFix = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && valid(x) && !x.checks!.ok && !x.checks!.afterFix).length : 0
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+  const label = [toCheck ? `Check ${plural(toCheck, 'part')}` : '', toFix ? `${toCheck ? 'fix' : 'Fix'} ${plural(toFix, 'part')}` : ''].filter(Boolean).join(' · ')
   const rendered = p.parts.length > 0 && p.parts.every((x) => x.video)
   return (
     <>
@@ -409,17 +415,24 @@ function Checks({ p }: { p: Project }) {
       {p.settings.checks !== 'Off' && rendered && (
         <div className="rounded-xl border border-line bg-[#121214] px-5 py-4">
           <div className="flex flex-wrap gap-2">
-            <button className="btn-accent" disabled={p.job.running || !missing} onClick={() => window.api.job.check(p.id, 'missing')}>
-              Check {missing || ''} part{missing === 1 ? '' : 's'} again
+            <button className="btn-accent" disabled={p.job.running || !label} onClick={() => window.api.job.check(p.id, 'missing')}>
+              {label || 'Every part is checked'}
             </button>
-            <button className="btn" disabled={p.job.running} onClick={() => window.api.job.check(p.id, 'all')}>
+            <button
+              className="btn"
+              disabled={p.job.running}
+              title="Checks all parts again, even those already checked"
+              onClick={() => confirm(`Check all ${p.parts.length} parts again? Parts already checked are checked again too.`) && window.api.job.check(p.id, 'all')}
+            >
               Check every part
             </button>
           </div>
           <div className="mt-2 text-[13px] text-dim">
             {p.job.running
               ? 'Wait until the current work is done.'
-              : `Checks the parts that are not checked yet or have notes, on a quick model.${p.settings.checks === 'High' ? ' On High, parts with notes are fixed, rendered again and checked once more, then the video is put together again.' : ''}`}
+              : `Only parts without a check (or changed since) are checked; parts already checked are not checked again.${
+                  p.settings.checks === 'High' ? ' Parts with notes are fixed once, rendered and checked again; if a fix fails, that part keeps its last good version.' : ''
+                }`}
           </div>
         </div>
       )}

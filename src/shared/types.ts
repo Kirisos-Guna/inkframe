@@ -42,7 +42,8 @@ export interface Part {
   /** When the clip was last rendered (so the page loads the new one). */
   renderedAt?: number
   history: PartVersion[]
-  checks?: { ok: boolean; notes: string[]; at: number }
+  /** The last check of this part. It is valid while newer than renderedAt. afterFix: already fixed once for its notes. */
+  checks?: { ok: boolean; notes: string[]; at: number; afterFix?: boolean }
   /** Which renderer draws this part. Unset = the video's default. */
   engine?: Engine
 }
