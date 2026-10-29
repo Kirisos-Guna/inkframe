@@ -6,6 +6,7 @@ import { basename, join } from 'path'
 import type { Effort, Provider } from '../../shared/types'
 import { claudePath, codexPath } from './tools'
 import { fakeAgent, fakeEnabled } from './fakeAgent'
+import { isLimitText, resetFromText } from './limits'
 
 export interface Usage {
   fiveHour: number // percent used
@@ -34,10 +35,9 @@ export class LimitError extends Error {
 
 /** A usage-limit message from either CLI, as a LimitError; null for any other error. */
 export function asLimit(text: string): LimitError | null {
-  if (!/usage limit|rate.?limit|limit reached|hit your (usage )?limit|quota exceeded|too many requests|\b429\b/i.test(text)) return null
-  // Claude Code says "Claude AI usage limit reached|1761600000" (seconds); otherwise use the last reported window.
-  const epoch = Number(text.match(/\|(\d{10})\b/)?.[1] ?? 0) * 1000
-  const resetsAt = epoch > Date.now() ? epoch : lastUsage && lastUsage.resetsAt > Date.now() ? lastUsage.resetsAt : undefined
+  if (!isLimitText(text)) return null
+  // The reset time from the message itself, otherwise from the last reported 5-hour window.
+  const resetsAt = resetFromText(text) ?? (lastUsage && lastUsage.resetsAt > Date.now() ? lastUsage.resetsAt : undefined)
   return new LimitError(text.split('|')[0].trim().slice(0, 200), resetsAt)
 }
 

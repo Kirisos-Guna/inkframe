@@ -1,6 +1,6 @@
 {
   "name": "inkframe",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "AI explainer videos from a voiceover, made by Claude Code on your own computer",
   "main": "out/main/index.js",
   "author": "m.gunamurugan2004",

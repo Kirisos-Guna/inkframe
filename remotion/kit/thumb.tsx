@@ -7,15 +7,21 @@ import { useScene } from './index'
 const W = 1920
 const H = 1080
 
-/** A loud background: a glow, sun rays, a spotlight or a two-tone split, with a vignette. */
+/** The video's lettering: its font, heavy only when it is Inter (the hand and marker fonts have one weight). */
+const lettering = (font: string) => ({ fontFamily: font, fontWeight: font.includes('Inter') ? 900 : 400 })
+
+/**
+ * The background. 'plain' (the default) is the video's own background, as in its frames; the louder ones are a glow,
+ * sun rays, a spotlight or a two-tone split, for styles that suit them.
+ */
 export function ThumbBg({
-  variant = 'glow',
+  variant = 'plain',
   from,
   to,
   focus = [1300, 480],
   children
 }: {
-  variant?: 'glow' | 'burst' | 'spot' | 'split'
+  variant?: 'plain' | 'glow' | 'burst' | 'spot' | 'split'
   from?: string
   to?: string
   focus?: [number, number]
@@ -45,7 +51,7 @@ export function ThumbBg({
             <rect x={W / 2} width={W / 2} height={H} fill={b} />
             <path d={`M${W / 2 - 40} 0 L${W / 2 + 40} 0 L${W / 2 - 20} ${H} L${W / 2 - 100} ${H} Z`} fill="#fff" />
           </>
-        ) : (
+        ) : variant === 'plain' ? null : (
           <rect width={W} height={H} fill="url(#tb-glow)" />
         )}
         {variant === 'burst' &&
@@ -56,7 +62,7 @@ export function ThumbBg({
             return <path key={i} d={`M${fx} ${fy} L${fx + Math.cos(t0) * R} ${fy + Math.sin(t0) * R} L${fx + Math.cos(t1) * R} ${fy + Math.sin(t1) * R} Z`} fill="#fff" opacity="0.09" />
           })}
         {variant === 'spot' && <ellipse cx={fx} cy={fy + 380} rx="520" ry="90" fill="#000" opacity="0.45" />}
-        <rect width={W} height={H} fill="url(#tb-vig)" />
+        <rect width={W} height={H} fill="url(#tb-vig)" opacity={variant === 'plain' ? 0.5 : 1} />
       </svg>
       {children}
     </AbsoluteFill>
@@ -126,8 +132,7 @@ export function BigText({
               x={x}
               y={ly}
               textAnchor={align}
-              fontFamily="'Inter', 'Segoe UI', sans-serif"
-              fontWeight={900}
+              {...lettering(s.font)}
               fontSize={size}
               letterSpacing={-size * 0.03}
               fill={color}
@@ -154,7 +159,9 @@ export function BigText({
 }
 
 /** A thick, slightly curved arrow that points at the thing to look at. */
-export function Arrow({ from, to, color = '#ff2d2d', width = 34 }: { from: [number, number]; to: [number, number]; color?: string; width?: number }) {
+export function Arrow({ from, to, color, width = 34 }: { from: [number, number]; to: [number, number]; color?: string; width?: number }) {
+  // The style's accent unless told otherwise, so it looks like part of the video.
+  color ??= useScene().palette.accent
   const [x1, y1] = from
   const [x2, y2] = to
   const mx = (x1 + x2) / 2 - (y2 - y1) * 0.25
@@ -178,7 +185,8 @@ export function Arrow({ from, to, color = '#ff2d2d', width = 34 }: { from: [numb
 }
 
 /** A hand-drawn ring around the important thing. */
-export function Ring({ x, y, rx = 220, ry, color = '#ff2d2d', width = 22 }: { x: number; y: number; rx?: number; ry?: number; color?: string; width?: number }) {
+export function Ring({ x, y, rx = 220, ry, color, width = 22 }: { x: number; y: number; rx?: number; ry?: number; color?: string; width?: number }) {
+  color ??= useScene().palette.accent
   const r2 = ry ?? rx * 0.75
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
@@ -203,7 +211,7 @@ export function Sticker({ text, x, y, color, textColor = '#0b0b0c', rotate = 8, 
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
       <g transform={`rotate(${rotate} ${x} ${y})`}>
         <rect x={x - w / 2} y={y - h / 2} width={w} height={h} rx={size * 0.28} fill={c} stroke="#0b0b0c" strokeWidth={10} />
-        <text x={x} y={y + size * 0.35} textAnchor="middle" fontFamily="'Inter', sans-serif" fontWeight={900} fontSize={size} fill={textColor}>
+        <text x={x} y={y + size * 0.35} textAnchor="middle" {...lettering(s.font)} fontSize={size} fill={textColor}>
           {text.toUpperCase()}
         </text>
       </g>

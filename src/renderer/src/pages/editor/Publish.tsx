@@ -41,7 +41,7 @@ export function Publish({ p }: { p: Project }) {
   return (
     <>
       {/* Thumbnail */}
-      <Section title="Thumbnail" sub={`Drawn by ${p.settings.provider} in the video's style, from its own frames: one big glowing subject, 2–4 huge words, strong contrast.`}>
+      <Section title="Thumbnail" sub={`Drawn by ${p.settings.provider} in the video's own style (its background, colours and lettering), from its frames: one big subject and 2–4 huge words.`}>
         <div className="flex gap-2">
           <input className="input py-2 text-[14px]" placeholder="Optional: what should it show? e.g. a glowing GPU, the words “WHERE IT GOES”" value={note} onChange={(e) => setNote(e.target.value)} />
           <button
@@ -76,9 +76,28 @@ export function Publish({ p }: { p: Project }) {
 
       {/* Title, description, tags */}
       <Section title="Title & description" sub={`Written by ${writer}, with chapters from the parts.`}>
-        <button className="btn-accent" disabled={!!busy || !p.parts.length} onClick={() => run('publish', () => window.api.writer.publish(p.id))}>
-          {busy === 'publish' ? <span className="spinner" /> : <Sparkles size={15} />} {p.publish ? 'Write again' : 'Write them'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-accent" disabled={!!busy || !p.parts.length} onClick={() => run('publish', () => window.api.writer.publish(p.id))}>
+            {busy === 'publish' ? <span className="spinner" /> : <Sparkles size={15} />} {p.publish ? 'Write again' : 'Write them'}
+          </button>
+          <button className="btn" onClick={() => copy(p.title, 'Title')} title={p.title}>
+            <Copy size={15} /> Copy title
+          </button>
+          {p.publish && (
+            <button
+              className="btn"
+              title="The title, description and tags, ready to paste into YouTube"
+              onClick={() =>
+                copy(
+                  [p.title, '', p.publish!.description, '', `Tags: ${p.publish!.tags.join(', ')}`].join('\n'),
+                  'Title, description and tags'
+                )
+              }
+            >
+              <Copy size={15} /> Copy all
+            </button>
+          )}
+        </div>
         {p.publish && (
           <div className="mt-4 space-y-4">
             <div>

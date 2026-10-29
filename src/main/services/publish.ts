@@ -166,15 +166,15 @@ export async function makeThumbnails(id: string, count: number, note?: string, o
     const concept = concepts[(i + (p.thumbnails?.length ?? 0)) % concepts.length]
     onStatus?.(`Designing thumbnail ${i + 1} of ${count}`)
     const prompt = `The thumbnail guide, the scene kit and the style of this video are in your instructions: do not read THUMBNAILS.md, METHOD.md or STYLE.md.
-${frames.length ? `Then look at these frames from the video (Read each picture) to reuse its key visual: ${frames.join(', ')}\n` : ''}
+${frames.length ? `First look at these frames from the video (Read each picture): the thumbnail must look like them, and reuse their key visual: ${frames.join(', ')}\n` : ''}
 Design the YouTube thumbnail for this video.
 Title: ${p.publish?.titles[0] ?? p.title}
 What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).slice(0, 1500)}
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
-Style: ${style.name}${style.render === 'three' ? ' (real 3D: build the subject with @kit/three)' : ''}
+Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
 ${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
 
-Make it loud and clear: one big subject with a glow or rim, 2–4 huge words with a thick outline, strong contrast, one arrow or ring at most, bottom-right corner empty.
+Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 
 Write the scene to ${file}. Do not create or change any other file. Reply with one sentence about the idea.`

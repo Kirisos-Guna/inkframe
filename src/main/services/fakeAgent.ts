@@ -6,6 +6,8 @@ import type { AgentOpts } from './agent'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 let limitHit = false
+let fixLimitHit = false
+let skipped = false
 /** INKFRAME_FAKE_LOG=file: one line per check or fix call, so tests can count what ran. */
 const log = (line: string) => process.env.INKFRAME_FAKE_LOG && appendFileSync(process.env.INKFRAME_FAKE_LOG, line + '\n')
 
@@ -34,13 +36,21 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     }
     // INKFRAME_FAKE_NOTES=2,3: those parts always get a note.
     const noted = (process.env.INKFRAME_FAKE_NOTES ?? '').split(',').filter(Boolean).map(Number)
-    return JSON.stringify({ parts: nums.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
+    // INKFRAME_FAKE_SKIP=1: the checker forgets that part in its first answer.
+    const skip = Number(process.env.INKFRAME_FAKE_SKIP ?? 0)
+    const answer = nums.filter((n) => !(n === skip && !skipped && (skipped = true)))
+    return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
   }
   if (p.includes('A reviewer found')) {
     const n = Number(p.match(/Part (\d+) of \d+/)?.[1])
     log(`fix ${n}`)
     // INKFRAME_FAKE_FIXFAIL=3: the automatic fix of that part fails.
     if (String(n) === process.env.INKFRAME_FAKE_FIXFAIL) throw new Error('The model stopped half way (test)')
+    // INKFRAME_FAKE_FIXLIMIT=3: the first fix of that part hits the session limit (worded as Claude Code does).
+    if (String(n) === process.env.INKFRAME_FAKE_FIXLIMIT && !fixLimitHit) {
+      fixLimitHit = true
+      throw new Error("You've hit your session limit · resets 2pm")
+    }
   }
   if (p.includes('Design a cartoon character')) return '{"name":"Rosa","hair":"Curly","hairColour":"#b3423a","outfit":"Apron","outfitColour":"#2f9e6b","glasses":true,"expression":"Happy","pose":"Wave"}'
   if (p.includes('learning a visual style')) {

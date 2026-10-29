@@ -385,7 +385,10 @@ function Checks({ p }: { p: Project }) {
   // notes get one automatic fix without being checked again first.
   const valid = (x: Part) => ran(x) && x.checks!.at >= (x.renderedAt ?? 0)
   const toCheck = p.parts.filter((x) => !x.locked && !valid(x)).length
-  const toFix = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && valid(x) && !x.checks!.ok && !x.checks!.afterFix).length : 0
+  // A fix that only failed because of a usage limit still counts as not tried.
+  const fixPending = (x: Part) =>
+    x.history[x.history.length - 1]?.note !== 'Fixed after the check' && (!x.checks!.afterFix || x.checks!.notes.some((n) => n.startsWith('The automatic fix did not work') && /limit/i.test(n)))
+  const toFix = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && valid(x) && !x.checks!.ok && fixPending(x)).length : 0
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
   const label = [toCheck ? `Check ${plural(toCheck, 'part')}` : '', toFix ? `${toCheck ? 'fix' : 'Fix'} ${plural(toFix, 'part')}` : ''].filter(Boolean).join(' · ')
   const rendered = p.parts.length > 0 && p.parts.every((x) => x.video)

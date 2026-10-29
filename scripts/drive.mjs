@@ -102,6 +102,13 @@ if (mode === 'make') {
       last = status
       await shot(status.replace(/\W+/g, '-').toLowerCase())
     }
+    // A usage-limit pause waits for Resume: check it stays paused, then press Resume.
+    if (/limit is reached/.test(txt) && txt.includes('Resume')) {
+      await page.waitForTimeout(6000)
+      const still = await page.evaluate(() => document.body.innerText.includes('limit is reached'))
+      console.log('limit pause: still paused after 6 s =', still)
+      await page.locator('button[title="Resume"]').first().click()
+    }
     // PAUSE=1: pause while part 2 is rendering, then resume.
     if (process.env.PAUSE && !pausedOnce && /Rendering part 2/.test(txt)) {
       pausedOnce = true

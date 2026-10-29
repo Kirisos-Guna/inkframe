@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto'
 import type { Comment, Part, Project } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 import { getProject, getStyle, listCharacters, saveProject, styleGuide } from './store'
-import { extractJson, LimitError, runAgent } from './agent'
+import { asLimit, extractJson, LimitError, runAgent } from './agent'
 import { transcribe } from './transcribe'
 import { cutAudio, finishVideo, stripImage } from './media'
 import { bundleProject, clearRenderBundles, clipFile, fixSceneImports, hfMethodFile, methodFile, syncMaterial, thumbFile } from './render'
@@ -131,8 +131,6 @@ export function pauseJob(id: string) {
 export function resumeJob(id: string) {
   const p = getProject(id)
   if (!p || !p.job.paused) return
-  clearTimeout(limitTimers.get(id))
-  limitTimers.delete(id)
   p.job.paused = false
   if (p.job.pausedAt) p.job.pausedMs = (p.job.pausedMs ?? 0) + Date.now() - p.job.pausedAt
   p.job.pausedAt = undefined
@@ -181,31 +179,20 @@ async function guarded<T>(p: Project, job: AbortSignal, fn: (signal: AbortSignal
 }
 
 // ---------- usage limits ----------
-const limitTimers = new Map<string, NodeJS.Timeout>()
 
 /**
- * Pauses the job until the usage limit resets (a minute and a half after the reset time, to be safe), then resumes it.
- * When the reset time is not known, it tries again every 30 minutes. Resume tries at once; Stop stops as usual.
+ * The usage limit is reached: the whole job pauses and waits for the user to press Resume (it does not carry on by
+ * itself). Stop stops as usual.
  */
 function waitForLimit(p: Project, e: LimitError) {
+  // Everything stops (drawing, rendering, checks) and stays paused until the user presses Resume.
   if (!p.job.paused) pauseJob(p.id)
-  // The stand-in's limit resets in seconds; the real ones get a safety margin.
-  const [least, margin] = fakeEnabled() ? [1000, 1000] : [60_000, 90_000]
-  const at = Math.max(Date.now() + least, (e.resetsAt ?? Date.now() + 30 * 60_000) + margin)
-  const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const who = p.settings.provider === 'Codex' ? 'Codex' : 'Claude'
-  step(p, `Waiting for the ${who} limit to reset`, {
-    title: `Waiting for the ${who} limit to reset`,
-    detail: `${who}'s usage limit is reached. Nothing is lost: ${APP_NAME} carries on by itself at about ${when}${e.resetsAt ? '' : ' (and tries again every 30 minutes)'}. Press Resume to try now.`
+  const when = e.resetsAt ? ` It resets at about ${new Date(e.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
+  step(p, `Paused: the ${who} limit is reached`, {
+    title: `Paused: the ${who} limit is reached`,
+    detail: `${who}'s usage limit is reached, so everything is paused (nothing is lost).${when} Press Resume when it has reset to carry on from here.`
   })
-  clearTimeout(limitTimers.get(p.id))
-  limitTimers.set(
-    p.id,
-    setTimeout(() => {
-      limitTimers.delete(p.id)
-      resumeJob(p.id)
-    }, at - Date.now())
-  )
   emit(p, true)
 }
 
@@ -409,23 +396,26 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
     }
     // On High, parts whose valid check has notes get one automatic fix: straight away, without checking them again
     // first, and never twice for the same notes (afterFix). Whatever is left, the user can comment on.
-    const bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && !x.checks!.afterFix) : []
+    const bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && fixPending(x)) : []
     if (bad.length) {
-      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: clip(bad.map((x) => `Part ${x.index + 1}: ${x.checks!.notes.join('; ')}`).join(' · '), 400) })
+      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: clip(bad.map((x) => `Part ${x.index + 1}: ${reviewNotes(x).join('; ')}`).join(' · '), 400) })
       const fixed: Part[] = []
       await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {
         // One part's fix failing does not stop the others: it goes back to its last good drawing, with a note.
         const file = scenePath(p, x)
-        const before = { scene: existsSync(file) ? readFileSync(file) : null, status: x.status }
-        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${x.checks!.notes.join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
+        const thumb = thumbFile(p, x)
+        const before = { scene: existsSync(file) ? readFileSync(file) : null, thumb: existsSync(thumb) ? readFileSync(thumb) : null, status: x.status }
+        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${reviewNotes(x).join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
         try {
-          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), 'Fixed after the check', s))
+          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), AUTO_FIX, s))
           fixed.push(x)
         } catch (e) {
-          if (signal.aborted) throw e
+          // A usage limit is not a failed fix: guarded pauses for it. Pass it on if it ever gets here.
+          if (signal.aborted || e instanceof LimitError) throw e
           if (before.scene) writeFileSync(file, before.scene)
+          if (before.thumb) writeFileSync(thumb, before.thumb)
           const why = (e as Error).message.split('\n')[0].slice(0, 160)
-          setPart(p, x.id, { status: before.status, checks: { ...x.checks!, afterFix: true, notes: [...x.checks!.notes, `The automatic fix did not work (${why}); comment on the part to try again`] } })
+          setPart(p, x.id, { status: before.status, checks: { ...x.checks!, afterFix: true, notes: [...reviewNotes(x), `${FIX_FAILED} (${why}); comment on the part to try again`] } })
           step(p, `Could not fix part ${x.index + 1}: ${why}`)
           notFixed.push(`part ${x.index + 1}`)
         }
@@ -625,15 +615,22 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
       continue
     }
     step(p, `Checking part ${x.index + 1}`)
-    const frames: string[] = []
-    for (const [i, at] of [0.2, 0.55, 0.97].entries()) {
-      const f = join(p.dir, 'work', `check-${x.index + 1}-${i + 1}.png`)
-      await stillAny(p, x, at, f, serveUrl, signal)
-      frames.push(f)
+    try {
+      const frames: string[] = []
+      for (const [i, at] of [0.2, 0.55, 0.97].entries()) {
+        const f = join(p.dir, 'work', `check-${x.index + 1}-${i + 1}.png`)
+        await stillAny(p, x, at, f, serveUrl, signal)
+        frames.push(f)
+      }
+      const sheet = join(p.dir, 'work', `check-${x.index + 1}.jpg`)
+      await stripImage(frames, sheet)
+      items.push({ part: x, sheet: `work/check-${x.index + 1}.jpg` })
+    } catch (e) {
+      // This part's pictures could not be made: it stays not checked, and the other parts are still checked.
+      if (signal.aborted) throw e
+      setPart(p, x.id, { checks: undefined })
+      step(p, `Could not check part ${x.index + 1}: ${(e as Error).message.split('\n')[0].slice(0, 120)}`)
     }
-    const sheet = join(p.dir, 'work', `check-${x.index + 1}.jpg`)
-    await stripImage(frames, sheet)
-    items.push({ part: x, sheet: `work/check-${x.index + 1}.jpg` })
   }
   for (const group of chunk(items, CHECK_BATCH)) {
     try {
@@ -641,10 +638,17 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
       const r = extractJson<{ parts: { part: number; ok: boolean; notes?: string[] }[] }>(reply)
       for (const { part: x } of group) {
         const got = r.parts?.find((y) => Number(y.part) === x.index + 1)
+        if (!got) {
+          setPart(p, x.id, { checks: undefined })
+          step(p, `The check said nothing about part ${x.index + 1}: it stays not checked`)
+          continue
+        }
         // Checking the same drawing again keeps "already fixed once": it is not fixed a second time for nothing.
         const prev = part(p, x.id)
         const afterFix = !!prev && checkValid(prev) && !!prev.checks!.afterFix
-        const checks = { ok: got ? !!got.ok : true, notes: (got?.notes ?? []).slice(0, 5), at: Date.now(), ...(afterFix ? { afterFix } : {}) }
+        const notes = (Array.isArray(got.notes) ? got.notes : []).map(String).filter(Boolean).slice(0, 5)
+        // "ok: false" with no notes says nothing to fix: take it as fine rather than fixing blind.
+        const checks = { ok: got.ok !== false || !notes.length, notes, at: Date.now(), ...(afterFix ? { afterFix } : {}) }
         results.set(x.id, checks)
         setPart(p, x.id, { checks })
       }
@@ -661,6 +665,17 @@ async function checkParts(p: Project, parts: Part[], serveUrl: string | undefine
 
 /** A check that never ran (older versions saved these as passed). */
 const unchecked = (x: Part) => !x.checks || x.checks.notes[0] === 'The check could not run'
+const FIX_FAILED = 'The automatic fix did not work'
+/** The reviewer's notes, without the app's own "fix did not work" lines. */
+const reviewNotes = (x: Part) => (x.checks?.notes ?? []).filter((n) => !n.startsWith(FIX_FAILED))
+/**
+ * The part still gets its one automatic fix: it was never fixed for these notes, or the only attempt was stopped by a
+ * usage limit (1.7.2 and older took that for a failed fix).
+ */
+const fixPending = (x: Part) =>
+  x.history[x.history.length - 1]?.note !== AUTO_FIX && (!x.checks?.afterFix || x.checks.notes.some((n) => n.startsWith(FIX_FAILED) && !!asLimit(n)))
+/** The history note of a drawing made by the automatic fix: such a drawing is never fixed automatically again. */
+const AUTO_FIX = 'Fixed after the check'
 /** The part's check still describes its drawing: it ran, and after the part was last rendered. */
 const checkValid = (x: Part) => !unchecked(x) && x.checks!.at >= (x.renderedAt ?? 0)
 
