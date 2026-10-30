@@ -2,12 +2,13 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { Project, PublishKit, Thumbnail } from '../../shared/types'
+import type { Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
 import { getProject, getSettings, getStyle, libDir, listCharacters, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
 import { drawingSystem, styleDoc } from './prompts'
+import { lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
@@ -34,33 +35,70 @@ export interface ScriptRequest {
 
 export async function writeScript(r: ScriptRequest) {
   const w = await writer()
-  const words = Math.round(r.minutes * 150)
+  const short = r.platform !== 'YouTube'
+  const words = short ? Math.round(Math.min(r.minutes, 1.5) * 150) : Math.round(r.minutes * 150)
   const reply = await runAgent({
     ...w,
     effort: 'High',
     cwd: libDir('writing'),
     search: r.research && w.provider === 'Codex',
-    prompt: `You write voiceover scripts for faceless explainer videos that are drawn as the voiceover plays.
-${r.research ? 'First research the topic on the web: find the facts, numbers and recent developments a curious beginner would want, and note your sources.' : 'Use what you know; do not invent numbers or quotes.'}
+    prompt: `You write voiceover scripts for faceless explainer videos that are drawn as the voiceover plays. Your scripts are
+the reason people stay to the end: specific, surprising, and built so every sentence pulls into the next.
 
 Topic: ${r.topic}
-${r.angle ? `Angle / notes: ${r.angle}\n` : ''}Platform: ${r.platform}
-Length: about ${r.minutes} minute${r.minutes === 1 ? '' : 's'} (~${words} words spoken)
+${r.angle ? `The creator's angle and notes (follow them): ${r.angle}\n` : ''}Platform: ${r.platform}
+Length: about ${words} words spoken (${short ? 'under 90 seconds' : `about ${r.minutes} minute${r.minutes === 1 ? '' : 's'}`}). Stay within 10%.
 Tone: ${r.tone}
+${channelVoice()}${
+      r.research
+        ? 'Research first: find the facts, numbers, named examples and recent developments that make this topic surprising, and list your sources.'
+        : 'Use only what you know to be true. Never invent numbers, names, quotes or studies; when unsure, say it more carefully.'
+    }
+${
+  short
+    ? `\nThis is a short (${r.platform}): the first sentence IS the hook, no build-up; one idea, one reveal, one punchline; the last line loops back to the first so it rewatches well. No call to action.\n`
+    : r.platform === 'YouTube'
+      ? '\nAfter the line to remember, one short sentence that points to a related next video (no "subscribe").\n'
+      : ''
+}
+${SCRIPT_CRAFT}
 
-How a good script for this format works:
-- Open on the question the viewer already has, and start answering it in the first sentence. No "in this video".
-- Explain the whole thing for someone who knows nothing about it, step by step, so a drawing can build it up on screen as each idea is said.
-- Short spoken sentences. Concrete images ("a building full of rows and rows of servers"), not abstractions.
-- Every 20–30 seconds, a small turn or reveal that keeps people watching.
-- End on the one sentence the viewer should remember${r.platform === 'YouTube' ? ', then point to a related next video in one line' : ''}.
-- Plain text only: no headings, no stage directions, no emojis. Write numbers the way they should be read aloud.
+${SCRIPT_PROCESS}
 
 Reply with JSON only:
-{"title": "a curiosity-driven title, at most 60 characters", "script": "the full voiceover script, with blank lines between paragraphs", "sources": ["url or source name", ...]}`
+{${SCRIPT_JSON},
+ "sources": ["url or source name", ...]}`
   })
-  const out = extractJson<{ title: string; script: string; sources?: string[] }>(reply)
-  return { title: out.title ?? '', script: out.script ?? '', sources: out.sources ?? [], by: `${w.provider} · ${w.model}` }
+  const out = extractJson<{ title: string; script: string; hooks?: string[]; sources?: string[] }>(reply)
+  if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
+  const script = await polishScript(w, out.script, words)
+  return { title: out.title ?? '', script, hooks: cleanHooks(out.hooks), sources: out.sources ?? [], by: `${w.provider} · ${w.model}` }
+}
+
+/** The creator's channel voice from Settings, so every script sounds like the same channel. */
+export function channelVoice() {
+  const v = getSettings().scriptVoice?.trim()
+  return v ? `\nTHE CHANNEL'S VOICE (every script of this channel sounds like this; it wins over the general rules on tone):\n${v}\n\n` : '\n'
+}
+
+const cleanHooks = (h: unknown) => (Array.isArray(h) ? h.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 3) : [])
+
+/**
+ * Checks a script for free (tired phrases, length, long sentences, a weak first line, formatting) and, if anything
+ * is off, asks the writer for one revision that names exactly what to change. A revision that comes back worse is
+ * not used.
+ */
+export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number) {
+  const issues = lintScript(script, targetWords)
+  if (!issues.length) return script
+  try {
+    const reply = await runAgent({ ...w, effort: 'Medium', cwd: libDir('writing'), prompt: revisePrompt(script, issues, targetWords) })
+    const revised = extractJson<{ script: string }>(reply).script?.trim()
+    return revised && lintScript(revised, targetWords).length <= issues.length ? revised : script
+  } catch {
+    // The first version is still a whole script: better than nothing.
+    return script
+  }
 }
 
 // ---------- title, description, tags ----------

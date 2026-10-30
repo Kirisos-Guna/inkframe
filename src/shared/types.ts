@@ -237,6 +237,8 @@ export interface AppSettings {
   /** Who writes scripts, titles, descriptions and captions. */
   writerProvider?: Provider
   writerModel?: string
+  /** How this channel's scripts sound (persona, audience, words to use or avoid, an example line). Used for every script. */
+  scriptVoice?: string
 }
 
 export interface Status {

@@ -90,11 +90,12 @@ const api = {
   },
   writer: {
     script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
-      invoke<{ title: string; script: string; sources: string[]; by: string }>('writer:script', r),
+      invoke<{ title: string; script: string; hooks: string[]; sources: string[]; by: string }>('writer:script', r),
     recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean }) =>
       invoke<{
         title: string
         script: string
+        hooks: string[]
         direction: string
         analysis: { concept: string; audience: string; hook: string; structure: { at: string; beat: string; purpose: string }[]; devices: string[] }
         source: { title: string; channel: string; duration: number; url: string }

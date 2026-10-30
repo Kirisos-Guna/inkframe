@@ -57,13 +57,28 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     writeFileSync(join(o.cwd, 'STYLE_GUIDE.md'), 'Thin white lines on deep blue-black. Things are drawn on as they are said.')
     return '{"name":"Pen on Black","tags":["Pen","Dark"],"description":"Glowing white pen lines on a deep blue-black board.","dim":"2D","palette":{"bg":"#06101c","ink":"#e8f2ff","accent":"#f5a623"},"stroke":{"width":2,"jitter":0.3,"texture":"pen"}}'
   }
+  // Scripts: a deliberately weak first draft (a tired opening, the wrong length), so the app's check and its one
+  // revision run; the revision fixes both.
+  const filler = (n: number) => Array.from({ length: Math.max(0, n) }, (_, i) => (i % 11 === 10 ? 'waves.' : 'radio')).join(' ')
+  if (p.includes('This voiceover script needs a revision')) {
+    log('script revision')
+    const n = Number(p.match(/Stay at about (\d+) words/)?.[1] ?? 150)
+    return JSON.stringify({ script: `Your question never reaches the cloud. It walks.\n\n${filler(n - 8)}` })
+  }
   if (p.includes('voiceover scripts for faceless explainer')) {
-    return JSON.stringify({ title: 'Where Your Prompt Actually Goes', script: 'You type a question and hit send.\n\nIt leaves as radio waves.', sources: ['example.com'] })
+    log('script')
+    return JSON.stringify({
+      title: 'Where Your Prompt Actually Goes',
+      hooks: ['Every question you type takes a longer trip than your last holiday.', 'There is a building that hears your question before your friends do.'],
+      script: 'In this video, let us dive in.\n\nYou type a question and hit send.',
+      sources: ['example.com']
+    })
   }
   if (p.includes('make their own version of a YouTube video')) {
     return JSON.stringify({
       analysis: { concept: 'Follow one prompt from phone to chip', audience: 'Curious beginners', hook: 'Opens on the moment you hit send', structure: [{ at: '0:00', beat: 'You hit send', purpose: 'Hook' }, { at: '0:30', beat: 'The data center', purpose: 'Reveal' }], devices: ['A journey', 'A reveal'] },
       title: 'The Secret Trip of Your Question',
+      hooks: ['A question about cats once crossed an ocean twice.'],
       script: 'You press send.\n\nYour words fly off as radio waves.',
       direction: 'A pen follows the question from phone to tower to cable to server.'
     })

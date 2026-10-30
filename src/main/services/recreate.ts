@@ -9,6 +9,8 @@ import { codexPath, ffmpegPath, resetToolCache, ytDlpPath } from './tools'
 import { run } from './media'
 import { download, transcribe } from './transcribe'
 import { readVtt } from './vtt'
+import { channelVoice, polishScript } from './publish'
+import { SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 
 export interface RecreateRequest {
   url: string
@@ -23,6 +25,8 @@ export interface RecreateRequest {
 export interface RecreateResult {
   title: string
   script: string
+  /** Other strong openings the creator can swap in. */
+  hooks: string[]
   direction: string
   analysis: { concept: string; audience: string; hook: string; structure: { at: string; beat: string; purpose: string }[]; devices: string[] }
   source: { title: string; channel: string; duration: number; url: string }
@@ -120,30 +124,37 @@ Transcript (time marks every ~30 s):
 ${transcript.slice(0, 60000)}
 """
 
-1. Analyse it: the core concept, who it is for, how the hook works in the first 15 seconds, the structure beat by beat
-   (with times), and the storytelling devices that keep people watching (reveals, questions, analogies, callbacks).
-2. Write a NEW voiceover script that recreates the same concept, the same structure and beats, the same facts and the
-   same payoff, so a viewer would learn the same things in the same order.
-   - Every sentence in your own words. Do not copy or closely paraphrase the original's sentences, jokes or catchphrases,
-     and do not mention the original video, its channel or its host.
+1. Take it apart like an editor: the core concept, who it is for, exactly how the hook works in the first 15 seconds,
+   the structure beat by beat (with times), and every device that keeps people watching (each reveal, open question,
+   analogy, callback, cliffhanger), with where it happens. Note what is weak too: slow stretches, vague claims, filler.
+2. Write a NEW script of the same concept that is BETTER than the original, not a paraphrase of it:
+   - The same concept, the same core beats and facts, the same payoff, so a viewer learns the same things.
+   - Keep every device that works, and fix what is weak: a sharper first sentence, at least as many reveals, a
+     specific example where the original is vague, no slow stretches.
+   - Every sentence is yours. Do not copy or closely paraphrase its sentences, jokes or catchphrases, and do not
+     mention the original video, its channel or its host.
    - Keep facts and numbers correct${r.research && provider === 'Codex' ? '; check them on the web and update anything out of date' : '; if one looks wrong or dated, say it more carefully rather than repeating it'}.
-   - About ${targetWords} words (${Math.max(1, Math.round(targetWords / 150))} min spoken). Tone: ${r.tone}.
-   - Short spoken sentences, concrete images, written to be drawn on screen as it is said. Plain text only: no headings,
-     stage directions or emojis; numbers written the way they are read aloud.${r.notes ? `\n   - The creator adds: ${r.notes}` : ''}
+   - About ${targetWords} words (${Math.max(1, Math.round(targetWords / 150))} min spoken), within 10%. Tone: ${r.tone}.${r.notes ? `\n   - The creator adds (follow it): ${r.notes}` : ''}
 3. Write a short direction (under 120 words) for the animator: the visual idea for each beat, as one paragraph, in no
    particular art style (the creator picks the style).
+${channelVoice()}
+${SCRIPT_CRAFT}
+
+${SCRIPT_PROCESS}
 
 Reply with JSON only:
 {"analysis": {"concept": "...", "audience": "...", "hook": "...", "structure": [{"at": "0:00", "beat": "...", "purpose": "..."}], "devices": ["..."]},
- "title": "a new curiosity-driven title, at most 60 characters, not the original's",
- "script": "the full script, blank lines between paragraphs",
+ ${SCRIPT_JSON.replace('a curiosity-driven title', "a new curiosity-driven title (not the original's)")},
  "direction": "..."}`
     })
     const out = extractJson<Omit<RecreateResult, 'source' | 'by'>>(reply)
     if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
+    onStatus('Checking the script')
+    const script = await polishScript({ provider, model }, out.script, targetWords)
     return {
       title: out.title ?? '',
-      script: out.script,
+      script,
+      hooks: Array.isArray(out.hooks) ? out.hooks.map(String).filter(Boolean).slice(0, 3) : [],
       direction: out.direction ?? '',
       analysis: {
         concept: out.analysis?.concept ?? '',

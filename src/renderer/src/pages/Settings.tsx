@@ -97,6 +97,18 @@ export default function Settings() {
         {(s.writerProvider ?? 'Codex') === 'Codex' && !status?.codex && (
           <div className="mt-3 text-[13.5px] text-accent2">Codex is not on this computer, so Claude Code writes instead. Install the Codex app and sign in to use it.</div>
         )}
+        <div className="mt-5 text-[15px] font-semibold">Your channel's voice</div>
+        <div className="mb-2 mt-0.5 text-[13.5px] text-muted">
+          Used for every script (from a topic or recreated), so they all sound like one channel. Who is talking, to whom, words you use or never use, and a line
+          that sounds like you.
+        </div>
+        <textarea
+          key={s.scriptVoice ?? ''}
+          className="input h-28 resize-none text-[14.5px] leading-relaxed"
+          defaultValue={s.scriptVoice ?? ''}
+          placeholder={`e.g. A calm, curious engineer explaining to a smart friend who isn't technical. Dry humour, never hype. Says "here's the thing", never "mind-blowing". Ends every video on one sentence worth repeating.\nExample line: "Your question doesn't fly to the cloud. It takes a very long walk."`}
+          onBlur={(e) => e.target.value !== (s.scriptVoice ?? '') && save({ scriptVoice: e.target.value })}
+        />
       </section>
 
       <section className="card mb-10 mt-5 px-7 py-3">

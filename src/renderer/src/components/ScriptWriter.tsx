@@ -30,7 +30,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
   const [notes, setNotes] = useState('')
   const [stage, setStage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [out, setOut] = useState<{ title: string; script: string; sources: string[]; by: string; direction?: string; recreated?: Recreated } | null>(null)
+  const [out, setOut] = useState<{ title: string; script: string; hooks?: string[]; sources: string[]; by: string; direction?: string; recreated?: Recreated } | null>(null)
   const writer = (settings?.writerProvider ?? 'Codex') === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
   useEffect(() => window.api.writer.onRecreate(setStage), [])
 
@@ -41,7 +41,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
       if (mode === 'Topic') setOut(await window.api.writer.script({ topic, angle, minutes: platform === 'YouTube' ? minutes : Math.min(minutes, 1.5), platform, tone, research }))
       else {
         const r = await window.api.writer.recreate({ url, minutes: reMinutes, tone: reTone === 'Like the original' ? 'the same tone as the original' : reTone, notes: notes.trim() || undefined, research })
-        setOut({ title: r.title, script: r.script, sources: [r.source.url], by: r.by, direction: r.direction, recreated: r })
+        setOut({ title: r.title, script: r.script, hooks: r.hooks, sources: [r.source.url], by: r.by, direction: r.direction, recreated: r })
       }
     } catch (e) {
       showToast(errorText(e))
@@ -156,6 +156,26 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
                   <Copy size={15} />
                 </button>
               </div>
+              {!!out.hooks?.length && (
+                <div className="mb-3">
+                  <div className="label mb-1.5">Other openings · click one to use it (the current opening moves here)</div>
+                  <div className="space-y-1.5">
+                    {out.hooks.map((h, i) => (
+                      <button
+                        key={i}
+                        className="block w-full rounded-lg border border-line px-3 py-2 text-left text-[14px] leading-snug hover:border-[#45454c]"
+                        onClick={() => {
+                          // The opening is the first paragraph: swap it with this one.
+                          const [first, ...rest] = out.script.split(/\n\s*\n/)
+                          setOut({ ...out, script: [h, ...rest].join('\n\n'), hooks: out.hooks!.map((x, k) => (k === i ? first.trim() : x)) })
+                        }}
+                      >
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <textarea className="input h-[44vh] resize-none text-[15px] leading-relaxed" value={out.script} onChange={(e) => setOut({ ...out, script: e.target.value })} />
               <div className="mt-2 flex justify-between text-[13px] text-dim">
                 <span>
