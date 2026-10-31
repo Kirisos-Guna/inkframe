@@ -13,8 +13,8 @@ const PANEL = '#1c1d21'
 const INNER = '#26272c'
 const EDGE = '#2c2d33'
 const DARK = '#101014'
-const UI = "'Inter', 'Segoe UI', sans-serif"
-const MONO = "ui-monospace, 'Cascadia Mono', Consolas, monospace"
+const UI = "'Inter', 'Tamil', 'Segoe UI', sans-serif"
+const MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'Tamil', monospace"
 const ease = Easing.bezier(0.2, 0.8, 0.2, 1)
 
 /** 0 → 1 from `start` over `dur` frames, eased. */
@@ -146,7 +146,8 @@ export function Layer({ x = 160, y, w = 1600, h = 70, name, color, start = 0, ch
 /** A capsule label: the colour filled, the word dark. `mono` for technical tags (port 443, an IP address). */
 export function Pill({ x, y, text, color = SIGNAL.cyan, size = 32, mono = false, start = 0 }: { x: number; y: number; text: string; color?: string; size?: number; mono?: boolean; start?: number }) {
   const { font } = useScene()
-  const w = text.length * size * (mono ? 0.62 : 0.66) + size * 1.1
+  // Tamil letters are wider than this kit's Latin lettering.
+  const w = text.length * size * (/[0900-0D7F]/.test(text) ? 0.95 : mono ? 0.62 : 0.66) + size * 1.1
   const h = size * 1.5
   return (
     <Appear start={start} cx={x} cy={y}>
@@ -219,7 +220,7 @@ export function SectionTitle({ text, y = 120, start = 0, words = {} }: { text: s
     <g opacity={t} stroke="none">
       <text x={960} y={y} textAnchor="middle" fontFamily={font} fontSize={64} fill="#ececf1">
         {parts.map((p, i) => (
-          <tspan key={i} fill={words[p.replace(/[^\w]/g, '')] ?? '#ececf1'}>
+          <tspan key={i} fill={words[p.replace(/[^\p{L}\p{M}\p{N}]/gu, '')] ?? '#ececf1'}>
             {p}
           </tspan>
         ))}

@@ -14,7 +14,7 @@ type Kids = { children?: React.ReactNode }
 const Ctx = createContext<SceneProps | null>(null)
 export const SceneProvider = Ctx.Provider
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9']/g, '')
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '')
 
 /** As in the real kit, so at('word') gives the same frames. */
 export function useScene() {

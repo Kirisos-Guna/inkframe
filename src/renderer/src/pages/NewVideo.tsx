@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
   BookOpen,
@@ -15,6 +15,7 @@ import {
   Pause,
   Users,
   Music,
+  Search,
   Sparkles,
   X
 } from 'lucide-react'
@@ -55,6 +56,7 @@ const ENGINES = ['Auto', 'Remotion', 'HyperFrames'] as const
 const TRANSITIONS = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom'] as const
 const CAPTIONS = ['Off', 'Clean', 'Bold pop', 'Karaoke'] as const
 const SFX = ['Off', 'Subtle', 'Lively'] as const
+const LANGS = ['English', 'Tamil'] as const
 const MODELS = ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']
 const CODEX_MODELS = ['Codex default']
 
@@ -98,6 +100,11 @@ export default function NewVideo() {
   useEffect(() => {
     if (app) setS((x) => ({ ...x, provider: app.defaultProvider, model: app.defaultModel, effort: app.defaultEffort, checks: app.defaultChecks }))
   }, [app?.defaultProvider])
+
+  // A Tamil voiceover gets Tamil on screen and in the title, until the user chooses otherwise.
+  useEffect(() => {
+    if (draft?.language === 'ta') setS((x) => (x.outputLang ? x : { ...x, outputLang: 'Tamil' }))
+  }, [draft?.language])
 
   // Follow the draft while the voiceover is being heard in the background.
   useEffect(() => {
@@ -439,6 +446,7 @@ export default function NewVideo() {
               </button>
             </div>
           </div>
+          <FindStyle draft={draft} onFound={(styleId) => set({ styleId })} />
           <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
             {shownStyles.map((st) => (
               <button
@@ -506,6 +514,13 @@ export default function NewVideo() {
               </div>
             </div>
             <div>
+              <div className="text-[15px] font-semibold text-ink/90">Language on screen</div>
+              <div className="mt-3">
+                <Chips options={LANGS} value={s.outputLang ?? 'English'} onToggle={(outputLang) => set({ outputLang })} size="sm" />
+              </div>
+              <div className="mt-2 text-[13px] text-dim">Text in the drawings, the title, description and thumbnail. Tech words stay in English, the way Tamil creators write them.</div>
+            </div>
+            <div>
               <div className="text-[15px] font-semibold text-ink/90">Sound effects</div>
               <div className="mt-3">
                 <Chips options={SFX} value={s.sfx ?? 'Off'} onToggle={(sfx) => set({ sfx })} size="sm" />
@@ -529,6 +544,7 @@ export default function NewVideo() {
           <Row k="Tone" v={s.tone.join(', ') || '—'} />
           <Row k="Creativity" v={s.creativity} />
           <Row k="Style" v={style?.name ?? '—'} />
+          <Row k="Language" v={s.outputLang ?? 'English'} />
           <Row k="Captions" v={s.captions ?? 'Off'} />
           <Row k="Sound effects" v={s.sfx ?? 'Off'} />
           <Row k="Characters" v={s.characterIds.length ? characters.filter((c) => s.characterIds.includes(c.id)).map((c) => c.name).join(', ') : '—'} />
@@ -578,19 +594,19 @@ export default function NewVideo() {
             ) : voiceStatus === 'working' ? (
               <>
                 <div className="mt-1 text-[30px] font-bold tracking-tight">Working…</div>
-                <div className="text-[14.5px] text-muted">You can keep writing while {APP_NAME} listens</div>
+                <div className="text-[14.5px] text-muted">{draft.transcribeStatus ?? `You can keep writing while ${APP_NAME} listens`}</div>
               </>
             ) : voiceStatus === 'error' ? (
               <>
                 <div className="mt-1 text-[22px] font-bold">{fmtTime(draft.voiceover!.duration)}</div>
                 <div className="text-[13.5px] text-accent">Could not hear the words: {draft.transcribeError}</div>
-                <div className="text-[13px] text-muted">Claude will split it by time instead.</div>
+                <div className="text-[13px] text-muted">It is tried again when you press Make.</div>
               </>
             ) : (
               <>
                 <div className="mt-1 text-[30px] font-bold tracking-tight">{fmtTime(draft.voiceover!.duration)}</div>
                 <div className="text-[14.5px] text-muted">
-                  Heard {draft.words.length} words · “{draft.words.slice(0, 7).map((w) => w.w).join(' ')}…”
+                  Heard {draft.words.length} words{draft.language === 'ta' ? ' in Tamil' : ''} · “{draft.words.slice(0, 7).map((w) => w.w).join(' ')}…”
                 </div>
               </>
             )}
@@ -683,6 +699,61 @@ function StylePreviewLazy({ id }: { id: string }) {
   return (
     <div className="aspect-video w-full">
       <StylePreview id={id} />
+    </div>
+  )
+}
+
+/** Searches YouTube for popular videos like this voiceover and learns their look as a new style. */
+function FindStyle({ draft, onFound }: { draft: Project | null; onFound: (styleId: string) => void }) {
+  const { showToast } = useApp()
+  const [status, setStatus] = useState<string | null>(null)
+  const session = useRef<string | null>(null)
+  const heard = !!draft?.words.length
+  useEffect(() => {
+    const off = window.api.scout.onStatus((s) => session.current === null && setStatus(s))
+    const offLearn = window.api.onLearn(async (l) => {
+      if (l.id !== session.current) return
+      if (l.status === 'Failed') {
+        session.current = null
+        setStatus(null)
+        showToast(l.error ?? 'Could not learn the style.')
+      } else if (l.status === 'Ready to check' && l.styleId) {
+        session.current = null
+        setStatus(null)
+        useApp.setState({ styles: await window.api.styles.list() })
+        onFound(l.styleId)
+        showToast(`Style ready: ${l.name}`)
+      } else setStatus(`Learning the look: ${l.detail}`)
+    })
+    return () => {
+      off()
+      offLearn()
+    }
+  }, [])
+  return (
+    <div className="mt-3 flex items-center gap-3 rounded-xl border border-line px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] font-semibold">Find the best style on YouTube</div>
+        <div className="truncate text-[13.5px] text-muted">
+          {status ?? (draft?.language === 'ta' ? 'Finds popular Tamil videos on your topic and learns their look as a new style.' : 'Finds popular videos on your topic and learns their look as a new style.')}
+        </div>
+      </div>
+      <button
+        className="btn shrink-0"
+        disabled={!heard || !!status}
+        title={heard ? 'Uses a few AI calls, and downloads short clips of the videos' : 'Wait until the voiceover has been heard'}
+        onClick={async () => {
+          setStatus('Starting…')
+          try {
+            session.current = (await window.api.scout.start(draft!.id)).id
+          } catch (e) {
+            setStatus(null)
+            showToast(errorText(e))
+          }
+        }}
+      >
+        {status ? <span className="spinner" /> : <Search size={15} />} {status ? 'Finding…' : 'Find it'}
+      </button>
     </div>
   )
 }

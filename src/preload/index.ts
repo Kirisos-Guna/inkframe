@@ -88,6 +88,10 @@ const api = {
     start: (s: Partial<LearnSession> & { source: string }) => invoke<LearnSession>('learn:start', s),
     remove: (id: string) => invoke<void>('learn:remove', id)
   },
+  scout: {
+    start: (id: string) => invoke<LearnSession>('style:scout', id),
+    onStatus: (cb: (status: string) => void) => on<string>('scout:status', cb)
+  },
   writer: {
     script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
       invoke<{ title: string; script: string; hooks: string[]; sources: string[]; by: string }>('writer:script', r),

@@ -7,7 +7,7 @@ import { getProject, getSettings, getStyle, libDir, listCharacters, styleGuide }
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
-import { drawingSystem, styleDoc } from './prompts'
+import { drawingSystem, isTamil, styleDoc, TAMIL_STYLE } from './prompts'
 import { lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
@@ -122,7 +122,7 @@ ${transcript.slice(0, 12000)}
 Parts (use them as chapters, keep the times exactly, first must be 0:00; merge neighbours so there are 4–12 chapters with short clear names):
 ${chapters}
 
-Write:
+${isTamil(p) ? `Write everything below in Tamil. ${TAMIL_STYLE} The transcript comes from speech recognition: go by the meaning, and fix misheard words. Hashtags and tags: a mix of Tamil and the English words people search for.\n\n` : ''}Write:
 - 5 title options, each under 60 characters. Curiosity first: promise something the viewer does not know yet. No clickbait lies, no ALL CAPS words except acronyms.
 - A description: 2 short paragraphs that hook and summarise, then "Chapters" with the timestamps, then 3–5 hashtags on the last line.
 - 15 tags (short phrases people search for).
@@ -149,7 +149,7 @@ export async function writeCaptions(id: string, tidy = true): Promise<Project> {
       cwd: p.dir,
       prompt: `These are caption lines from a speech-to-text pass of a voiceover. Fix spelling, capitals and punctuation, and correct misheard words${
         p.script ? ' using the script below (it is what was read aloud)' : ''
-      }. Keep the meaning and keep every line: the reply must have exactly ${lines.length} lines, in the same order, each one the corrected text of the same line. Do not merge or split lines.
+      }. Stay in the language the lines are in. Keep the meaning and keep every line: the reply must have exactly ${lines.length} lines, in the same order, each one the corrected text of the same line. Do not merge or split lines.
 ${p.script ? `\nScript:\n"""\n${p.script.slice(0, 10000)}\n"""\n` : ''}
 Lines (JSON):
 ${JSON.stringify(lines.map((l) => l.text))}
@@ -211,7 +211,7 @@ What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).sl
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
 Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
 ${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
-
+${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}
 Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 

@@ -91,7 +91,7 @@ export async function recreateVideo(r: RecreateRequest, onStatus: (s: string) =>
       const audio = await run(yt, ['-f', 'bestaudio/best', '--no-playlist', '--no-warnings', '--ffmpeg-location', dirname(ffmpegPath()), '-o', join(dir, 'audio.%(ext)s'), url])
       const file = readdirSync(dir).find((f) => f.startsWith('audio.'))
       if (!file) throw new Error('Could not get the video\'s sound: ' + audio.stderr.split('\n').filter(Boolean).slice(-1)[0])
-      const words = await transcribe(join(dir, file), dir, (s) => onStatus(s))
+      const { words } = await transcribe(join(dir, file), dir, (s) => onStatus(s), meta.title)
       transcript = withMarks(words.map((w) => ({ t: w.start, text: w.w })))
     }
     if (!transcript.trim()) throw new Error('This video has no words to work from.')

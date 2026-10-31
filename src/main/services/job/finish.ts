@@ -1,11 +1,11 @@
 // Putting the video together: the parts, the voiceover, transitions, captions, sound effects and music.
-import { existsSync } from 'fs'
+import { existsSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
 import type { Comment, Part, Project } from '../../../shared/types'
 import { getStyle } from '../store'
 import { finishVideo } from '../media'
-import { captionFilters, linesFromWords, prepareCaptionFonts } from '../captions'
+import { captionAss, captionFilters, linesFromWords, needsShaping, prepareCaptionFonts, prepareShapingFont } from '../captions'
 import { buildSfxTrack } from '../sfx'
 
 const req = createRequire(__filename)
@@ -25,11 +25,19 @@ export const finishDetail = (p: Project) =>
 export async function finish(p: Project, out: string, size: { height: number; fps: number }, signal?: AbortSignal, clips = p.parts.map((x) => x.video!)) {
   const workDir = join(p.dir, 'work')
   let captions: string[] | undefined
+  let assFile: string | undefined
   if (p.settings.captions && p.settings.captions !== 'Off' && p.words.length) {
     const lines = p.captionLines?.length ? p.captionLines : linesFromWords(p.words)
-    prepareCaptionFonts(workDir, (w) => join(dirname(req.resolve('@fontsource/inter/package.json')), 'files', `inter-latin-${w}-normal.woff`))
     const H = size.height
-    captions = captionFilters(lines, p.settings.captions, { W: Math.round((H * 16) / 9 / 2) * 2, H, accent: getStyle(p.settings.styleId).palette.accent, workDir })
+    const look = { W: Math.round((H * 16) / 9 / 2) * 2, H, accent: getStyle(p.settings.styleId).palette.accent }
+    if (needsShaping(lines)) {
+      prepareShapingFont(workDir)
+      assFile = 'captions.ass'
+      writeFileSync(join(workDir, assFile), captionAss(lines, p.settings.captions, look))
+    } else {
+      prepareCaptionFonts(workDir, (w) => join(dirname(req.resolve('@fontsource/inter/package.json')), 'files', `inter-latin-${w}-normal.woff`))
+      captions = captionFilters(lines, p.settings.captions, { ...look, workDir })
+    }
   }
   // Sound effects, found from the scenes and made here (no AI): one track for the whole video.
   let sfx: { file: string; volume: number } | null = null
@@ -47,6 +55,7 @@ export async function finish(p: Project, out: string, size: { height: number; fp
     fps: size.fps,
     transition: p.settings.transition,
     captions,
+    assFile,
     music: p.settings.music && existsSync(p.settings.music.file) ? p.settings.music : null,
     signal
   })

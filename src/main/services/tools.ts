@@ -80,7 +80,7 @@ export function whisperPaths() {
   // main.exe is the old name; newer builds ship it only as a stub that points to whisper-cli.exe.
   const exe = s.whisperPath && existsSync(s.whisperPath) ? s.whisperPath : findFile(dir, ['whisper-cli.exe']) ?? findFile(dir, ['main.exe'])
   const model = s.whisperModel && existsSync(s.whisperModel) ? s.whisperModel : join(dir, 'ggml-base.bin')
-  return { dir, exe, model: existsSync(model) ? model : null, modelTarget: join(dir, 'ggml-base.bin') }
+  return { dir, exe, model: existsSync(model) ? model : null, modelTarget: join(dir, 'ggml-base.bin'), strongModel: join(dir, 'ggml-medium-q5_0.bin') }
 }
 
 function findFile(dir: string, names: string[]): string | null {

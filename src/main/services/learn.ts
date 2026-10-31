@@ -1,12 +1,13 @@
 import { BrowserWindow } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
-import { join, relative } from 'path'
+import { dirname, join, relative } from 'path'
 import { randomUUID } from 'crypto'
 import type { LearnSession, Part, Project, StyleDef } from '../../shared/types'
 import { libDir, saveLearn, saveStyle } from './store'
 import { extractJson, runAgent } from './agent'
 import { cutsPerMinute, frames, run } from './media'
 import { ensureYtDlp } from './recreate'
+import { ffmpegPath } from './tools'
 import { learnPrompt, styleDoc } from './prompts'
 import { bundleProject, methodFile, renderPart, sceneFile, checkScene } from './render'
 
@@ -28,6 +29,8 @@ export function startLearn(input: Partial<LearnSession> & { source: string }): L
     source: input.source,
     mode: input.mode ?? 'The look',
     testLine: input.testLine,
+    urls: input.urls,
+    skipTest: input.skipTest,
     provider: input.provider ?? 'Claude Code',
     model: input.model ?? 'Opus 5.5',
     effort: input.effort ?? 'High',
@@ -55,7 +58,7 @@ export function startLearn(input: Partial<LearnSession> & { source: string }): L
 async function learn(s: LearnSession, signal: AbortSignal) {
   const styleId = 'learned-' + s.id.slice(0, 8)
   const dir = libDir('styles', styleId)
-  const isLink = /^https?:\/\//i.test(s.source)
+  const isLink = !!s.urls?.length || /^https?:\/\//i.test(s.source)
 
   // 1 · Getting the video(s). A channel or playlist link gives its latest 5 videos; only the first
   // 3 minutes of each are needed to learn the look.
@@ -66,14 +69,14 @@ async function learn(s: LearnSession, signal: AbortSignal) {
       emit(s)
     })
     const many = /youtube\.com\/(@|channel\/|c\/|user\/|playlist)|[?&]list=/i.test(s.source)
-    const total = many ? 5 : 1
+    const total = s.urls?.length ?? (many ? 5 : 1)
     s.detail = `downloading · video 1 of ${total}`
     emit(s)
-    const args = ['-f', 'bv*[height<=720]+ba/b[height<=720]/b', '--merge-output-format', 'mp4', '--download-sections', '*0-180', '-o', join(dir, 'source-%(playlist_index|1)s.%(ext)s')]
-    args.push(...(many ? ['--playlist-items', `1:${total}`] : ['--no-playlist']))
+    const args = ['--ffmpeg-location', dirname(ffmpegPath()), '-f', 'bv*[height<=720]+ba/b[height<=720]/b', '--merge-output-format', 'mp4', '--download-sections', '*0-180', '-o', join(dir, s.urls ? 'source-%(id)s.%(ext)s' : 'source-%(playlist_index|1)s.%(ext)s')]
+    args.push(...(many && !s.urls ? ['--playlist-items', `1:${total}`] : ['--no-playlist']))
     // A channel's home page has tabs; its videos tab is the list we want.
     const url = many && /youtube\.com\/(@|channel\/|c\/|user\/)[^/]+\/?$/i.test(s.source) ? s.source.replace(/\/?$/, '/videos') : s.source
-    const r = await run(yt, [...args, url], {
+    const r = await run(yt, [...args, ...(s.urls ?? [url])], {
       signal,
       onLine: (line) => {
         const m = line.match(/Downloading item (\d+) of (\d+)/)
@@ -151,11 +154,11 @@ async function learn(s: LearnSession, signal: AbortSignal) {
   s.styleId = styleId
   emit(s)
 
-  // Test it on the user's line.
-  s.detail = 'testing it on your line'
+  // Test it on the user's line (unless the style was found for a video, which is its test).
+  if (!s.skipTest) s.detail = 'testing it on your line'
   emit(s)
   try {
-    s.testClip = await testClip(s, style, guide, signal)
+    if (!s.skipTest) s.testClip = await testClip(s, style, guide, signal)
   } catch (e) {
     if (signal.aborted) throw e
     s.error = `The style is saved, but the test clip failed: ${(e as Error).message.slice(0, 200)}`

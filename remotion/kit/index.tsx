@@ -28,7 +28,7 @@ export interface SceneProps {
 const Ctx = createContext<SceneProps | null>(null)
 export const SceneProvider = Ctx.Provider
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9']/g, '')
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '')
 
 export function useScene() {
   const p = useContext(Ctx)
@@ -60,9 +60,9 @@ export function useScene() {
 
 /** Hand styles write with a real handwriting font (Caveat, bundled), marker styles with Permanent Marker; the rest use Inter. */
 export const hand = (s: StyleDef) =>
-  s.font === 'marker' ? "'Marker', 'Hand', cursive" : ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture) ? "'Hand', 'Segoe Print', cursive" : "'Inter', 'Segoe UI', sans-serif"
+  s.font === 'marker' ? "'Marker', 'Tamil', 'Hand', cursive" : ['pen', 'marker', 'chalk', 'pencil', 'brush'].includes(s.stroke.texture) ? "'Hand', 'Tamil', 'Segoe Print', cursive" : "'Inter', 'Tamil', 'Segoe UI', sans-serif"
 
-// Fonts ship with every project (public/_inter.woff2, _hand.woff2, _marker.woff2), so text never depends on the PC's fonts.
+// Fonts ship with every project (public/_inter.woff2, _hand.woff2, _marker.woff2, _tamil.woff2), so text never depends on the PC's fonts.
 let fontsLoad: Promise<void> | null = null
 function useFonts() {
   const [handle] = React.useState(() => delayRender('Loading fonts'))
@@ -71,7 +71,8 @@ function useFonts() {
       new FontFace('Inter', `url(${staticFile('_inter.woff2')}) format('woff2')`, { weight: '100 900' }).load(),
       new FontFace('Hand', `url(${staticFile('_hand.woff2')}) format('woff2')`).load(),
       // Projects made before the marker font was added may not have it: never hold up rendering for it.
-      new FontFace('Marker', `url(${staticFile('_marker.woff2')}) format('woff2')`).load().catch(() => null)
+      new FontFace('Marker', `url(${staticFile('_marker.woff2')}) format('woff2')`).load().catch(() => null),
+      new FontFace('Tamil', `url(${staticFile('_tamil.woff2')}) format('woff2')`).load().catch(() => null)
     ])
       .then((faces) => faces.forEach((f) => f && document.fonts.add(f)))
       .catch(() => {})
@@ -336,7 +337,7 @@ export function Write({
         textAnchor={align}
         fill={color ?? s.palette.ink}
         stroke="none"
-        clipPath={`url(#c${id})`}
+        clipPath={p < 1 ? `url(#c${id})` : undefined}
       >
         {text}
       </text>
@@ -350,11 +351,12 @@ export function Typewriter({ text, x, y, size = 64, start = 0, cps = 18, color, 
   const frame = useCurrentFrame()
   const n = Math.max(0, Math.floor(((frame - start) / s.fps) * cps))
   if (frame < start) return null
-  const shown = text.slice(0, n)
+  const letters = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment)
+  const shown = letters.slice(0, n).join('')
   return (
-    <text x={x} y={y} fontSize={size} fontFamily="'Cascadia Mono', Consolas, monospace" fill={color ?? s.palette.ink} stroke="none" textAnchor={align}>
+    <text x={x} y={y} fontSize={size} fontFamily="'Cascadia Mono', 'Tamil', Consolas, monospace" fill={color ?? s.palette.ink} stroke="none" textAnchor={align}>
       {shown}
-      {n < text.length && (frame % 20 < 10 ? '▌' : '')}
+      {n < letters.length && (frame % 20 < 10 ? '▌' : '')}
     </text>
   )
 }

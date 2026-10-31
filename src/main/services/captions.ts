@@ -1,5 +1,5 @@
 // Captions: lines from the heard words, as SRT/VTT files and as drawtext filters that FFmpeg burns into the video.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { inflateSync } from 'zlib'
 import type { CaptionStyle, Project, Word } from '../../shared/types'
@@ -202,3 +202,82 @@ export function prepareCaptionFonts(workDir: string, interWoff: (weight: 600 | 8
   }
 }
 
+
+// ---------- captions in scripts that need shaping (Tamil and other Indian scripts) ----------
+// FFmpeg's drawtext here cannot shape them: vowel signs land on the wrong side of their letter. libass can, so these
+// captions are an .ass file, drawn with Windows' Nirmala UI, which has these scripts and Latin in one font.
+
+/** Letters that need shaping: Devanagari to Malayalam (includes Tamil). */
+export const needsShaping = (lines: Line[]) => lines.some((l) => /[\u0900-\u0D7F]/.test(l.text))
+
+/** Puts the font next to the captions, so libass finds it by file. */
+export function prepareShapingFont(workDir: string) {
+  const from = join(process.env.SystemRoot ?? 'C:\\Windows', 'Fonts', 'Nirmala.ttc')
+  const to = join(workDir, 'fonts', 'Nirmala.ttc')
+  mkdirSync(join(workDir, 'fonts'), { recursive: true })
+  if (existsSync(from) && !existsSync(to)) copyFileSync(from, to)
+}
+
+const assTime = (s: number) => {
+  const cs = Math.max(0, Math.round(s * 100))
+  const h = Math.floor(cs / 360000)
+  const m = Math.floor((cs % 360000) / 6000)
+  const sec = Math.floor((cs % 6000) / 100)
+  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`
+}
+/** ASS colours are &HBBGGRR&. */
+const assColour = (hex: string) => {
+  const h = hex.replace('#', '').slice(0, 6).padEnd(6, '0')
+  return `&H${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}&`.toUpperCase()
+}
+const assText = (s: string) => s.replace(/[{}\\]/g, '').replace(/\s+/g, ' ').trim()
+
+/**
+ * The whole caption track as an .ass file. Clean: lines that fade in and out. Bold pop: the word being said is the
+ * accent. Karaoke: spoken words fill with the accent. libass lays the line out, so words need no measuring.
+ */
+export function captionAss(lines: Line[], style: Exclude<CaptionStyle, 'Off'>, o: { W: number; H: number; accent: string }) {
+  const k = o.H / 1080
+  const size = Math.round((style === 'Clean' ? 56 : style === 'Bold pop' ? 72 : 66) * k)
+  const margin = Math.round((style === 'Bold pop' ? 120 : style === 'Karaoke' ? 100 : 70) * k)
+  const outline = Math.max(1, Math.round((style === 'Clean' ? 3 : 5) * k))
+  const accent = assColour(o.accent)
+  const white = '&HFFFFFF&'
+  const head = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${o.W}
+PlayResY: ${o.H}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,Nirmala UI,${size},${style === 'Karaoke' ? accent : white},${white},&H000000&,&H000000&,-1,0,0,0,100,100,0,0,1,${outline},0,2,${Math.round(o.W * 0.07)},${Math.round(o.W * 0.07)},${margin},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`
+  const out: string[] = []
+  const event = (a: number, b: number, text: string) => out.push(`Dialogue: 0,${assTime(a)},${assTime(b)},Cap,,0,0,0,,${text}`)
+  for (const l of lines) {
+    const end = Math.max(l.end, l.start + 0.6)
+    const words = l.words.length ? l.words : [{ w: l.text, start: l.start, end }]
+    if (style === 'Clean') event(l.start, end, `{\\fad(120,120)}${assText(l.text)}`)
+    else if (style === 'Karaoke') {
+      // \k counts in hundredths of a second, from the start of the line.
+      const tags = words.map((w, i) => {
+        const next = words[i + 1]?.start ?? end
+        return `{\\k${Math.max(1, Math.round((next - (i ? w.start : l.start)) * 100))}}${assText(w.w)}`
+      })
+      event(l.start, end, tags.join(' '))
+    } else {
+      // One event per spoken word, with that word in the accent.
+      words.forEach((w, i) => {
+        const from = i ? w.start : l.start
+        const to = words[i + 1]?.start ?? end
+        if (to > from) event(from, to, words.map((x, j) => (j === i ? `{\\c${accent}}${assText(x.w)}{\\c${white}}` : assText(x.w))).join(' '))
+      })
+    }
+  }
+  return head + out.join('\n') + '\n'
+}

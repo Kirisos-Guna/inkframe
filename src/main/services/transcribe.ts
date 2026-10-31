@@ -3,7 +3,8 @@ import { join } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { Word } from '../../shared/types'
-import { run, toWav16k } from './media'
+import { cpus } from 'os'
+import { duration, run, toWav16k } from './media'
 import { resetToolCache, whisperPaths } from './tools'
 
 const FALLBACK_BIN = 'https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip'
@@ -21,6 +22,7 @@ async function binUrls() {
   return [...urls, FALLBACK_BIN]
 }
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin'
+const STRONG_MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin'
 
 const STALL_MS = 30_000
 const ATTEMPTS = 5
@@ -101,20 +103,57 @@ export function ensureWhisper(onStatus?: (s: string) => void) {
 }
 
 /** Words with start/end times in seconds. */
-export async function transcribe(audio: string, workDir: string, onStatus?: (s: string) => void): Promise<Word[]> {
+export async function transcribe(audio: string, workDir: string, onStatus?: (s: string) => void, hint = ''): Promise<{ words: Word[]; language: string }> {
   await ensureWhisper(onStatus)
   const { exe, model } = whisperPaths()
   if (!exe || !model) throw new Error('whisper.cpp is not set up')
   const wav = join(workDir, 'voice-16k.wav')
   await toWav16k(audio, wav)
+  // Which language it is, from the first 30 seconds (quick, with the small model).
+  onStatus?.('Finding the language of the voiceover')
+  const found = await run(exe, ['-m', model, '-f', wav, '-l', 'auto', '-dl', '-t', '4'])
+  const language = `${found.stdout}${found.stderr}`.match(/auto-detected language: (\w+)/)?.[1] ?? 'en'
+
+  // English is heard well by the small model. Other languages need a stronger one, fetched once: tested on Tamil, the
+  // small model gives garble, and "medium" real sentences. Greedy search with no carried-over context is what stops it
+  // repeating itself on long audio, and keeps it to about 3× the audio's length.
+  const other = language !== 'en'
+  if (other) await ensureStrongModel(onStatus)
+  const strong = other ? whisperPaths().strongModel : model
+  const seconds = await duration(wav)
   const outBase = join(workDir, 'words')
-  onStatus?.('Listening to the voiceover')
-  const r = await run(exe, ['-m', model, '-f', wav, '-l', 'auto', '-oj', '-of', outBase, '-ml', '1', '-sow', '-np', '-t', '4'])
+  const name = other ? `${LANGUAGE_NAMES[language] ?? language} voiceover` : 'voiceover'
+  onStatus?.(`Listening to the ${name}`)
+  let last = -1
+  const args = ['-m', strong, '-f', wav, '-l', language, '-oj', '-of', outBase, '-ml', '1', '-sow', '-t', String(Math.max(4, cpus().length))]
+  if (other) args.push('-bs', '1', '-bo', '1', '-mc', '0', ...(hint ? ['--prompt', hint.slice(0, 200)] : []))
+  else args.push('-np')
+  const r = await run(exe, args, {
+    onLine: (l) => {
+      // Each heard word is printed with its time: that is the progress.
+      const m = l.match(/^\[(\d+):(\d+):(\d+)/)
+      const pct = m && seconds ? Math.min(99, Math.floor(((+m[1] * 3600 + +m[2] * 60 + +m[3]) / seconds) * 100)) : -1
+      if (pct > last) onStatus?.(`Listening to the ${name} · ${(last = pct)}%`)
+    }
+  })
   if (r.code !== 0 || !existsSync(outBase + '.json')) throw new Error('whisper.cpp failed: ' + r.stderr.split('\n').slice(-3).join(' '))
   const json = JSON.parse(readFileSync(outBase + '.json', 'utf8')) as {
     transcription: { offsets: { from: number; to: number }; text: string }[]
   }
-  return json.transcription
+  const words = json.transcription
     .map((s) => ({ w: s.text.trim(), start: s.offsets.from / 1000, end: s.offsets.to / 1000 }))
     .filter((w) => w.w && !/^\[.*\]$/.test(w.w))
+  return { words, language }
+}
+
+/** Names of the languages the app mentions by name. */
+export const LANGUAGE_NAMES: Record<string, string> = { ta: 'Tamil', hi: 'Hindi', te: 'Telugu', ml: 'Malayalam', kn: 'Kannada', es: 'Spanish', fr: 'French', de: 'German' }
+
+/** The stronger speech model for languages other than English (540 MB, fetched once). */
+let gettingStrong: Promise<void> | null = null
+function ensureStrongModel(onStatus?: (s: string) => void) {
+  const w = whisperPaths()
+  if (existsSync(w.strongModel)) return Promise.resolve()
+  gettingStrong ??= download(STRONG_MODEL_URL, w.strongModel, (p) => onStatus?.(`Getting the stronger listening model (once, 540 MB) · ${p}%`)).finally(() => (gettingStrong = null))
+  return gettingStrong
 }

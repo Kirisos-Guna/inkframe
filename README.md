@@ -88,4 +88,4 @@ node scripts/drive.mjs make run voice.wav  # makes a whole video end to end (use
 Remotion is free for individuals and companies of up to 3 people; larger companies need a
 [Remotion company licence](https://www.remotion.dev/license). whisper.cpp and FFmpeg are open source.
 HyperFrames is Apache-2.0 (its anonymous telemetry is turned off by Inkframe). GSAP is free to use under its
-[standard licence](https://gsap.com/standard-license). three.js and rough.js are MIT; the Inter and Caveat fonts are under the SIL Open Font Licence, and Permanent Marker under the Apache Licence 2.0.
+[standard licence](https://gsap.com/standard-license). three.js and rough.js are MIT; the Inter, Caveat and Baloo Thambi 2 fonts are under the SIL Open Font Licence, and Permanent Marker under the Apache Licence 2.0.

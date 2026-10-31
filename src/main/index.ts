@@ -12,6 +12,7 @@ import { closeStillBrowser } from './services/render'
 import { recreateVideo, type RecreateRequest } from './services/recreate'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
+import { scoutStyle } from './services/styleScout'
 import { extractJson, runAgent } from './services/agent'
 import { characterPrompt } from './services/prompts'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
@@ -223,6 +224,11 @@ function registerIpc() {
     })
   )
   h('writer:publish', (id: string) => writePublishKit(id))
+  h('style:scout', (id: string) =>
+    scoutStyle(id, (s) => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('scout:status', s)
+    })
+  )
   h('writer:captions', (id: string, tidy: boolean) => writeCaptions(id, tidy))
   h('captions:save', async (id: string, format: 'srt' | 'vtt') => {
     const p = store.getProject(id)!

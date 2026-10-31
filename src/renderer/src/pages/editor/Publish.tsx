@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Copy, Download, Image as ImageIcon, Music, RefreshCw, Sparkles, X } from 'lucide-react'
-import type { CaptionStyle, Project, SfxLevel, Transition } from '@shared/types'
+import type { CaptionStyle, OutputLang, Project, SfxLevel, Transition } from '@shared/types'
 import { fmtTime, useApp } from '@/store/app'
 import { Chips } from '@/components/ui'
 
 const TRANSITIONS: Transition[] = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom']
 const CAPTIONS: CaptionStyle[] = ['Off', 'Clean', 'Bold pop', 'Karaoke']
 const SFX: SfxLevel[] = ['Off', 'Subtle', 'Lively']
+const LANGS: OutputLang[] = ['English', 'Tamil']
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /** Everything for putting the video out: thumbnail, title and description, captions, and the finishing pass. */
@@ -40,6 +41,10 @@ export function Publish({ p }: { p: Project }) {
 
   return (
     <>
+      <Section title="Language" sub="For the thumbnail, title and description. Tech words stay in English, the way Tamil creators write them.">
+        <Chips options={LANGS} value={p.settings.outputLang ?? 'English'} onToggle={(outputLang) => setSettings({ outputLang })} size="sm" />
+      </Section>
+
       {/* Thumbnail */}
       <Section title="Thumbnail" sub={`Drawn by ${p.settings.provider} in the video's own style (its background, colours and lettering), from its frames: one big subject and 2–4 huge words.`}>
         <div className="flex gap-2">

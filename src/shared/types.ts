@@ -53,6 +53,7 @@ export type Engine = 'remotion' | 'hyperframes'
 export type Transition = 'None' | 'Fade' | 'Flash' | 'Wipe' | 'Slide' | 'Zoom'
 export type CaptionStyle = 'Off' | 'Clean' | 'Bold pop' | 'Karaoke'
 export type SfxLevel = 'Off' | 'Subtle' | 'Lively'
+export type OutputLang = 'English' | 'Tamil'
 
 export interface Thumbnail {
   id: string
@@ -126,6 +127,8 @@ export interface ProjectSettings {
   /** Sound effects timed to what happens on screen, and their volume (0..1). */
   sfx?: SfxLevel
   sfxVolume?: number
+  /** The language of on-screen text, title, description and thumbnail. Unset: English. */
+  outputLang?: OutputLang
   music?: { file: string; volume: number } | null
 }
 
@@ -133,6 +136,10 @@ export interface Project {
   draft?: boolean
   transcribing?: boolean
   transcribeError?: string
+  /** What hearing is doing right now, with its progress. */
+  transcribeStatus?: string
+  /** The language heard in the voiceover (whisper's code: en, ta...). */
+  language?: string
   id: string
   title: string
   dir: string
@@ -210,6 +217,10 @@ export interface LearnSession {
   source: string
   mode: 'The look' | 'Look + pacing'
   testLine?: string
+  /** Videos to learn from (several links at once), instead of `source`. */
+  urls?: string[]
+  /** Save the style without drawing a test clip (no tokens for it). */
+  skipTest?: boolean
   provider?: Provider
   model?: string
   effort?: Effort

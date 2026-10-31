@@ -17,17 +17,28 @@ export function startTranscription(id: string) {
     p.transcribeError = undefined
     emit(p, true)
     try {
-      p.words = await transcribe(p.voiceover!.file, join(p.dir, 'work'), (s) => {
-        if (p.job.running) {
-          p.job.detail = s
+      // The file name often holds the topic: a hint that helps with names and technical words.
+      const hint = [p.voiceover!.name.replace(/\.[^.]+$/, '').replace(/_/g, ' '), p.direction].filter(Boolean).join('. ')
+      const heard = await transcribe(
+        p.voiceover!.file,
+        join(p.dir, 'work'),
+        (s) => {
+          p.transcribeStatus = s
+          if (p.job.running) p.job.detail = s
           emit(p)
-        }
-      })
+        },
+        hint
+      )
+      p.words = heard.words
+      p.language = heard.language
+      // A Tamil voiceover gets Tamil on screen and in the title and description, until the user says otherwise.
+      if (heard.language === 'ta' && !p.settings.outputLang) p.settings.outputLang = 'Tamil'
     } catch (e) {
       p.words = []
       p.transcribeError = (e as Error).message
     } finally {
       p.transcribing = false
+      p.transcribeStatus = undefined
       emit(p, true)
     }
   })()

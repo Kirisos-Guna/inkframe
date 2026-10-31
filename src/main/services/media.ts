@@ -121,6 +121,8 @@ export async function finishVideo(o: {
   transition?: string
   /** drawtext filters for burned-in captions (see captions.ts). */
   captions?: string[]
+  /** An .ass file in workDir instead, for scripts drawtext cannot shape (see captions.ts). */
+  assFile?: string
   music?: { file: string; volume: number } | null
   /** The sound-effects track (see sfx.ts), already timed to the whole video. */
   sfx?: { file: string; volume: number } | null
@@ -152,7 +154,10 @@ export async function finishVideo(o: {
     lines.push(`${o.clips.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[cat]`)
     last = 'cat'
   }
-  if (o.captions?.length) {
+  if (o.assFile) {
+    lines.push(`[${last}]ass=${o.assFile}:fontsdir=fonts[cap]`)
+    last = 'cap'
+  } else if (o.captions?.length) {
     lines.push(`[${last}]${o.captions.join(",")}[cap]`)
     last = 'cap'
   }

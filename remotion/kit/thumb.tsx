@@ -205,7 +205,7 @@ export function Ring({ x, y, rx = 220, ry, color, width = 22 }: { x: number; y: 
 export function Sticker({ text, x, y, color, textColor = '#0b0b0c', rotate = 8, size = 90 }: { text: string; x: number; y: number; color?: string; textColor?: string; rotate?: number; size?: number }) {
   const s = useScene()
   const c = color ?? s.palette.accent
-  const w = text.length * size * 0.62 + size * 0.9
+  const w = text.length * size * (/[0900-0D7F]/.test(text) ? 0.95 : 0.62) + size * 0.9
   const h = size * 1.45
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>

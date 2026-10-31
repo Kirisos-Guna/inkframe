@@ -145,7 +145,17 @@ Direction from the user: ${p.direction || '(none)'}${
       : ''
   }
 Characters in this video: ${chars.length ? chars.map((c) => `${c.name} (${c.outfit.toLowerCase()}, ${c.hair.toLowerCase()} hair${c.glasses ? ', glasses' : ''})`).join('; ') : 'none, do not use <Character>'}
-Material files you can show with <Picture name="...">: ${[...new Set(p.material.map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}`
+Material files you can show with <Picture name="...">: ${[...new Set(p.material.map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}${languageNote(p)}`
+}
+
+/** What the viewer reads, when it is not English. */
+export const isTamil = (p: Project) => p.settings.outputLang === 'Tamil'
+export const TAMIL_STYLE =
+  'Natural spoken Tamil in Tamil script (தமிழ்), the way Tamil tech creators write: keep technical words and names in English (Kubernetes, API, server). Not formal, not word-for-word translation.'
+
+function languageNote(p: Project) {
+  const heard = p.language && p.language !== 'en' ? '\nThe words come from speech recognition and can have mistakes: go by the meaning. at(\'word\') takes a word exactly as listed.' : ''
+  return (isTamil(p) ? `\nAll on-screen text (titles, labels, pills) is in Tamil. ${TAMIL_STYLE} Few words, large.` : '') + heard
 }
 
 function partContext(p: Project, part: Part, _chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {

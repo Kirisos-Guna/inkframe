@@ -41,6 +41,12 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     const answer = nums.filter((n) => !(n === skip && !skipped && (skipped = true)))
     return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
   }
+  // Finding a style: the searches, then the picks from the list of results.
+  if (p.includes('Write 3 YouTube searches')) return JSON.stringify({ topic: 'Cloud and Kubernetes', queries: ['kubernetes explained tamil', 'cloud computing eppadi velai seikirathu tamil'] })
+  if (p.includes('Pick the 4 best to learn')) {
+    const ids = [...p.matchAll(/^(\S+) · [\d,]+ views/gm)].map((m) => m[1])
+    return JSON.stringify({ picks: ids.slice(0, 2) })
+  }
   if (p.includes('A reviewer found')) {
     const n = Number(p.match(/Part (\d+) of \d+/)?.[1])
     log(`fix ${n}`)
@@ -146,6 +152,7 @@ export default function Scene() {
     return 'Drew a 3D part.'
   }
   // The Dark Systems Diagram style is drawn with its building blocks (Steps is left out of the import on purpose).
+  const tamil = !!o.system?.includes('is in Tamil')
   const systems = existsSync(join(o.cwd, 'STYLE.md')) && readFileSync(join(o.cwd, 'STYLE.md'), 'utf8').includes('@kit/systems')
   const sysFiles = [...new Set([...p.matchAll(/scenes\/([\w-]+)\.tsx/g)].map((m) => m[1]))].filter((f) => !f.startsWith('thumb-'))
   if (systems && sysFiles.length) {
@@ -165,7 +172,7 @@ export default function Scene() {
         <Browser x={160} y={210} w={640} h={330} url="google.com" secure start={0} />
         <Connector x1={480} y1={560} x2={480} y2={760} color={SIGNAL.cyan} start={12} />
         <Pill x={330} y={660} text="TCP" color={SIGNAL.cyan} start={20} />
-        <Pill x={630} y={660} text="HTTP" color={SIGNAL.amber} start={26} />
+        <Pill x={630} y={660} text="${tamil ? 'இணையம்' : 'HTTP'}" color={SIGNAL.amber} start={26} />
         <Packet x1={480} y1={570} x2={480} y2={740} text="<html>" start={34} dur={30} />
         <Server x={330} y={780} logo={[SIGNAL.cyan, SIGNAL.pink, SIGNAL.amber]} start={8} />
         <Layer x={980} y={260} w={780} name="HTTP" color={SIGNAL.amber} start={10} />
@@ -173,7 +180,7 @@ export default function Scene() {
         <Layer x={980} y={440} w={780} name="TCP" color={SIGNAL.cyan} start={18} />
         <Pill x={1520} y={475} text="port 443" color={SIGNAL.amber} size={22} mono start={30} />
       </Focus>
-      <SectionTitle text="How do TCP and HTTP work together?" words={{ TCP: SIGNAL.cyan, HTTP: SIGNAL.amber }} start={q} />
+      <SectionTitle text="${tamil ? 'TCP மற்றும் HTTP எப்படி இணைகின்றன?' : 'How do TCP and HTTP work together?'}" words={{ TCP: SIGNAL.cyan, HTTP: SIGNAL.amber }} start={q} />
       <Steps x={1370} y={900} count={4} current={2} label="TCP, then HTTP" start={Math.round(dur * 0.4)} />
     </Board>
   )
