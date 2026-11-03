@@ -14,7 +14,7 @@ import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
 /** Writing goes to Codex by default (when it is installed), otherwise to Claude Code. */
-async function writer() {
+export async function writer() {
   const s = getSettings()
   const want = s.writerProvider ?? 'Codex'
   const provider = want === 'Codex' && !(await codexPath()) ? 'Claude Code' : want

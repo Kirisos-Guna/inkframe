@@ -321,6 +321,9 @@ export interface AppSettings {
   /** Free API keys for stock clips (remix styles). */
   pexelsKey?: string
   pixabayKey?: string
+  /** ElevenLabs: makes the voiceover from the script, with the voice the writer picks. */
+  elevenLabsKey?: string
+  elevenLabsModel?: string
   /** Fast Tech Remix may use short clips of real people saying a line (from YouTube). Off: other channels can claim them. */
   quoteClips?: boolean
 }
@@ -334,4 +337,24 @@ export interface Status {
   whisper: boolean
   ytDlp: boolean
   usage?: number
+}
+
+/** A voice that can speak the script: one in the ElevenLabs account, or one from its library (added when used). */
+export interface ElevenVoice {
+  id: string
+  name: string
+  about: string
+  mine: boolean
+  library?: boolean
+  owner?: string
+  preview?: string
+}
+
+/** The voice picked for a script, and how it should speak. */
+export interface VoicePick {
+  id: string
+  why: string
+  speed: number
+  stability: number
+  style: number
 }

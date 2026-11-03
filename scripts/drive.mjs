@@ -185,6 +185,19 @@ if (mode === 'publish') {
 }
 
 // comment = open the most recent video and send one comment on part 2 (uses an existing userdata folder).
+// voice: makes the voiceover from a pasted script with ElevenLabs (the stand-in with FAKE=1), up to Replace.
+if (mode === 'voice') {
+  await page.click('text=Add your script')
+  await page.fill('textarea', 'Your phone sends a question. It does not fly to the cloud. It takes a very long walk, through a tower, a cable under the sea and a room full of servers.')
+  await page.click('text=Make it with ElevenLabs')
+  await page.waitForSelector('text=Make the voiceover', { timeout: 120000 })
+  await shot('voice-picked')
+  await page.click('text=Make the voiceover')
+  await page.waitForSelector('text=Replace', { timeout: 300000 })
+  await shot('voice-made')
+  console.log('voiceover', await page.locator('text=/ElevenLabs_/').first().textContent())
+}
+
 if (mode === 'comment') {
   await page.locator('aside button:has(div.h-7)').first().click()
   await page.waitForSelector('[title="Export"]')

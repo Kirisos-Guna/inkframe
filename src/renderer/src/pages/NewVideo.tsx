@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
+  AudioLines,
   BookOpen,
   Check,
   FileText,
@@ -26,6 +27,7 @@ import { Chips, Row, Select, StepBadge, Waveform } from '@/components/ui'
 import { CharacterSvg } from '@/components/CharacterSvg'
 import { StylePreview } from '@/components/StylePreview'
 import { ScriptWriter } from '@/components/ScriptWriter'
+import { VoiceMaker } from '@/components/VoiceMaker'
 
 const TEMPLATES: Record<string, string> = {
   Explainer:
@@ -94,6 +96,7 @@ export default function NewVideo() {
   const [drag, setDrag] = useState(false)
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
+  const [voicing, setVoicing] = useState(false)
   const [allStyles, setAllStyles] = useState(false)
   const [styleDim, setStyleDim] = useState<'All' | '2D' | '3D'>('All')
 
@@ -281,6 +284,32 @@ export default function NewVideo() {
               <Sparkles size={15} /> Write or recreate a script with AI
             </button>
           </div>
+          {!draft?.voiceover && (
+            <div className="mt-2 flex items-center gap-2 text-[15px]">
+              <AudioLines size={15} className="text-accent" />
+              <button
+                className="font-semibold text-accent disabled:text-muted"
+                disabled={!script?.trim()}
+                onClick={() => (app?.elevenLabsKey || window.api.fake ? setVoicing(true) : showToast('Add your ElevenLabs API key in Settings first'))}
+              >
+                No voiceover yet? Make it with ElevenLabs
+              </button>
+              <span className="text-muted">· {script?.trim() ? 'the best voice for this script is picked for you' : 'write or paste the script first'}</span>
+            </div>
+          )}
+          {voicing && script?.trim() && (
+            <VoiceMaker
+              script={script}
+              language={s.outputLang}
+              style={style?.name}
+              fast={!!style?.realMedia}
+              onClose={() => setVoicing(false)}
+              onDone={(file) => {
+                setVoicing(false)
+                addVoiceover(file)
+              }}
+            />
+          )}
           {writing && (
             <ScriptWriter
               fastDefault={!!style?.realMedia}

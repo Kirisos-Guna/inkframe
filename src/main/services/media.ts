@@ -33,7 +33,7 @@ export function run(
   })
 }
 
-async function ffmpeg(args: string[], signal?: AbortSignal) {
+export async function ffmpeg(args: string[], signal?: AbortSignal) {
   const r = await run(ffmpegPath(), ['-hide_banner', '-y', ...args], { signal })
   if (r.code !== 0) throw new Error('FFmpeg: ' + r.stderr.split('\n').filter(Boolean).slice(-3).join(' '))
   return r

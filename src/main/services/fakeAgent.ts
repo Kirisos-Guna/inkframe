@@ -42,6 +42,10 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
   }
   // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
+  if (p.includes('You cast the narrator for a video')) {
+    const id = p.match(/^(\S+) \| /m)?.[1] ?? ''
+    return JSON.stringify({ id, why: 'A calm explainer voice suits a tech walkthrough.', speed: 1.05, stability: 0.45, style: 0.25 })
+  }
   if (p.includes('You are the researcher for a fast, Fireship-style')) {
     const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
     const kinds = [

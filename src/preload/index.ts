@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  ElevenVoice,
+  VoicePick,
   AppSettings,
   CharacterDef,
   Comment,
@@ -29,6 +31,8 @@ function on<T>(ch: string, cb: (v: T) => void) {
 }
 
 const api = {
+  /** The test stand-in is on (INKFRAME_FAKE_AGENT=1): paid services answer with stand-ins too. */
+  fake: process.env.INKFRAME_FAKE_AGENT === '1',
   settings: {
     get: () => invoke<AppSettings>('settings:get'),
     set: (patch: Partial<AppSettings>) => invoke<AppSettings>('settings:set', patch)
@@ -45,6 +49,12 @@ const api = {
     probe: (file: string) => invoke<{ duration: number; peaks: number[] }>('media:probe', file),
     peaks: (file: string) => invoke<number[]>('media:peaks', file),
     url: (file: string) => 'media://f/' + encodeURIComponent(file)
+  },
+  voice: {
+    list: (language?: string) => invoke<{ voices: ElevenVoice[]; left?: number }>('voice:list', language),
+    pick: (script: string, voices: ElevenVoice[], o: { language?: string; style?: string; fast?: boolean }) => invoke<VoicePick>('voice:pick', script, voices, o),
+    speak: (script: string, pick: VoicePick, voice: ElevenVoice, language?: string) => invoke<string>('voice:speak', script, pick, voice, language),
+    onStatus: (cb: (s: string) => void) => on<string>('voice:status', cb)
   },
   pick: {
     file: (filters: { name: string; extensions: string[] }[], multi = false) =>
