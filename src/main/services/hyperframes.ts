@@ -18,6 +18,9 @@ export const interFont = () => join(dirname(req.resolve('@fontsource-variable/in
 export const markerFont = () => join(dirname(req.resolve('@fontsource/permanent-marker/package.json')), 'files', 'permanent-marker-latin-400-normal.woff2')
 /** Baloo Thambi 2: bold Tamil lettering for every style (SIL Open Font Licence). */
 export const tamilFont = () => join(dirname(req.resolve('@fontsource/baloo-thambi-2/package.json')), 'files', 'baloo-thambi-2-tamil-700-normal.woff2')
+/** Anton (meme capitals) and JetBrains Mono (code) for the remix style (SIL Open Font Licence). */
+export const memeFont = () => join(dirname(req.resolve('@fontsource/anton/package.json')), 'files', 'anton-latin-400-normal.woff2')
+export const codeFont = () => join(dirname(req.resolve('@fontsource/jetbrains-mono/package.json')), 'files', 'jetbrains-mono-latin-500-normal.woff2')
 export const handFont = () => join(dirname(req.resolve('@fontsource/caveat/package.json')), 'files', 'caveat-latin-600-normal.woff2')
 const ffprobePath = () => unpacked((ffprobeStatic as { path: string }).path)
 

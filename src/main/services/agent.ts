@@ -143,7 +143,9 @@ async function runClaude(o: AgentOpts): Promise<string> {
     args.push('--tools', 'Read,Write,Edit', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit')
     for (const d of o.addDirs ?? []) args.push('--add-dir', d)
   } else {
-    args.push('--tools', 'Read', '--allowedTools', 'Read')
+    // Research (the remix styles' media plan) may search and read the web.
+    const web = o.search ? ['WebSearch', 'WebFetch'] : []
+    args.push('--tools', ['Read', ...web].join(','), '--allowedTools', 'Read', ...web)
   }
   return new Promise((resolve, reject) => {
     const p = start(exe, args, o.cwd)

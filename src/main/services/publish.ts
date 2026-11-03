@@ -8,6 +8,7 @@ import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
 import { drawingSystem, isTamil, styleDoc, TAMIL_STYLE } from './prompts'
+import { mediaCredits } from './job/mediaPlan'
 import { lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
@@ -130,7 +131,10 @@ ${isTamil(p) ? `Write everything below in Tamil. ${TAMIL_STYLE} The transcript c
 Reply with JSON only: {"titles": [...], "description": "...", "tags": [...], "hashtags": ["#...", ...]}`
   })
   const k = extractJson<Omit<PublishKit, 'at'>>(reply)
-  p.publish = { titles: k.titles ?? [], description: k.description ?? '', tags: k.tags ?? [], hashtags: k.hashtags ?? [], at: Date.now() }
+  // The licences of the photos and clips used ask for credit: it goes at the end of the description.
+  const credits = mediaCredits(p)
+  const description = (k.description ?? '') + (credits.length ? `\n\nMedia credits:\n${credits.map((c) => `- ${c}`).join('\n')}` : '')
+  p.publish = { titles: k.titles ?? [], description, tags: k.tags ?? [], hashtags: k.hashtags ?? [], at: Date.now() }
   emit(p, true)
   return p
 }

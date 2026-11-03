@@ -18,6 +18,7 @@ import { agentOpts, agentScene, drawOpts, finishScene, isBareStarter, repairOpts
 import { checkParts } from './job/checks'
 import { finish, finishDetail } from './job/finish'
 import { checkFinalVideo } from './job/finalCheck'
+import { gatherMedia } from './job/mediaPlan'
 
 // The rest of the app uses these through this file.
 export { emit, flushSaves } from './job/events'
@@ -115,6 +116,13 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
     emit(p, true)
   }
   if (signal.aborted) throw new Error('Stopped')
+
+  // Remix styles: research and fetch the real media each part shows, before it is drawn.
+  if (style.realMedia) {
+    await guarded(p, signal, (s) => gatherMedia(p, s))
+    // The media lists go to the drawing sessions with each part.
+    writeGuides(p)
+  }
 
   // Rendering runs alongside the drawing: a part is rendered as soon as it is designed, two at a time.
   clearRenderBundles(p)

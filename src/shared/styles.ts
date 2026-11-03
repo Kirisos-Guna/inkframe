@@ -139,6 +139,34 @@ Look
 - Brands only when the narration names them, as a simple mark (Server's logo colours), never an exact copy.`
   }),
   s({
+    id: 'tech-remix', name: 'Fast Tech Remix', tags: ['Real media', 'Fast'], dim: '2D', realMedia: true,
+    description: 'Real screenshots, posts, photos, memes, code and clips, cut every few seconds, with sharp captions. Fireship pace.',
+    palette: { bg: '#000000', ink: '#ffffff', accent: '#ff8a1f' },
+    guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, code and clips listed for each
+part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
+  import { Cuts, Shot, Clip, Page, Post, Meme, Caption, Code, Shell, Box, Flow, Hand, Circle, TitleCard } from '@kit/remix'
+  import { AbsoluteFill } from '@kit'
+  <Cuts at={[0, at('word'), …]}> one child per shot </Cuts>   each child fills the frame; cut on the word it is about
+  <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip, muted
+  <Page name="m/…png" w h marks={…} markAt? />  a page with its sentence highlighted (copy w, h and marks as listed)
+  <Post name="m/…png" w h />  a real post        <Meme name="m/…jpg" top="…" bottom="…" />  a meme with its captions
+  <Caption text="WE'RE SO CLOSE. PLS VENMO ME" />  a sarcastic line over the shot before it (inside the same cut)
+  <Code code={…} lang="ts" file="index.ts" lines={[3]} />   <Shell command="npm i x" output={['added 1 package']} />
+  <TitleCard text="Circular financing" accent="circular" />
+  Diagrams on black: <AbsoluteFill style={{ background: '#000' }}> <Box x y label="NVIDIA" color="#76b900" /> …
+    <Flow from={[x,y]} to={[x,y]} label="investment" color="#3ddc97" /> </AbsoluteFill>   build them up box by box
+  Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
+
+Pace and humour
+- A new picture every 2 to 4 seconds, cut exactly on the word it shows (at('word')). Never hold one picture longer.
+- The narration is dry and quick; the pictures carry the jokes: a meme or a sarcastic Caption on the ironic beat,
+  a Hand or Circle on the number that matters in a page.
+- Mix kinds: never three of the same in a row. Diagrams for how money or data flows; code for how it works.
+- Diagram colours: one flat colour per company or thing (NVIDIA green #76b900, AI companies purple #8b5cf6, banks
+  teal #22b8cf, others orange #ff8a1f), arrows labelled in small capitals.
+- If a part has no media listed, use a TitleCard, a diagram or code, never an empty frame.`
+  }),
+  s({
     id: 'watercolour', name: 'Watercolour', tags: ['Paint', 'Soft'], dim: '2D',
     description: 'Washes of colour bleed into textured paper behind fine ink lines.',
     palette: { bg: '#f6f2ea', ink: '#2e3a46', accent: '#5b8fc7' }, stroke: { width: 2, jitter: 0.5, texture: 'brush' }

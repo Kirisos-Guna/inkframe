@@ -55,6 +55,49 @@ export type CaptionStyle = 'Off' | 'Clean' | 'Bold pop' | 'Karaoke'
 export type SfxLevel = 'Off' | 'Subtle' | 'Lively'
 export type OutputLang = 'English' | 'Tamil'
 
+/** One planned piece of real media for a part (from the research step). */
+export interface Shot {
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'stock' | 'clip' | 'code'
+  /** page, tweet */
+  url?: string
+  /** page: the exact sentence on the page to highlight */
+  mark?: string
+  /** photo, stock: what to search for */
+  query?: string
+  /** meme: the Imgflip template name, and the captions */
+  template?: string
+  top?: string
+  bottom?: string
+  /** clip: the user's link and the seconds wanted */
+  link?: string
+  from?: string
+  to?: string
+  /** code */
+  lang?: string
+  file?: string
+  code?: string
+  /** what it shows, for the designer */
+  why?: string
+}
+
+/** A fetched piece of real media, in the project's public folder (name is relative to it). */
+export interface MediaItem {
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'clip' | 'code'
+  name: string
+  w?: number
+  h?: number
+  /** page: where the highlighted sentence's lines are, in the picture's pixels: [x, y, w, h] */
+  marks?: [number, number, number, number][]
+  /** licence credit, added to the description */
+  credit?: string
+  top?: string
+  bottom?: string
+  lang?: string
+  file?: string
+  code?: string
+  note?: string
+}
+
 export interface Thumbnail {
   id: string
   file: string
@@ -157,6 +200,8 @@ export interface Project {
   output?: string
   /** The check of the finished video file (black frames, freezes, sound, length): empty notes when all is well. */
   finalCheck?: { at: number; notes: string[] }
+  /** Real media per part id (remix styles). */
+  media?: Record<string, MediaItem[]>
   /** When the final video was last written (so the page loads the new one). */
   outputAt?: number
   thumbnails?: Thumbnail[]
@@ -183,6 +228,8 @@ export interface StyleDef {
   engine?: Engine
   /** Extra direction for the designer, written into STYLE.md. */
   guide?: string
+  /** Built from real media (screenshots, photos, memes, clips, code) found by research, not drawn. */
+  realMedia?: boolean
 }
 
 export interface CharacterDef {
@@ -250,6 +297,9 @@ export interface AppSettings {
   writerModel?: string
   /** How this channel's scripts sound (persona, audience, words to use or avoid, an example line). Used for every script. */
   scriptVoice?: string
+  /** Free API keys for stock clips (remix styles). */
+  pexelsKey?: string
+  pixabayKey?: string
 }
 
 export interface Status {

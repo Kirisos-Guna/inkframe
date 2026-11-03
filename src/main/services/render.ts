@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { exportsOf, fixImports, LIBRARY_NAMES, type Offered } from './sceneFix'
 import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
 import { getStyle, listCharacters } from './store'
-import { handFont, interFont, markerFont, tamilFont } from './hyperframes'
+import { codeFont, handFont, interFont, markerFont, memeFont, tamilFont } from './hyperframes'
 
 export const appRoot = () => app.getAppPath()
 export const kitDir = () => join(appRoot(), 'remotion', 'kit')
@@ -36,6 +36,7 @@ export function syncMaterial(p: Project) {
   if (!existsSync(marker)) copyFileSync(markerFont(), marker)
   const tamil = join(pub, '_tamil.woff2')
   if (!existsSync(tamil)) copyFileSync(tamilFont(), tamil)
+  for (const [file, from] of [['_meme.woff2', memeFont()], ['_code.woff2', codeFont()]]) if (!existsSync(join(pub, file))) copyFileSync(from, join(pub, file))
   for (const m of p.material) {
     const to = join(pub, basename(m))
     if (existsSync(m) && !existsSync(to)) copyFileSync(m, to)
@@ -66,7 +67,7 @@ export async function checkScene(file: string): Promise<string | null> {
 let offered: Offered | null = null
 function moduleExports() {
   const names = (file: string) => exportsOf(readFileSync(join(kitDir(), file), 'utf8'))
-  offered ??= [['@kit', names('index.tsx')], ['@kit/three', names('three.tsx')], ['@kit/thumb', names('thumb.tsx')], ['@kit/systems', names('systems.tsx')], ...LIBRARY_NAMES]
+  offered ??= [['@kit', names('index.tsx')], ['@kit/three', names('three.tsx')], ['@kit/thumb', names('thumb.tsx')], ['@kit/systems', names('systems.tsx')], ['@kit/remix', names('remix.tsx')], ...LIBRARY_NAMES]
   return offered
 }
 

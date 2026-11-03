@@ -209,6 +209,42 @@ export function StylePreview({ id }: { id: string }) {
           <circle cx="276" cy="82.5" r="3.5" fill={bg} stroke="#f0569a" strokeWidth="1.6" />
         </g>
       )}
+      {id === 'tech-remix' && (
+        <g>
+          {/* A page with a highlighted line, a meme frame, a code tab and a diagram box: real media, cut fast. */}
+          <rect x="18" y="18" width="150" height="104" rx="4" fill="#fafafa" transform="rotate(-2 93 70)" />
+          {[34, 46, 58, 70, 82, 94, 106].map((y) => (
+            <rect key={y} x="30" y={y} width={y === 58 ? 110 : 120} height="5" rx="2" fill="#cfcfd4" transform="rotate(-2 93 70)" />
+          ))}
+          <rect x="28" y="56" width="96" height="9" rx="2" fill={accent} opacity=".75" transform="rotate(-2 93 70)" />
+          <text x="160" y="40" fontSize="22" transform="rotate(-20 160 40)">👉</text>
+          <rect x="186" y="18" width="116" height="74" rx="4" fill="#3a3f4b" />
+          <text x="244" y="36" textAnchor="middle" fontSize="13" fill="#fff" stroke="#000" strokeWidth="2.2" paintOrder="stroke" fontFamily="Impact, sans-serif">
+            SHIP IT
+          </text>
+          <text x="244" y="86" textAnchor="middle" fontSize="13" fill="#fff" stroke="#000" strokeWidth="2.2" paintOrder="stroke" fontFamily="Impact, sans-serif">
+            ON FRIDAY
+          </text>
+          <rect x="186" y="100" width="116" height="66" rx="4" fill="#1e1e1e" />
+          <rect x="186" y="100" width="116" height="10" fill="#2d2d2d" />
+          <text x="192" y="128" fontSize="8" fontFamily="Consolas, monospace">
+            <tspan fill="#569cd6">const </tspan>
+            <tspan fill="#9cdcfe">ai</tspan>
+            <tspan fill="#d4d4d4"> = </tspan>
+            <tspan fill="#ce9178">'hype'</tspan>
+          </text>
+          <text x="192" y="142" fontSize="8" fontFamily="Consolas, monospace">
+            <tspan fill="#dcdcaa">await </tspan>
+            <tspan fill="#9cdcfe">bubble</tspan>
+            <tspan fill="#d4d4d4">.pop()</tspan>
+          </text>
+          <rect x="30" y="136" width="52" height="24" rx="3" fill="#76b900" />
+          <text x="56" y="152" textAnchor="middle" fontSize="8" fontWeight="700" fill="#000">NVIDIA</text>
+          <rect x="120" y="136" width="52" height="24" rx="3" fill="#8b5cf6" />
+          <text x="146" y="152" textAnchor="middle" fontSize="7" fontWeight="700" fill="#000">AI CO</text>
+          <path d="M82 144h36M118 150h-36" stroke="#3ddc97" strokeWidth="1.5" />
+        </g>
+      )}
       {id === 'watercolour' && (
         <g>
           <ellipse cx="90" cy="70" rx="90" ry="40" fill="#8fb6de" opacity=".45" />

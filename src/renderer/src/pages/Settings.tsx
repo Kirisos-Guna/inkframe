@@ -111,6 +111,37 @@ export default function Settings() {
         />
       </section>
 
+      <section className="card mt-5 px-7 py-5">
+        <div className="text-[19px] font-semibold">Stock clips for Fast Tech Remix</div>
+        <div className="mb-4 mt-1 text-[14px] text-muted">
+          Optional. With a free key, real B-roll clips come from Pexels or Pixabay (free licences, credited in the description). Without one, the style uses
+          free clips from Wikimedia Commons, or none.
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {(
+            [
+              ['pexelsKey', 'Pexels API key', 'https://www.pexels.com/api/'],
+              ['pixabayKey', 'Pixabay API key', 'https://pixabay.com/api/docs/']
+            ] as const
+          ).map(([k, label, link]) => (
+            <label key={k} className="text-[13.5px] text-muted">
+              {label} ·{' '}
+              <a className="text-accent" href={link} target="_blank" rel="noreferrer">
+                get one free
+              </a>
+              <input
+                key={s[k] ?? ''}
+                type="password"
+                className="input mt-1 py-2 text-[14px]"
+                defaultValue={s[k] ?? ''}
+                placeholder="Not set"
+                onBlur={(e) => e.target.value.trim() !== (s[k] ?? '') && save({ [k]: e.target.value.trim() })}
+              />
+            </label>
+          ))}
+        </div>
+      </section>
+
       <section className="card mb-10 mt-5 px-7 py-3">
         <div className="pb-1 pt-3 text-[19px] font-semibold">Tools on this computer</div>
         {pathRow('Claude Code', 'claudePath', status?.claude && status.claudeSignedIn, status?.claude && !status.claudeSignedIn ? 'Found, but not signed in. Install the Claude Code CLI, run claude in a terminal and sign in once.' : 'Makes the videos. Install it and sign in once.')}

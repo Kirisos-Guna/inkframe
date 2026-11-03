@@ -41,6 +41,16 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     const answer = nums.filter((n) => !(n === skip && !skipped && (skipped = true)))
     return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
   }
+  // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
+  if (p.includes('You are the researcher for a fast, Fireship-style')) {
+    const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
+    const kinds = [
+      [{ kind: 'page', url: 'https://en.wikipedia.org/wiki/Nvidia', mark: 'Nvidia Corporation is an American multinational technology company headquartered in Santa Clara' }, { kind: 'photo', query: 'Jensen Huang' }],
+      [{ kind: 'tweet', url: 'https://x.com/elonmusk/status/1585341984679469056' }, { kind: 'meme', template: 'Drake Hotline Bling', top: 'BUILDING A PRODUCT', bottom: 'RENTING GPUS TO YOURSELF' }],
+      [{ kind: 'code', lang: 'ts', file: 'bubble.ts', code: "const valuation = await raise({ from: 'nvidia' })\nawait buyGpus(valuation) // from nvidia\nconsole.log('profit?', false)" }, { kind: 'photo', query: 'Nvidia logo' }]
+    ]
+    return JSON.stringify({ parts: Array.from({ length: n }, (_, i) => ({ part: i + 1, shots: kinds[i % kinds.length] })) })
+  }
   // Finding a style: the searches, then the picks from the list of results.
   if (p.includes('Write 3 YouTube searches')) return JSON.stringify({ topic: 'Cloud and Kubernetes', queries: ['kubernetes explained tamil', 'cloud computing eppadi velai seikirathu tamil'] })
   if (p.includes('Pick the 4 best to learn')) {
@@ -150,6 +160,35 @@ export default function Scene() {
 `
     )
     return 'Drew a 3D part.'
+  }
+  // The remix style: each part cut from the media listed for it.
+  const remix = existsSync(join(o.cwd, 'STYLE.md')) && readFileSync(join(o.cwd, 'STYLE.md'), 'utf8').includes('@kit/remix')
+  if (remix && /scenes\/[\w-]+\.tsx/.test(p)) {
+    const sections = p.split(/^-{20,}$/m)
+    let drawn = 0
+    for (const sec of sections.length > 1 ? sections.slice(1) : [p]) {
+      const file = sec.match(/scenes\/([\w-]+)\.tsx/)?.[1]
+      if (!file || file.startsWith('thumb-')) continue
+      const shots: string[] = []
+      for (const m of sec.matchAll(/^\d+\. (page|photo|meme|tweet|clip) "([^"]+)"(?: (\d+)x(\d+))?(?:: top ("(?:[^"\\]|\\.)*"), bottom ("(?:[^"\\]|\\.)*"))?(?:, highlight marks=(\[\[[\d,[\]]*\]\]))?/gm)) {
+        const [, kind, name, w, h, top, bottom, marks] = m
+        if (kind === 'page') shots.push(`<Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}} />`)
+        else if (kind === 'tweet') shots.push(`<Post name="${name}" w={${w}} h={${h}} />`)
+        else if (kind === 'meme') shots.push(`<Meme name="${name}" top={${top ?? '""'}} bottom={${bottom ?? '""'}} />`)
+        else if (kind === 'clip') shots.push(`<Clip name="${name}" />`)
+        else shots.push(`<AbsoluteFill><Shot name="${name}" fit="contain" /><Caption text="WE'RE SO CLOSE. PLS VENMO ME" start={20} /></AbsoluteFill>`)
+      }
+      for (const m of sec.matchAll(/^\d+\. code \((\w+), ([^)]+)\): (".*")$/gm)) shots.push(`<Code lang="${m[1]}" file="${m[2]}" code={${m[3]}} lines={[2]} />`)
+      if (!shots.length) shots.push('<TitleCard text="No media here" accent="media" />')
+      const at = shots.map((_, i) => `Math.round((dur * ${i}) / ${shots.length})`)
+      o.onStep?.(`Drawing ${file}`)
+      writeFileSync(
+        join(o.cwd, 'scenes', `${file}.tsx`),
+        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Shot, Page, Post, Meme, Caption, Code, Clip, TitleCard, Hand } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n      <Hand x={1500} y={300} start={Math.round(dur * 0.1)} />\n    </AbsoluteFill>\n  )\n}\n`
+      )
+      drawn++
+    }
+    if (drawn) return `Cut ${drawn} part${drawn > 1 ? 's' : ''} from real media.`
   }
   // The Dark Systems Diagram style is drawn with its building blocks (Steps is left out of the import on purpose).
   const tamil = !!o.system?.includes('is in Tamil')

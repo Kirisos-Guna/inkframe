@@ -72,7 +72,10 @@ function useFonts() {
       new FontFace('Hand', `url(${staticFile('_hand.woff2')}) format('woff2')`).load(),
       // Projects made before the marker font was added may not have it: never hold up rendering for it.
       new FontFace('Marker', `url(${staticFile('_marker.woff2')}) format('woff2')`).load().catch(() => null),
-      new FontFace('Tamil', `url(${staticFile('_tamil.woff2')}) format('woff2')`).load().catch(() => null)
+      new FontFace('Tamil', `url(${staticFile('_tamil.woff2')}) format('woff2')`).load().catch(() => null),
+      // The remix style's meme capitals (Anton) and code (JetBrains Mono), bundled: some PCs replace Impact and Consolas.
+      new FontFace('Meme', `url(${staticFile('_meme.woff2')}) format('woff2')`).load().catch(() => null),
+      new FontFace('Code', `url(${staticFile('_code.woff2')}) format('woff2')`, { weight: '100 900' }).load().catch(() => null)
     ])
       .then((faces) => faces.forEach((f) => f && document.fonts.add(f)))
       .catch(() => {})
