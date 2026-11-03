@@ -55,3 +55,16 @@ describe('what is said at a moment', () => {
     expect(saidAround(p, 6)).toBe('')
   })
 })
+
+describe('pace', () => {
+  const cut = (t: number) => `[Parsed_showinfo_3 @ 0] n:0 pts:0 pts_time:${t}`
+  it('notes a slow video in a fast style', () => {
+    const log = `${ok}\n${[4, 10, 17, 22].map(cut).join('\n')}`
+    expect(readFinalLog(log, p, 2.5).join(' ')).toMatch(/A shot lasts 5\.\d s on average/)
+  })
+  it('a fast video, or a style without a pace, has no note', () => {
+    const log = `${ok}\n${Array.from({ length: 12 }, (_, i) => cut(i * 2 + 1)).join('\n')}`
+    expect(readFinalLog(log, p, 2.5)).toEqual([])
+    expect(readFinalLog(`${ok}\n${cut(10)}`, p)).toEqual([])
+  })
+})

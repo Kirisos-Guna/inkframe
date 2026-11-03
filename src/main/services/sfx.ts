@@ -5,6 +5,7 @@
 // 2. Sounds: pops, whooshes, pen scratches, key clicks and ticks are synthesised from scratch, a little different
 //    each time (seeded), so nothing sounds looped.
 // 3. One track: every sound at its exact time, written as a WAV the finishing pass mixes under the voice.
+import { spawn } from 'child_process'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createRequire } from 'module'
@@ -12,8 +13,9 @@ import { build } from 'esbuild'
 import type { Part, Project, SfxLevel } from '../../shared/types'
 import { appRoot, kitDir, propsFor } from './render'
 import { engineOf, scenePath } from './engines'
+import { ffmpegPath } from './tools'
 
-type CueKind = 'pop' | 'whoosh' | 'pen' | 'typing' | 'count'
+type CueKind = 'pop' | 'whoosh' | 'pen' | 'typing' | 'count' | 'boom' | 'scratch' | 'whip'
 interface Cue {
   kind: CueKind
   at: number
@@ -92,6 +94,72 @@ async function partCues(p: Project, x: Part) {
   return cues
 }
 
+// ---------- checking against the picture ----------
+const motionCache = new Map<string, { key: string; m: { t: number; v: number }[] }>()
+
+/** How much the picture changes at every frame of a rendered part (FFmpeg's scene score, on a small copy). */
+async function motionOf(video: string) {
+  const key = `${statSync(video).mtimeMs}`
+  const hit = motionCache.get(video)
+  if (hit?.key === key) return hit.m
+  const out = await new Promise<string>((resolve) => {
+    let s = ''
+    const ff = spawn(ffmpegPath(), ['-v', 'error', '-i', video, '-an', '-vf', "scale=192:-2,select='gte(scene,0)',metadata=print:key=lavfi.scene_score:file=-", '-f', 'null', '-'])
+    ff.stdout.on('data', (d) => (s += d))
+    ff.on('close', () => resolve(s))
+    ff.on('error', () => resolve(''))
+  })
+  const m: { t: number; v: number }[] = []
+  for (const x of out.matchAll(/pts_time:([\d.]+)\s+lavfi\.scene_score=([\d.]+)/g)) m.push({ t: +x[1], v: +x[2] })
+  motionCache.set(video, { key, m })
+  return m
+}
+
+/**
+ * Keeps the sounds the picture agrees with, at the frame it moves: a cue with nothing changing on screen near it is
+ * dropped, the rest are moved to the first frame that changes. Moves and cuts the scene code did not say (motion
+ * written by hand) get a whoosh. Times are seconds in the part.
+ */
+export function matchPicture(cues: { kind: CueKind; t: number; len: number; strength: number }[], m: { t: number; v: number }[]) {
+  if (m.length < 10) return cues
+  // "Moving" is measured against this video's own stillness (encoder noise on a still frame is about 0.00002; a pen
+  // stroke 0.0001 to 0.0005; a slide 0.01 and up; a cut 0.3 and up). A stroke can skip frames, so a few frames count
+  // together.
+  const sorted = m.map((x) => x.v).sort((a, b) => a - b)
+  const still = sorted[Math.floor(sorted.length * 0.25)]
+  const live = Math.max(0.00008, still * 4)
+  const near = m.map((_, i) => Math.max(...m.slice(Math.max(0, i - 2), i + 3).map((x) => x.v)))
+  const step = m[1].t - m[0].t || 1 / 30
+  const out: typeof cues = []
+  for (const c of cues) {
+    if (c.kind === 'pen' || c.kind === 'typing') {
+      // A drawing or typing sound only while the picture is really being drawn, from its first stroke.
+      const span = Math.max(c.len, 0.2)
+      const idx = m.flatMap((x, i) => (x.t >= c.t - 0.05 && x.t <= c.t + span && near[i] > live ? [i] : []))
+      if (idx.length < Math.max(2, (span / step) * 0.3)) continue
+      const first = idx.find((i) => m[i].v > live) ?? idx[0]
+      out.push({ ...c, t: m[first].t, len: Math.min(span, m[idx[idx.length - 1]].t - m[first].t + step) })
+      continue
+    }
+    // A pop or a whoosh lands on the first frame that changes; nothing changing means nothing to hear.
+    const hit = m.find((x) => x.t >= c.t - 0.06 && x.t <= c.t + 0.25 && x.v > live)
+    if (hit) out.push({ ...c, t: hit.t })
+  }
+  // Clear moves (a slide, a zoom, a cut) that no cue covers: one sound per move.
+  const big = Math.max(0.006, still * 100)
+  let lastMove = -1
+  for (let i = 1; i < m.length; i++) {
+    if (m[i].v < big || m[i - 1].v >= big || m[i].t - lastMove < 0.6) continue
+    lastMove = m[i].t
+    let peak = m[i].v
+    for (let j = i; j < m.length && m[j].t < m[i].t + 0.4; j++) peak = Math.max(peak, m[j].v)
+    // A pen or typing sound under a big move does not count: the move gets its own sound.
+    if (out.some((c) => c.kind !== 'pen' && c.kind !== 'typing' && Math.abs(c.t - m[i].t) < 0.3)) continue
+    out.push({ kind: peak > 0.25 ? 'whip' : 'whoosh', t: m[i].t, len: 0.4, strength: Math.min(0.9, 0.45 + peak * 6) })
+  }
+  return out.sort((a, b) => a.t - b.t)
+}
+
 // ---------- choosing ----------
 interface Placed {
   kind: CueKind
@@ -101,7 +169,8 @@ interface Placed {
   seed: number
 }
 
-const PRIORITY: Record<CueKind, number> = { pop: 5, whoosh: 4, count: 3, typing: 2, pen: 1 }
+// The editing moves' sounds win over the rest: a boom or a scratch is the joke landing.
+const PRIORITY: Record<CueKind, number> = { boom: 8, scratch: 8, whip: 6, pop: 5, whoosh: 4, count: 3, typing: 2, pen: 1 }
 
 /**
  * Picks the sounds: Subtle keeps the big moments (reveals, moves, counters, typing) with room between them; Lively
@@ -112,16 +181,18 @@ function choose(all: Placed[], level: Exclude<SfxLevel, 'Off'>) {
   const point = all.filter((c) => c.kind !== 'pen').sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.t - b.t)
   const kept: Placed[] = []
   for (const c of point) if (!kept.some((k) => Math.abs(k.t - c.t) < gap)) kept.push(c)
-  if (level === 'Lively') {
-    // Pen strokes that overlap become one scratch, and never longer than 2.5 s at a time.
-    const pens = all.filter((c) => c.kind === 'pen' && c.len >= 0.25).sort((a, b) => a.t - b.t)
-    const merged: Placed[] = []
-    for (const c of pens) {
-      const last = merged[merged.length - 1]
-      if (last && c.t <= last.t + last.len + 0.08) last.len = Math.max(last.len, c.t + c.len - last.t)
-      else merged.push({ ...c })
-    }
-    for (const m of merged) kept.push({ ...m, len: Math.min(2.5, m.len) })
+  // Pen strokes that overlap become one scratch. Lively hears every stroke (up to 2.5 s at a time); Subtle only the
+  // real drawings (0.35 s or longer), quieter and shorter, and not on top of another sound.
+  const pens = all.filter((c) => c.kind === 'pen' && c.len >= 0.25).sort((a, b) => a.t - b.t)
+  const merged: Placed[] = []
+  for (const c of pens) {
+    const last = merged[merged.length - 1]
+    if (last && c.t <= last.t + last.len + 0.08) last.len = Math.max(last.len, c.t + c.len - last.t)
+    else merged.push({ ...c })
+  }
+  for (const m of merged) {
+    if (level === 'Lively') kept.push({ ...m, len: Math.min(2.5, m.len) })
+    else if (m.len >= 0.35 && !kept.some((k) => k.kind !== 'pen' && Math.abs(k.t - m.t) < gap)) kept.push({ ...m, len: Math.min(1.5, m.len), gain: m.gain * 0.6 })
   }
   return kept.sort((a, b) => a.t - b.t)
 }
@@ -232,6 +303,42 @@ function synth(c: Placed): Float32Array {
       }
       return out
     }
+    case 'boom': {
+      // A deep hit for a punch-in: a falling sine, driven into saturation, with a short click on top.
+      const n = len(0.95)
+      const out = new Float32Array(n)
+      let ph = 0
+      for (let i = 0; i < n; i++) {
+        const t = i / RATE
+        ph += (2 * Math.PI * (38 + 70 * Math.exp(-t * 9))) / RATE
+        const env = Math.min(1, t / 0.004) * Math.exp(-t * 3.2)
+        out[i] = Math.tanh(Math.sin(ph) * 2.6) * env * 0.9 + (i < 240 ? (rand() * 2 - 1) * 0.5 * (1 - i / 240) : 0)
+      }
+      return out
+    }
+    case 'scratch': {
+      // A record scratch for a freeze frame: bright noise whose pitch is dragged back and forth twice.
+      const n = len(0.42)
+      const out = new Float32Array(n)
+      const bp = bandpass()
+      for (let i = 0; i < n; i++) {
+        const u = i / n
+        const drag = Math.abs(Math.sin(u * Math.PI * 2))
+        out[i] = bp(rand() * 2 - 1, 500 + 3200 * drag, 2.2) * (0.4 + 0.6 * drag) * Math.min(1, (n - i) / (RATE * 0.03)) * 2.4
+      }
+      return out
+    }
+    case 'whip': {
+      // A whip pan: a short, fast rising swish.
+      const n = len(0.2)
+      const out = new Float32Array(n)
+      const bp = bandpass()
+      for (let i = 0; i < n; i++) {
+        const u = i / n
+        out[i] = bp(rand() * 2 - 1, 600 + 5200 * u, 1.6) * Math.sin(Math.PI * u) * 2.6
+      }
+      return out
+    }
     case 'count': {
       // Ticks while a number counts up, then a small bell when it lands.
       const tick = Math.min(3, c.len)
@@ -251,7 +358,7 @@ function synth(c: Placed): Float32Array {
   }
 }
 
-const GAIN: Record<CueKind, number> = { pop: 0.55, whoosh: 0.5, pen: 0.22, typing: 0.35, count: 0.45 }
+const GAIN: Record<CueKind, number> = { pop: 0.55, whoosh: 0.5, pen: 0.22, typing: 0.35, count: 0.45, boom: 0.85, scratch: 0.5, whip: 0.45 }
 
 /**
  * Writes the sound-effects track for the whole video (mono, 48 kHz) and returns its path, or null when the video has
@@ -261,10 +368,14 @@ export async function buildSfxTrack(p: Project, level: Exclude<SfxLevel, 'Off'>,
   const fps = p.settings.quality.fps
   const all: Placed[] = []
   for (const x of p.parts) {
-    for (const [i, c] of (await partCues(p, x)).entries()) {
-      const t = x.start + c.at / fps
+    const raw = (await partCues(p, x)).map((c) => ({ kind: c.kind, t: c.at / fps, len: (c.dur ?? 0) / fps, strength: c.strength ?? 1 }))
+    let cues = raw
+    // The rendered part has the last word: sounds go where its picture really moves.
+    if (x.video && existsSync(x.video)) cues = matchPicture(cues, await motionOf(x.video))
+    for (const [i, c] of cues.entries()) {
+      const t = x.start + c.t
       if (t >= x.end) continue
-      all.push({ kind: c.kind, t, len: Math.min((c.dur ?? 0) / fps, x.end - t), gain: GAIN[c.kind] * (c.strength ?? 1), seed: (x.index + 1) * 7919 + i * 104729 + c.at })
+      all.push({ kind: c.kind, t, len: Math.min(c.len, x.end - t), gain: GAIN[c.kind] * c.strength, seed: (x.index + 1) * 7919 + i * 104729 + Math.round(c.t * 1000) })
     }
   }
   const placed = choose(all, level)

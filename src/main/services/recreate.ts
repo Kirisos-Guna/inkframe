@@ -10,7 +10,7 @@ import { run } from './media'
 import { download, transcribe } from './transcribe'
 import { readVtt } from './vtt'
 import { channelVoice, polishScript } from './publish'
-import { SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
+import { FAST_FUNNY, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 
 export interface RecreateRequest {
   url: string
@@ -20,6 +20,8 @@ export interface RecreateRequest {
   notes?: string
   /** Codex only: check facts and numbers on the web while writing. */
   research: boolean
+  /** The fast and funny voice. */
+  fast?: boolean
 }
 
 export interface RecreateResult {
@@ -99,7 +101,7 @@ export async function recreateVideo(r: RecreateRequest, onStatus: (s: string) =>
     // 3 · The analysis and the new script.
     const spoken = transcript.replace(/\[\d+:\d+\]/g, '').split(/\s+/).filter(Boolean).length
     const duration = meta.duration ?? 0
-    const targetWords = r.minutes > 0 ? Math.round(r.minutes * 150) : spoken
+    const targetWords = r.minutes > 0 ? Math.round(r.minutes * (r.fast ? 190 : 150)) : spoken
     const s = getSettings()
     const want = s.writerProvider ?? 'Codex'
     const provider = want === 'Codex' && !(await codexPath()) ? 'Claude Code' : want
@@ -139,6 +141,7 @@ ${transcript.slice(0, 60000)}
    particular art style (the creator picks the style).
 ${channelVoice()}
 ${SCRIPT_CRAFT}
+${r.fast ? `\n${FAST_FUNNY}\n` : ''}
 
 ${SCRIPT_PROCESS}
 
@@ -150,7 +153,7 @@ Reply with JSON only:
     const out = extractJson<Omit<RecreateResult, 'source' | 'by'>>(reply)
     if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
     onStatus('Checking the script')
-    const script = await polishScript({ provider, model }, out.script, targetWords)
+    const script = await polishScript({ provider, model }, out.script, targetWords, r.fast)
     return {
       title: out.title ?? '',
       script,

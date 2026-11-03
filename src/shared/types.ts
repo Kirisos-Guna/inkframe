@@ -57,11 +57,25 @@ export type OutputLang = 'English' | 'Tamil'
 
 /** One planned piece of real media for a part (from the research step). */
 export interface Shot {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'stock' | 'clip' | 'code'
-  /** page, tweet */
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'stock' | 'clip' | 'code' | 'doccode' | 'chart' | 'quote'
+  /** quote: who says it, the words, and what to search for */
+  who?: string
+  says?: string
+  /** chart: where the numbers come from, and what */
+  source?: 'price' | 'npm' | 'github'
+  symbol?: string
+  package?: string
+  repo?: string
+  range?: string
+  label?: string
+  /** page, tweet, doccode */
   url?: string
-  /** page: the exact sentence on the page to highlight */
+  /** page: the exact sentence on the page to highlight, a second one (yellow), and a tall capture to scroll down */
   mark?: string
+  mark2?: string
+  scroll?: boolean
+  /** doccode: text inside the docs example to take */
+  contains?: string
   /** photo, stock: what to search for */
   query?: string
   /** meme: the Imgflip template name, and the captions */
@@ -76,18 +90,25 @@ export interface Shot {
   lang?: string
   file?: string
   code?: string
+  /** photo: cut the subject out (people, products, logos) for a sticker */
+  cutout?: boolean
   /** what it shows, for the designer */
   why?: string
 }
 
 /** A fetched piece of real media, in the project's public folder (name is relative to it). */
 export interface MediaItem {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'clip' | 'code'
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'clip' | 'code' | 'chart'
   name: string
   w?: number
   h?: number
   /** page: where the highlighted sentence's lines are, in the picture's pixels: [x, y, w, h] */
   marks?: [number, number, number, number][]
+  /** page: the second sentence's lines, and a tight crop (headline + paragraph) */
+  marks2?: [number, number, number, number][]
+  focus?: [number, number, number, number]
+  /** photo: the cut-out version (transparent PNG), when asked for */
+  cut?: string
   /** licence credit, added to the description */
   credit?: string
   top?: string
@@ -300,6 +321,8 @@ export interface AppSettings {
   /** Free API keys for stock clips (remix styles). */
   pexelsKey?: string
   pixabayKey?: string
+  /** Fast Tech Remix may use short clips of real people saying a line (from YouTube). Off: other channels can claim them. */
+  quoteClips?: boolean
 }
 
 export interface Status {

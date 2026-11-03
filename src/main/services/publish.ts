@@ -9,7 +9,7 @@ import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
 import { drawingSystem, isTamil, styleDoc, TAMIL_STYLE } from './prompts'
 import { mediaCredits } from './job/mediaPlan'
-import { lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
+import { FAST_FUNNY, lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
@@ -32,12 +32,16 @@ export interface ScriptRequest {
   platform: 'YouTube' | 'YouTube Shorts' | 'Instagram Reels' | 'TikTok'
   tone: string
   research: boolean
+  /** The fast and funny voice (developer news channels like Fireship). */
+  fast?: boolean
 }
 
 export async function writeScript(r: ScriptRequest) {
   const w = await writer()
   const short = r.platform !== 'YouTube'
-  const words = short ? Math.round(Math.min(r.minutes, 1.5) * 150) : Math.round(r.minutes * 150)
+  // The fast voice is spoken at about 190 words a minute.
+  const wpm = r.fast ? 190 : 150
+  const words = short ? Math.round(Math.min(r.minutes, 1.5) * wpm) : Math.round(r.minutes * wpm)
   const reply = await runAgent({
     ...w,
     effort: 'High',
@@ -63,6 +67,7 @@ ${
       : ''
 }
 ${SCRIPT_CRAFT}
+${r.fast ? `\n${FAST_FUNNY}\n` : ''}
 
 ${SCRIPT_PROCESS}
 
@@ -72,7 +77,7 @@ Reply with JSON only:
   })
   const out = extractJson<{ title: string; script: string; hooks?: string[]; sources?: string[] }>(reply)
   if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
-  const script = await polishScript(w, out.script, words)
+  const script = await polishScript(w, out.script, words, r.fast)
   return { title: out.title ?? '', script, hooks: cleanHooks(out.hooks), sources: out.sources ?? [], by: `${w.provider} · ${w.model}` }
 }
 
@@ -89,13 +94,13 @@ const cleanHooks = (h: unknown) => (Array.isArray(h) ? h.map(String).map((s) => 
  * is off, asks the writer for one revision that names exactly what to change. A revision that comes back worse is
  * not used.
  */
-export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number) {
-  const issues = lintScript(script, targetWords)
+export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number, fast = false) {
+  const issues = lintScript(script, targetWords, fast)
   if (!issues.length) return script
   try {
     const reply = await runAgent({ ...w, effort: 'Medium', cwd: libDir('writing'), prompt: revisePrompt(script, issues, targetWords) })
     const revised = extractJson<{ script: string }>(reply).script?.trim()
-    return revised && lintScript(revised, targetWords).length <= issues.length ? revised : script
+    return revised && lintScript(revised, targetWords, fast).length <= issues.length ? revised : script
   } catch {
     // The first version is still a whole script: better than nothing.
     return script
@@ -180,6 +185,23 @@ Reply with JSON only: {"lines": ["...", ...]}`
   return p
 }
 
+/**
+ * Thumbnails for the real-media style follow the developer-news formula: one cut-out face or logo, big and outlined,
+ * 2-3 huge words, a bold background. The video's own cut-outs are offered.
+ */
+function remixThumb(p: Project) {
+  if (!getStyle(p.settings.styleId).realMedia) return ''
+  const cuts = Object.values(p.media ?? {})
+    .flat()
+    .filter((m) => m.cut)
+    .map((m) => `${m.cut} (${m.note})`)
+  return `This video's style is real media (Fireship-like). Thumbnail formula: a bold flat background (deep purple, black or
+a strong brand colour), ONE cut-out face or logo very large on one side as a <Sticker> from '@kit/remix' (white outline),
+2 or 3 huge words with <BigText> in white with one word in yellow (#ffd400), optionally one <Label> or a red <Circle>.
+${cuts.length ? `Cut-outs from the video you can use: ${cuts.slice(0, 8).join(', ')}` : 'No cut-outs were made for this video: use a logo or a bold object drawn simply.'}
+`
+}
+
 // ---------- thumbnails ----------
 // Different concepts for the variants, so "Make 3" gives three real choices (see remotion/THUMBNAILS.md).
 const CONCEPTS = ['The glowing object', 'Reaction', 'Big number', 'Before → after / versus', 'Mystery']
@@ -215,7 +237,7 @@ What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).sl
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
 Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
 ${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
-${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}
+${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}${remixThumb(p)}
 Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 

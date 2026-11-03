@@ -45,9 +45,9 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
   if (p.includes('You are the researcher for a fast, Fireship-style')) {
     const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
     const kinds = [
-      [{ kind: 'page', url: 'https://en.wikipedia.org/wiki/Nvidia', mark: 'Nvidia Corporation is an American multinational technology company headquartered in Santa Clara' }, { kind: 'photo', query: 'Jensen Huang' }],
+      [{ kind: 'page', url: 'https://en.wikipedia.org/wiki/Nvidia', mark: 'Nvidia Corporation is an American multinational technology company headquartered in Santa Clara' }, { kind: 'photo', query: 'Jensen Huang', cutout: true }, { kind: 'chart', source: 'price', symbol: 'NVDA', range: '1y', label: 'Nvidia stock' }],
       [{ kind: 'tweet', url: 'https://x.com/elonmusk/status/1585341984679469056' }, { kind: 'meme', template: 'Drake Hotline Bling', top: 'BUILDING A PRODUCT', bottom: 'RENTING GPUS TO YOURSELF' }],
-      [{ kind: 'code', lang: 'ts', file: 'bubble.ts', code: "const valuation = await raise({ from: 'nvidia' })\nawait buyGpus(valuation) // from nvidia\nconsole.log('profit?', false)" }, { kind: 'photo', query: 'Nvidia logo' }]
+      [{ kind: 'code', lang: 'ts', file: 'bubble.ts', code: "const valuation = await raise({ from: 'nvidia' })\nawait buyGpus(valuation) // from nvidia\nconsole.log('profit?', false)" }, { kind: 'photo', query: 'Nvidia logo' }, { kind: 'chart', source: 'github', repo: 'NVIDIA/cuda-samples' }]
     ]
     return JSON.stringify({ parts: Array.from({ length: n }, (_, i) => ({ part: i + 1, shots: kinds[i % kinds.length] })) })
   }
@@ -170,21 +170,23 @@ export default function Scene() {
       const file = sec.match(/scenes\/([\w-]+)\.tsx/)?.[1]
       if (!file || file.startsWith('thumb-')) continue
       const shots: string[] = []
-      for (const m of sec.matchAll(/^\d+\. (page|photo|meme|tweet|clip) "([^"]+)"(?: (\d+)x(\d+))?(?:: top ("(?:[^"\\]|\\.)*"), bottom ("(?:[^"\\]|\\.)*"))?(?:, highlight marks=(\[\[[\d,[\]]*\]\]))?/gm)) {
-        const [, kind, name, w, h, top, bottom, marks] = m
-        if (kind === 'page') shots.push(`<Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}} />`)
+      for (const m of sec.matchAll(/^\d+\. (page|photo|meme|tweet|clip|chart) "([^"]+)"(?: (\d+)x(\d+))?(?:: top ("(?:[^"\\]|\\.)*"), bottom ("(?:[^"\\]|\\.)*"))?(?:, highlight marks=(\[\[[\d,[\]]*\]\]))?(?: marks2=\S+)?(?: focus=(\[[\d,]+\]))?(?:, cut-out "([^"]+)")?(.*)$/gm)) {
+        const [, kind, name, w, h, top, bottom, marks, focus, cut, rest] = m
+        if (kind === 'page') shots.push(`<Punch at={[40]}><Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}}${focus ? ` focus={${focus}} crop` : ''} /></Punch>`)
+        else if (kind === 'chart') shots.push(/Data: GitHub/.test(rest) ? `<Stats name="${name}" />` : `<Chart name="${name}" />`)
+        else if (cut) shots.push(`<AbsoluteFill><Shot name="${name}" zoom={1.15} /><Sticker name="${cut}" x={1300} h={820} /><Label x={560} y={300} text="THIS GUY" to={[1100, 420]} start={14} /></AbsoluteFill>`)
         else if (kind === 'tweet') shots.push(`<Post name="${name}" w={${w}} h={${h}} />`)
         else if (kind === 'meme') shots.push(`<Meme name="${name}" top={${top ?? '""'}} bottom={${bottom ?? '""'}} />`)
         else if (kind === 'clip') shots.push(`<Clip name="${name}" />`)
         else shots.push(`<AbsoluteFill><Shot name="${name}" fit="contain" /><Caption text="WE'RE SO CLOSE. PLS VENMO ME" start={20} /></AbsoluteFill>`)
       }
-      for (const m of sec.matchAll(/^\d+\. code \((\w+), ([^)]+)\): (".*")$/gm)) shots.push(`<Code lang="${m[1]}" file="${m[2]}" code={${m[3]}} lines={[2]} />`)
+      for (const m of sec.matchAll(/^\d+\. code \((\w+), ([^)]+)\): (".*")$/gm)) shots.push(`<Code lang="${m[1]}" file="${m[2]}" code={${m[3]}} lines={[2]} tree={['src/', '  ${m[2]}', '  db.ts', 'package.json']} />`)
       if (!shots.length) shots.push('<TitleCard text="No media here" accent="media" />')
       const at = shots.map((_, i) => `Math.round((dur * ${i}) / ${shots.length})`)
       o.onStep?.(`Drawing ${file}`)
       writeFileSync(
         join(o.cwd, 'scenes', `${file}.tsx`),
-        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Shot, Page, Post, Meme, Caption, Code, Clip, TitleCard, Hand } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n      <Hand x={1500} y={300} start={Math.round(dur * 0.1)} />\n    </AbsoluteFill>\n  )\n}\n`
+        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts whip at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n      <Hand x={1500} y={300} start={Math.round(dur * 0.1)} />\n    </AbsoluteFill>\n  )\n}\n`
       )
       drawn++
     }

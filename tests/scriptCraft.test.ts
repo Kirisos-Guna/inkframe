@@ -32,3 +32,11 @@ describe('lintScript', () => {
     expect(lintScript(`It walks. [music swells] ${words(145)}`, 150).join(' ')).toMatch(/stage directions/)
   })
 })
+
+describe('lintScript, fast and funny', () => {
+  it('wants shorter sentences', () => {
+    const mid = Array.from({ length: 23 }, () => 'and').join(' ') + '.'
+    expect(lintScript(`It walks. ${mid} ${words(120)}`, 150).join(' ')).not.toMatch(/Split these long sentences/)
+    expect(lintScript(`It walks. ${mid} ${words(120)}`, 150, true).join(' ')).toMatch(/Split these long sentences/)
+  })
+})

@@ -249,7 +249,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   emit(p, true)
   if (p.settings.checks !== 'Off') {
     step(p, 'Checking the finished video', { title: 'Checking the finished video', detail: 'Black frames, frozen pictures, the sound and the length (no AI).' })
-    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s))
+    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 2.5 : undefined))
     emit(p, true)
   }
   return notFixed

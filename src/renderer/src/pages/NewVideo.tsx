@@ -283,6 +283,7 @@ export default function NewVideo() {
           </div>
           {writing && (
             <ScriptWriter
+              fastDefault={!!style?.realMedia}
               onClose={() => setWriting(false)}
               onUse={(text, title, dir) => {
                 setScript(text)

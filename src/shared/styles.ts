@@ -142,26 +142,41 @@ Look
     id: 'tech-remix', name: 'Fast Tech Remix', tags: ['Real media', 'Fast'], dim: '2D', realMedia: true,
     description: 'Real screenshots, posts, photos, memes, code and clips, cut every few seconds, with sharp captions. Fireship pace.',
     palette: { bg: '#000000', ink: '#ffffff', accent: '#ff8a1f' },
-    guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, code and clips listed for each
-part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
-  import { Cuts, Shot, Clip, Page, Post, Meme, Caption, Code, Shell, Box, Flow, Hand, Circle, TitleCard } from '@kit/remix'
+    guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, charts, code and clips listed
+for each part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
+  import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Caption, Code, Shell, Box, Flow, Loop,
+    Chart, Stats, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
   import { AbsoluteFill } from '@kit'
-  <Cuts at={[0, at('word'), …]}> one child per shot </Cuts>   each child fills the frame; cut on the word it is about
-  <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip, muted
-  <Page name="m/…png" w h marks={…} markAt? />  a page with its sentence highlighted (copy w, h and marks as listed)
+  <Cuts at={[0, at('word'), …]} whip?> one child per shot </Cuts>   each child fills the frame; cut on the word it is
+    about; whip: a fast blurred slide between shots (use it where the topic turns)
+  <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip or quote
+  <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? />  a page with its sentence
+    highlighted (copy w, h, marks, marks2 and focus as listed). crop: only the headline and that paragraph, big (best
+    for articles and filings); scroll: for a tall capture, moves down to the sentence; underline: a marker line instead
   <Post name="m/…png" w h />  a real post        <Meme name="m/…jpg" top="…" bottom="…" />  a meme with its captions
   <Caption text="WE'RE SO CLOSE. PLS VENMO ME" />  a sarcastic line over the shot before it (inside the same cut)
-  <Code code={…} lang="ts" file="index.ts" lines={[3]} />   <Shell command="npm i x" output={['added 1 package']} />
+  <Code code={…} lang="ts" file="index.ts" lines={[3]} tree={['src/', '  index.ts', '  db.ts', 'package.json']} />
+    an editor; tree adds the file explorer        <Shell command="npm i x" output={['added 1 package']} />
+  <Split left={<Code …/>} right={<Page …/>} />  two things side by side (the code and what it does, before and after)
+  <Chart name="m/…json" />  a real line chart (price, downloads)     <Stats name="m/…json" />  GitHub numbers counting up
+  <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person or logo with a white outline, popped on top of a shot
+  <Label x y text="CEO, NVIDIA" to={[x, y]}? color? />  a tilted name tag, with an optional pointer line
   <TitleCard text="Circular financing" accent="circular" />
-  Diagrams on black: <AbsoluteFill style={{ background: '#000' }}> <Box x y label="NVIDIA" color="#76b900" /> …
-    <Flow from={[x,y]} to={[x,y]} label="investment" color="#3ddc97" /> </AbsoluteFill>   build them up box by box
+  Edits, wrapped around a shot: <Punch at={[at('trillion')]}> zooms in hard on the word; <Shake at={[f]}> for an impact;
+    <FreezeFrame at={f} label="THIS GUY"> stops the picture with a record scratch, for the beat before a punchline.
+  Diagrams on black: <AbsoluteFill style={{ background: '#000' }}> <Box x y label="NVIDIA" icon="🖥️" pulse? color="#76b900" />
+    <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </AbsoluteFill>   build them up box by
+    box; packets keep moving along the arrow (dots, or coins and data as emoji); pulse marks the busy one.
+    <Loop items={['build', 'test', 'deploy']} /> for a cycle.
   Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
 
 Pace and humour
-- A new picture every 2 to 4 seconds, cut exactly on the word it shows (at('word')). Never hold one picture longer.
-- The narration is dry and quick; the pictures carry the jokes: a meme or a sarcastic Caption on the ironic beat,
-  a Hand or Circle on the number that matters in a page.
-- Mix kinds: never three of the same in a row. Diagrams for how money or data flows; code for how it works.
+- A new picture every 1.5 to 2.5 seconds, cut exactly on the word it shows (at('word')). Never hold one picture longer
+  than 3 seconds: a long page gets a Punch or a second highlight halfway.
+- The narration is dry and quick; the pictures carry the jokes: a meme, a FreezeFrame or a sarcastic Caption on the
+  ironic beat, a Punch on the big number, a Sticker and Label for each person the story is about.
+- Mix kinds: never three of the same in a row. Diagrams for how money or data flows; charts for numbers; code for how
+  it works.
 - Diagram colours: one flat colour per company or thing (NVIDIA green #76b900, AI companies purple #8b5cf6, banks
   teal #22b8cf, others orange #ff8a1f), arrows labelled in small capitals.
 - If a part has no media listed, use a TitleCard, a diagram or code, never an empty frame.`

@@ -46,6 +46,23 @@ Plain spoken text only: no headings, no stage directions, no brackets, no emojis
 beats. Numbers written the way they are read aloud ("about four hundred", "nineteen seventy-eight").`
 
 /** How the writer works before it answers. Only the final result is returned. */
+/**
+ * The "fast and funny" voice of developer news channels like Fireship: on top of the craft above. Spoken at about 190
+ * words a minute, so scripts are longer for the same time.
+ */
+export const FAST_FUNNY = `FAST AND FUNNY (this script's voice; it wins over the general rules on tone and pace)
+- Deadpan and quick, like a developer news channel: confident, a little cynical, never mean to the viewer.
+- A joke, a twist or an absurd comparison at least every 10 to 15 seconds. Most jokes are a fact said straight, then
+  a dry one-line aside ("…which is a great business model, if you are Nvidia").
+- Setup, punchline, move on. Never explain a joke. Never laugh at your own joke.
+- Tech-culture references the audience knows (Stack Overflow, "it works on my machine", leetcode, YC, crypto bros,
+  the 10x engineer) where they fit, not forced.
+- Short sentences, often 4 to 10 words. Lists become rapid-fire: "It's fast. It's typed. It's yet another framework."
+- Write lines the editor can cut to: each punchline names something that can be shown (a person, a post, a chart, a meme).
+- Open on the news or the absurd fact in one line, then "but" or "here's the thing". No greeting.
+- End with one dry sentence, then: "This has been <topic> in <number> seconds. Thanks for watching, and I will see you in
+  the next one." (only for YouTube videos).`
+
 export const SCRIPT_PROCESS = `Work in this order, privately, and only output the final result:
 1. Find the angle: the single most surprising TRUE thing about this, and the question it makes the viewer ask.
 2. Write five different openings (a moment, a number, a question, a contradiction, a "you"). Pick the strongest;
@@ -100,7 +117,8 @@ const sentences = (s: string) => s.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).f
  * Checks a script against the rules a program can check: the banned phrases, the length, long sentences, an opening
  * that starts with a greeting or a definition, and formatting. Returns what to fix (empty: it passes).
  */
-export function lintScript(script: string, targetWords: number) {
+/** The checks a program can do. `fast`: the fast-and-funny voice, with shorter sentences. */
+export function lintScript(script: string, targetWords: number, fast = false) {
   const issues: string[] = []
   const lower = script.toLowerCase().replace(/[’‘]/g, "'")
   const found = BANNED.filter((b) => lower.includes(b))
@@ -108,7 +126,7 @@ export function lintScript(script: string, targetWords: number) {
   const n = words(script).length
   if (targetWords && Math.abs(n - targetWords) / targetWords > 0.15)
     issues.push(`It is ${n} words; it must be about ${targetWords} (within 10%). ${n > targetWords ? 'Cut the weakest sentences, not the facts.' : 'Add a concrete example or a reveal where a beat is thin, not filler.'}`)
-  const long = sentences(script).filter((s) => words(s).length > 28)
+  const long = sentences(script).filter((s) => words(s).length > (fast ? 20 : 28))
   if (long.length) issues.push(`Split these long sentences: ${long.slice(0, 4).map((s) => `"${s.slice(0, 80)}…"`).join(' ')}`)
   const first = sentences(script)[0] ?? ''
   if (/^(hi|hello|hey|welcome|today|so,? today|in this|what is|.{0,40}\b(is|are) (a|an|the) (term|type|kind|process|method)\b)/i.test(first.trim()))

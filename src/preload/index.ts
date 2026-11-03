@@ -93,9 +93,9 @@ const api = {
     onStatus: (cb: (status: string) => void) => on<string>('scout:status', cb)
   },
   writer: {
-    script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
+    script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean; fast?: boolean }) =>
       invoke<{ title: string; script: string; hooks: string[]; sources: string[]; by: string }>('writer:script', r),
-    recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean }) =>
+    recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean; fast?: boolean }) =>
       invoke<{
         title: string
         script: string

@@ -2,7 +2,7 @@
 // when it appears, moves, is drawn or typed. The app turns those moments into sound effects. No AI is involved.
 import { createContext, useContext } from 'react'
 
-export type CueKind = 'pop' | 'whoosh' | 'pen' | 'typing' | 'count'
+export type CueKind = 'pop' | 'whoosh' | 'pen' | 'typing' | 'count' | 'boom' | 'scratch' | 'whip'
 export interface Cue {
   kind: CueKind
   /** Frame in the part. */

@@ -139,10 +139,12 @@ function mediaSection(p: Project, part: Part) {
   return `\nReal media for this part, in this order (show each one; names are files for the remix blocks):\n${list
     .map((m, i) => {
       const size = m.w ? ` ${m.w}x${m.h}` : ''
+      if (m.kind === 'chart') return `${i + 1}. chart "${m.name}" (${m.note}; ${m.credit}): <Chart name> for a line, <Stats name> for GitHub numbers`
       if (m.kind === 'code') return `${i + 1}. code (${m.lang}, ${m.file ?? 'file'}): ${JSON.stringify(m.code)}`
       if (m.kind === 'meme') return `${i + 1}. meme "${m.name}"${size}: top ${JSON.stringify(m.top ?? '')}, bottom ${JSON.stringify(m.bottom ?? '')}`
-      if (m.kind === 'page') return `${i + 1}. page "${m.name}"${size}${m.marks?.length ? `, highlight marks=${JSON.stringify(m.marks)}` : ''} (${m.credit}${m.note ? `: ${m.note}` : ''})`
-      return `${i + 1}. ${m.kind} "${m.name}"${size} (${m.note ?? m.credit ?? ''})`
+      if (m.kind === 'page')
+        return `${i + 1}. page "${m.name}"${size}${m.marks?.length ? `, highlight marks=${JSON.stringify(m.marks)}` : ''}${m.marks2?.length ? ` marks2=${JSON.stringify(m.marks2)}` : ''}${m.focus ? ` focus=${JSON.stringify(m.focus)}` : ''}${(m.h ?? 0) > (m.w ?? 1) * 1.3 ? ' (tall: use scroll)' : ''} (${m.credit}${m.note ? `: ${m.note}` : ''})`
+      return `${i + 1}. ${m.kind} "${m.name}"${size}${m.cut ? `, cut-out "${m.cut}" for a Sticker` : ''} (${m.note ?? m.credit ?? ''})`
     })
     .join('\n')}`
 }

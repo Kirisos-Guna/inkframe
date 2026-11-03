@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { Comment, Part, Project } from '../../../shared/types'
-import { getProject } from '../store'
+import { getProject, getStyle } from '../store'
 import { cutAudio } from '../media'
 import { bundleProject } from '../render'
 import { engineOf, renderAny, scenePath } from '../engines'
@@ -158,7 +158,7 @@ export async function refinish(id: string) {
     await finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps })
     p.output = out
     p.outputAt = Date.now()
-    if (p.settings.checks !== 'Off') p.finalCheck = await checkFinalVideo(p, out)
+    if (p.settings.checks !== 'Off') p.finalCheck = await checkFinalVideo(p, out, undefined, getStyle(p.settings.styleId).realMedia ? 2.5 : undefined)
     emit(p, true)
     return p
   })

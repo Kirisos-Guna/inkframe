@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../src/shared/types'
-import { linksIn } from '../src/main/services/realMedia'
+import { linksIn, locateQuote } from '../src/main/services/realMedia'
+import { readVtt } from '../src/main/services/vtt'
 import { mediaCredits } from '../src/main/services/job/mediaPlan'
 
 describe('clips from the direction', () => {
@@ -26,5 +27,32 @@ describe('media credits', () => {
       }
     } as unknown as Project
     expect(mediaCredits(p)).toEqual(['Jensen.jpg by X, CC BY 4.0, via Wikimedia Commons', 'Video by Ana on Pexels'])
+  })
+})
+
+describe('quote clips', () => {
+  const vtt = `WEBVTT
+Kind: captions
+
+00:00:01.000 --> 00:00:03.000
+so today we are going to talk
+
+00:00:03.000 --> 00:00:05.500
+so today we are going to talk
+<00:00:03.400><c>about</c> talk is cheap
+
+00:00:05.500 --> 00:00:07.000
+show me the code and that's it
+
+00:00:07.000 --> 00:00:09.000
+thank you everyone`
+  it('finds where the words are said, even with small differences', () => {
+    const at = locateQuote(readVtt(vtt), 'Talk is cheap. Show me the code.')!
+    expect(at.from).toBe(3)
+    expect(at.to).toBe(7)
+    expect(locateQuote(readVtt(vtt), 'Talk is cheap, show me code')).not.toBeNull()
+  })
+  it('says nothing when the words are not there', () => {
+    expect(locateQuote(readVtt(vtt), 'Software is like sex, it is better when it is free')).toBeNull()
   })
 })

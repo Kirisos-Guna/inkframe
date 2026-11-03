@@ -140,6 +140,16 @@ export default function Settings() {
             </label>
           ))}
         </div>
+        <label className="mt-4 flex cursor-pointer items-start gap-3 text-[14.5px]">
+          <input type="checkbox" className="mt-1" checked={!!s.quoteClips} onChange={(e) => save({ quoteClips: e.target.checked })} />
+          <span>
+            Quote clips of real people
+            <span className="block text-[13.5px] text-muted">
+              A few seconds of a real person saying the line (a keynote, an interview), found on YouTube. Short quotes are often fair use, but the
+              channel that owns the video can still claim yours with Content ID. Off unless you turn it on.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="card mb-10 mt-5 px-7 py-3">
