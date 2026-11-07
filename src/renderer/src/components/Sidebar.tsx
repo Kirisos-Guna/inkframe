@@ -1,4 +1,4 @@
-import { Home, Palette, SlidersHorizontal, Users } from 'lucide-react'
+import { Home, Palette, SlidersHorizontal } from 'lucide-react'
 import { APP_VERSION } from '@shared/brand'
 import { useApp, type Route } from '@/store/app'
 import { Logo, Wordmark } from './ui'
@@ -7,7 +7,6 @@ import { UpdateBanner } from './Update'
 const NAV: { label: string; icon: typeof Home; route: Route }[] = [
   { label: 'Home', icon: Home, route: { name: 'home' } },
   { label: 'Styles', icon: Palette, route: { name: 'styles' } },
-  { label: 'Characters', icon: Users, route: { name: 'characters' } },
   { label: 'Settings', icon: SlidersHorizontal, route: { name: 'settings' } }
 ]
 

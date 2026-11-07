@@ -10,6 +10,11 @@ export default function Settings() {
   const { settings, status } = useApp()
   const [s, setS] = useState<AppSettings | undefined>(settings)
   useEffect(() => setS(settings), [settings])
+  // The graphics card's video encoder, if FFmpeg can use one (undefined while checking).
+  const [gpu, setGpu] = useState<string | null | undefined>(undefined)
+  useEffect(() => {
+    window.api.gpu.info().then(setGpu, () => setGpu(null))
+  }, [])
   if (!s) return null
 
   const save = async (patch: Partial<AppSettings>) => {
@@ -112,16 +117,17 @@ export default function Settings() {
       </section>
 
       <section className="card mt-5 px-7 py-5">
-        <div className="text-[19px] font-semibold">Stock clips for Fast Tech Remix</div>
+        <div className="text-[19px] font-semibold">Clips and GIFs for Fast Tech Remix</div>
         <div className="mb-4 mt-1 text-[14px] text-muted">
-          Optional. With a free key, real B-roll clips come from Pexels or Pixabay (free licences, credited in the description). Without one, the style uses
-          free clips from Wikimedia Commons, or none.
+          Optional. With a free key, real B-roll clips come from Pexels or Pixabay (free licences, credited in the description); without one, the style uses
+          free clips from Wikimedia Commons, or none. With a free GIPHY key, the video also gets a few reaction GIFs at the right beats.
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {(
             [
               ['pexelsKey', 'Pexels API key', 'https://www.pexels.com/api/'],
-              ['pixabayKey', 'Pixabay API key', 'https://pixabay.com/api/docs/']
+              ['pixabayKey', 'Pixabay API key', 'https://pixabay.com/api/docs/'],
+              ['giphyKey', 'GIPHY API key', 'https://developers.giphy.com/dashboard/']
             ] as const
           ).map(([k, label, link]) => (
             <label key={k} className="text-[13.5px] text-muted">
@@ -147,6 +153,22 @@ export default function Settings() {
             <span className="block text-[13.5px] text-muted">
               A few seconds of a real person saying the line (a keynote, an interview), found on YouTube. Short quotes are often fair use, but the
               channel that owns the video can still claim yours with Content ID. Off unless you turn it on.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <section className="card mt-5 px-7 py-5">
+        <label className="flex cursor-pointer items-start gap-3 text-[14.5px]">
+          <input type="checkbox" className="mt-1" checked={s.gpu !== false} onChange={(e) => save({ gpu: e.target.checked })} />
+          <span>
+            Use the graphics card
+            <span className="block text-[13.5px] text-muted">
+              {gpu === undefined
+                ? 'Checking this PC…'
+                : gpu
+                  ? `Found ${gpu}: the finished video is encoded on it, about twice as fast. The parts are always drawn on the graphics card.`
+                  : 'No graphics card encoder FFmpeg can use was found, so the finished video is encoded on the processor. The parts are still drawn on the graphics card.'}
             </span>
           </span>
         </label>

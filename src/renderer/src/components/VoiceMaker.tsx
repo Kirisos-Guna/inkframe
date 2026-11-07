@@ -130,7 +130,7 @@ export function VoiceMaker({ script, onDone, onClose }: { script: string; onDone
               {busy === 'speak' ? 'Speaking…' : 'Make the voiceover'}
             </button>
           </div>
-          <div className="mt-2 text-[13px] text-dim">The first time, the voice model (about 90 MB) is fetched once. Speaking takes about as long as the voiceover.</div>
+          <div className="mt-2 text-[13px] text-dim">The first time, the voice model (about 160 MB) is fetched once. Speaking takes about a third as long as the voiceover.</div>
         </>
       )}
     </div>

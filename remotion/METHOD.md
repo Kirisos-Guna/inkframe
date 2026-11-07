@@ -47,9 +47,9 @@ and not everything moves at the same speed.
 
 ## The kit
 ```tsx
-import { useScene, Board, Draw, shape, Write, Typewriter, Pop, Fade, Move, Travel, Count, Character, Picture, useCamera } from '@kit'
+import { useScene, Board, Draw, shape, Write, Typewriter, Pop, Fade, Move, Travel, Count, Picture, useCamera } from '@kit'
 
-const { frame, fps, dur, at, palette, words, text, characters, material, font } = useScene()
+const { frame, fps, dur, at, palette, words, text, material, font } = useScene()
 // dur = frames in this part. at('word', nth?, fallbackFrame?) = frame the word is spoken.
 
 <Board camera={useCamera([{ at: 0, zoom: 1, x: 960, y: 540 }, { at: 90, zoom: 1.6, x: 1300, y: 500 }])}>  // background + texture, optional camera
@@ -62,9 +62,6 @@ shape.rect(x,y,w,h,r?) shape.circle(cx,cy,r) shape.line(x1,y1,x2,y2) shape.arrow
 <Fade start={f} out={f2}>...</Fade>   <Move from={[0,0]} to={[200,0]} start dur>...</Move>
 <Travel d={path} start={f} dur={40} />                              // a dot (or children) moving along a path
 <Count to={12000} prefix="$" x={960} y={560} start={f} />           // number counting up
-<Character name="Ada" x={400} y={980} height={560} pose="Point" expression="Happy" start={f} />
-   poses: Stand Wave Point 'Point up' 'Thumbs up' Cheer Shrug Think 'Arms crossed' Present Hold 'Hands on hips' Facepalm Explain Walk
-   expressions: Neutral Happy Laughing Surprised Sad Angry Thinking Wink Worried Smug
 <Picture name="logo.png" x y w h start />                           // one of the user's material files
 ```
 Plain SVG elements (`<path>`, `<circle>`, `<text>`, `<g>`…) work too inside `<Board>`. Text in raw `<text>` needs

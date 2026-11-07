@@ -1,17 +1,21 @@
 // Stand-in for '@kit/remix' when finding sound cues: a whoosh on every cut, typing for code and terminals, a pen for
 // the highlighter and the drawn circle, pops for things that appear.
-import React from 'react'
-import { CutStart, useCue } from './record'
+import React, { useContext } from 'react'
+import { CutStart, FrameCtx, useCue } from './record'
+import { flashFree } from '../flash'
 
 type Kids = { children?: React.ReactNode }
 type Any = { start?: number; [k: string]: unknown }
 
 export function Cuts({ at, children, whip = false }: { at: number[]; whip?: boolean } & Kids) {
-  at.forEach((f, i) => i > 0 && useCue(whip ? 'whip' : 'whoosh', f, 10, 0.5))
+  // The same shots as the real kit shows: flashes under 0.8 s are left out.
+  const { fps, dur } = useContext(FrameCtx)
+  const shots = flashFree(React.Children.toArray(children), at, dur, Math.round(fps * 0.8))
+  shots.forEach(({ from }, i) => i > 0 && useCue(whip ? 'whip' : 'whoosh', from, 10, 0.5))
   return (
     <>
-      {React.Children.toArray(children).map((c, i) => (
-        <CutStart.Provider key={i} value={at[i] ?? 0}>
+      {shots.map(({ c, from }, i) => (
+        <CutStart.Provider key={i} value={from}>
           {c}
         </CutStart.Provider>
       ))}
@@ -39,6 +43,10 @@ export const Shot = () => null
 export const Clip = () => null
 export const Post = pop(0.7)
 export const Meme = pop(0.9)
+export const Gif = pop(0.9)
+export function Diagram({ children }: Kids) {
+  return <>{children}</>
+}
 export const Caption = pop(0.5)
 export const Box = pop(0.6)
 export const Hand = pop(0.5)
@@ -50,8 +58,8 @@ export function Page({ start = 0, markAt = 18, marks = [] }: Any & { markAt?: nu
   return null
 }
 export function Code({ code = '', start = 0, cps = 45 }: Any & { code?: string; cps?: number }) {
-  // Typed in at most 0.8 s, as in the real kit.
-  useCue('typing', start + 4, Math.min(code.length / cps, 0.8) * 30)
+  // Typed in at most 1.2 s, as in the real kit.
+  useCue('typing', start + 4, Math.min(code.length / cps, 1.2) * 30)
   return null
 }
 export function Shell({ command = '', start = 0, cps = 30 }: Any & { command?: string; cps?: number }) {

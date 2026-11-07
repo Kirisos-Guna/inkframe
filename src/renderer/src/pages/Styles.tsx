@@ -1,20 +1,33 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, Check, Link2, Sparkles, Trash2, Upload } from 'lucide-react'
-import type { Effort, LearnSession, Provider } from '@shared/types'
+import type { Effort, LearnSession, Provider, StyleDef } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
 import { SHOWPIECES } from '@shared/styles'
-import { useApp } from '@/store/app'
+import { errorText, useApp } from '@/store/app'
 import { Segmented, Select } from '@/components/ui'
 import { StylePreview } from '@/components/StylePreview'
 
 type Tab = 'Library' | 'My styles' | 'Learn from a video'
 
 export default function Styles({ initialTab }: { initialTab?: Tab }) {
-  const { styles } = useApp()
+  const { styles, showToast } = useApp()
   const [tab, setTab] = useState<Tab>(initialTab ?? 'Library')
   const [dim, setDim] = useState<'All' | '2D' | '3D'>('All')
   const mine = styles.filter((s) => s.custom)
-  const list = (tab === 'My styles' ? mine : styles.filter((s) => !s.custom)).filter((s) => dim === 'All' || s.dim === dim)
+  const hidden = styles.filter((s) => s.hidden)
+  const list = (tab === 'My styles' ? mine : styles.filter((s) => !s.custom && !s.hidden)).filter((s) => dim === 'All' || s.dim === dim)
+
+  async function remove(s: StyleDef) {
+    const what = s.custom ? 'It is deleted for good.' : 'You can bring it back from the bottom of this page.'
+    if (!confirm(`Delete the style “${s.name}”? Videos already made with it keep it. ${what}`)) return
+    try {
+      await window.api.styles.remove(s.id)
+      useApp.setState({ styles: await window.api.styles.list() })
+      showToast(`Deleted “${s.name}”`)
+    } catch (e) {
+      showToast(errorText(e))
+    }
+  }
 
   return (
     <div className="px-6 pb-6 pt-12 2xl:px-12">
@@ -66,18 +79,13 @@ export default function Styles({ initialTab }: { initialTab?: Tab }) {
               <div key={s.id} className="group">
                 <div className="relative aspect-video overflow-hidden rounded-xl border border-line">
                   <StylePreview id={s.id} />
-                  {s.custom && (
-                    <button
-                      className="absolute right-2 top-2 hidden rounded-md bg-black/70 p-1.5 group-hover:block"
-                      onClick={async () => {
-                        if (!confirm(`Delete the style “${s.name}”?`)) return
-                        await window.api.styles.remove(s.id)
-                        useApp.setState({ styles: await window.api.styles.list() })
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                  <button
+                    className="absolute right-2 top-2 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1.5 text-[13px] text-white/85 opacity-70 hover:bg-[#b42318] hover:text-white hover:opacity-100 group-hover:opacity-100"
+                    title={`Delete “${s.name}”`}
+                    onClick={() => remove(s)}
+                  >
+                    <Trash2 size={14} /> <span className="hidden group-hover:inline">Delete</span>
+                  </button>
                 </div>
                 <div className="mt-3 flex items-start justify-between gap-3">
                   <div className="text-[18px] font-semibold leading-tight">{s.name}</div>
@@ -96,6 +104,20 @@ export default function Styles({ initialTab }: { initialTab?: Tab }) {
               </div>
             ))}
           </div>
+          {tab === 'Library' && hidden.length > 0 && (
+            <div className="mt-6 text-[14.5px] text-muted">
+              {hidden.length} deleted {hidden.length === 1 ? 'style' : 'styles'} ({hidden.map((s) => s.name).join(', ')}).{' '}
+              <button
+                className="font-semibold text-accent"
+                onClick={async () => {
+                  await window.api.styles.restore()
+                  useApp.setState({ styles: await window.api.styles.list() })
+                }}
+              >
+                Bring them back
+              </button>
+            </div>
+          )}
           {tab === 'Library' && (
             <>
               <div className="mt-10 flex items-baseline gap-3">

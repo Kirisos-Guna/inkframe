@@ -71,13 +71,24 @@ describe('pace', () => {
 
 describe('checking one rendered part', () => {
   const black = '[blackdetect @ 0x1] black_start:4.8 black_end:8.4 black_duration:3.6\n'
-  const cuts = (ts: number[]) => ts.map((t) => `[Parsed_showinfo_3 @ 0x2] n:0 pts:1 pts_time:${t} duration:1`).join('\n')
+  // FFmpeg's metadata=print lines for each change of picture, with its score.
+  const cuts = (ts: number[], score = 0.4) =>
+    ts.map((t) => `[Parsed_metadata_2 @ 0x2] frame:0    pts:1   pts_time:${t}\n[Parsed_metadata_2 @ 0x2] lavfi.scene_score=${score}`).join('\n')
   it('finds black stretches', () => {
     expect(readPartLog(black, 12)).toEqual([{ kind: 'black', at: 4.8, dur: 3.6 }])
   })
   it('finds shots held too long in the fast styles, but not the ones that are black', () => {
     expect(readPartLog(cuts([2, 4, 8.5]), 10, 3.5)).toEqual([{ kind: 'long', at: 4, dur: 4.5 }])
     expect(readPartLog(black + cuts([2, 4.8, 8.4]), 10, 3.5)).toEqual([{ kind: 'black', at: 4.8, dur: 3.6 }])
+  })
+  it('flags a part cut too fast to read, but not one quick punch', () => {
+    expect(readPartLog(cuts([2, 2.6, 3.2, 3.8, 7]), 10, 7)).toEqual([{ kind: 'fast', at: 2, dur: 3 }])
+    expect(readPartLog(cuts([3, 3.6, 7]), 10, 7)).toEqual([])
+  })
+  it('counts a faint cut between two dark shots, but not as a flash', () => {
+    // Part 3 of a test video: three dark shots whose cuts score only 0.1 to 0.2.
+    expect(readPartLog(cuts([3.33, 6.67], 0.1), 10, 7)).toEqual([])
+    expect(readPartLog(cuts([2, 2.5, 3, 3.5], 0.12), 10, 7)).toEqual([])
   })
   it('says where it is and what is said there', () => {
     const p = { words: [{ w: 'every', start: 102, end: 102.3 }, { w: 'cut', start: 102.3, end: 102.6 }] } as unknown as Project

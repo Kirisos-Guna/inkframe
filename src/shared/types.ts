@@ -59,7 +59,7 @@ export type OutputLang = 'English' | 'Tamil'
 
 /** One planned piece of real media for a part (from the research step). */
 export interface Shot {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'stock' | 'clip' | 'code' | 'doccode' | 'chart' | 'quote'
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'gif' | 'stock' | 'clip' | 'code' | 'doccode' | 'chart' | 'quote'
   /** quote: who says it, the words, and what to search for */
   who?: string
   says?: string
@@ -80,10 +80,13 @@ export interface Shot {
   contains?: string
   /** photo, stock: what to search for */
   query?: string
-  /** meme: the Imgflip template name, and the captions */
+  /** meme: the Imgflip template name, and one caption per box of the template (top/bottom: older plans) */
   template?: string
+  texts?: string[]
   top?: string
   bottom?: string
+  /** gif: a caption under the reaction (query is what to search for) */
+  text?: string
   /** clip: the user's link and the seconds wanted */
   link?: string
   from?: string
@@ -100,7 +103,7 @@ export interface Shot {
 
 /** A fetched piece of real media, in the project's public folder (name is relative to it). */
 export interface MediaItem {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'clip' | 'code' | 'chart'
+  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'gif' | 'clip' | 'code' | 'chart'
   name: string
   w?: number
   h?: number
@@ -115,6 +118,10 @@ export interface MediaItem {
   credit?: string
   top?: string
   bottom?: string
+  /** meme: the template, and one caption per box of it; gif: its caption */
+  template?: string
+  texts?: string[]
+  text?: string
   lang?: string
   file?: string
   code?: string
@@ -179,7 +186,6 @@ export interface ProjectSettings {
   tone: string[]
   creativity: 'Faithful' | 'Balanced' | 'Storytelling' | 'Wild'
   styleId: string
-  characterIds: string[]
   quality: { height: 720 | 1080 | 2160; fps: 30 | 60 }
   checks: ChecksLevel
   provider: Provider
@@ -238,6 +244,8 @@ export interface Project {
 export interface StyleDef {
   id: string
   name: string
+  /** A library style the user deleted: kept for videos already made with it, not offered for new ones. */
+  hidden?: boolean
   tags: string[]
   description: string
   dim: '2D' | '3D'
@@ -255,32 +263,6 @@ export interface StyleDef {
   guide?: string
   /** Built from real media (screenshots, photos, memes, clips, code) found by research, not drawn. */
   realMedia?: boolean
-}
-
-export interface CharacterDef {
-  id: string
-  name: string
-  skin: string
-  head: 'Round' | 'Oval' | 'Square' | 'Long' | 'Wide'
-  eyes: 'Dots' | 'Round' | 'Big' | 'Sleepy' | 'Lashes'
-  eyeColour: string
-  eyebrows: 'None' | 'Soft' | 'Thick' | 'Arched'
-  nose: 'None' | 'Dot' | 'Button' | 'Long'
-  hair: 'Bob' | 'Short' | 'Long' | 'Bun' | 'Bald' | 'Curly' | 'Ponytail' | 'Afro' | 'Spiky' | 'Side part'
-  hairColour: string
-  glasses: boolean
-  outfit: 'Lab coat' | 'Hoodie' | 'Suit' | 'T-shirt' | 'Apron' | 'Jacket' | 'Dress' | 'Overalls' | 'Sweater'
-  outfitColour: string
-  body: 'Slim' | 'Average' | 'Broad'
-  pose: string
-  expression: string
-  drawnIn: string
-  description?: string
-  // Added in 1.3: optional, so characters saved earlier still load.
-  facialHair?: 'None' | 'Stubble' | 'Beard' | 'Mustache'
-  hat?: 'None' | 'Cap' | 'Beanie' | 'Hard hat'
-  headphones?: boolean
-  age?: 'Kid' | 'Adult' | 'Older'
 }
 
 export interface LearnSession {
@@ -325,6 +307,12 @@ export interface AppSettings {
   /** Free API keys for stock clips (remix styles). */
   pexelsKey?: string
   pixabayKey?: string
+  /** Use the graphics card to encode the finished video (default on; falls back to the CPU) */
+  gpu?: boolean
+  /** Free GIPHY key, for reaction GIFs in the remix styles */
+  giphyKey?: string
+  /** Hidden built-in styles (the library's own can't be deleted, only hidden) */
+  hiddenStyles?: string[]
   /** The local voice last used to make a voiceover (see localVoice.ts). */
   voice?: VoiceChoice
   /** Fast Tech Remix may use short clips of real people saying a line (from YouTube). Off: other channels can claim them. */

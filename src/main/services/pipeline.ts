@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
 import type { Comment, Part, Project } from '../../shared/types'
-import { getProject, getStyle, listCharacters } from './store'
+import { getProject, getStyle } from './store'
 import { asLimit, extractJson, LimitError, runAgent } from './agent'
 import { bundleProject, clearRenderBundles, clipFile, KIT_VERSION, thumbFile } from './render'
 import { engineOf, renderAny, scenePath, writeHfStarter } from './engines'
@@ -11,7 +11,7 @@ import { APP_NAME } from '../../shared/brand'
 import { emit, setPart, step } from './job/events'
 import { normaliseParts, part } from './job/parts'
 import { chunk, clip, limiter, pool } from './job/util'
-import { AUTO_FIX, checkValid, FIX_FAILED, fixPending, reviewNotes } from './job/checkRules'
+import { AUTO_FIX, autoFixNote, checkValid, FIX_FAILED, FIX_ROUNDS, fixPending, reviewNotes } from './job/checkRules'
 import { hearing, startTranscription } from './job/hearing'
 import { busy, CHECK_BATCH, DESIGN_BATCH, finishing, guarded, HELPERS, jobs, RENDERS, resumeWaiters, stepControllers } from './job/control'
 import { agentOpts, agentScene, drawOpts, finishScene, isBareStarter, repairOpts, target, writeGuides } from './job/scenes'
@@ -89,7 +89,6 @@ export function addComment(id: string, c: Comment) {
 
 async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'all'): Promise<string[]> {
   const style = getStyle(p.settings.styleId)
-  const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   writeGuides(p)
 
   // 1 · Voiceover
@@ -210,20 +209,26 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
       step(p, `Checking ${toCheck.length} part${toCheck.length > 1 ? 's' : ''}`, { title: 'Checking the parts', detail: `${toCheck.length} part${toCheck.length > 1 ? 's' : ''}, ${CHECK_BATCH} per look, on a quick model.` })
       await guarded(p, signal, async (s) => checkParts(p, toCheck, await url(), s, p.job.startedAt))
     }
-    // On High, parts whose valid check has notes get one automatic fix: straight away, without checking them again
-    // first, and never twice for the same notes (afterFix). Whatever is left, the user can comment on.
-    const bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && fixPending(x)) : []
-    if (bad.length) {
-      step(p, `Fixing ${bad.length} part${bad.length > 1 ? 's' : ''} after the check`, { title: 'Fixing after the check', detail: clip(bad.map((x) => `Part ${x.index + 1}: ${reviewNotes(x).join('; ')}`).join(' · '), 400) })
+    // On High, parts whose valid check has notes are fixed automatically, straight away: the fixer sees the checker's
+    // picture of the part and all its notes, and fixes them all at once. The fixed parts are rendered and checked
+    // again; what is still wrong gets a second, bolder fix (FIX_ROUNDS in all). Never again for the same notes
+    // (afterFix): whatever is left after that, the user can comment on.
+    let bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && fixPending(x)) : []
+    for (let round = 1; round <= FIX_ROUNDS && bad.length; round++) {
+      const again = round > 1
+      step(p, `${again ? 'Fixing again' : 'Fixing'} ${bad.length} part${bad.length > 1 ? 's' : ''} after the check${again ? ` (round ${round} of ${FIX_ROUNDS})` : ''}`, {
+        title: again ? 'Fixing what is still wrong' : 'Fixing after the check',
+        detail: clip(bad.map((x) => `Part ${x.index + 1}: ${reviewNotes(x).join('; ')}`).join(' · '), 400)
+      })
       const fixed: Part[] = []
       await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {
         // One part's fix failing does not stop the others: it goes back to its last good drawing, with a note.
         const file = scenePath(p, x)
         const thumb = thumbFile(p, x)
         const before = { scene: existsSync(file) ? readFileSync(file) : null, thumb: existsSync(thumb) ? readFileSync(thumb) : null, status: x.status }
-        const note: Comment = { id: '', partIds: [x.id], text: `A reviewer found: ${reviewNotes(x).join('; ')}`, mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
+        const note: Comment = { id: '', partIds: [x.id], text: autoFixNote(p, x, again), mode: 'Fix just this', attachments: [], at: Date.now(), state: 'Working' }
         try {
-          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, note, [], target(p, x)), AUTO_FIX, s))
+          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, note, [], target(p, x)), AUTO_FIX, s))
           fixed.push(x)
         } catch (e) {
           // A usage limit is not a failed fix: guarded pauses for it. Pass it on if it ever gets here.
@@ -236,14 +241,18 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
           notFixed.push(`part ${x.index + 1}`)
         }
       })
-      if (fixed.length) {
-        const fixedAt = Date.now()
-        await pool(fixed, RENDERS, (x) => renderOne(x, signal, true))
-        await guarded(p, signal, async (s) => checkParts(p, fixed, await url(), s, fixedAt))
-        // These were fixed once for their notes: a new note on them waits for the user, not another automatic fix.
-        for (const x of fixed) if (x.checks) setPart(p, x.id, { checks: { ...x.checks, afterFix: true } })
-      }
+      if (!fixed.length) break
+      const fixedAt = Date.now()
+      await pool(fixed, RENDERS, (x) => renderOne(x, signal, true))
+      step(p, `Checking the ${fixed.length} fixed part${fixed.length > 1 ? 's' : ''}`)
+      await guarded(p, signal, async (s) => checkParts(p, fixed, await url(), s, fixedAt))
+      const last = round === FIX_ROUNDS
+      // Still wrong after this round: another round, unless this was the last one.
+      bad = last ? [] : fixed.filter((x) => checkValid(x) && !x.checks!.ok)
+      // Fixed for their notes: what is left after the last round waits for the user, not another automatic fix.
+      for (const x of fixed) if (x.checks && (last || x.checks.ok)) setPart(p, x.id, { checks: { ...x.checks, afterFix: true } })
     }
+    for (const x of bad) if (x.checks) setPart(p, x.id, { checks: { ...x.checks, afterFix: true } })
   }
   for (const x of p.parts) if (renderedNow.has(x.id) || x.status === 'Rendered') setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
   p.job.renderDone = p.parts.length
@@ -261,7 +270,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   emit(p, true)
   if (p.settings.checks !== 'Off') {
     step(p, 'Checking the finished video', { title: 'Checking the finished video', detail: 'Black frames, frozen pictures, the sound and the length (no AI).' })
-    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 2.5 : undefined))
+    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 4 : undefined))
     emit(p, true)
   }
   return notFixed
@@ -287,11 +296,11 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
         // After a pause, only the parts of this batch that are not finished yet are drawn again.
         const left = batch.filter((x) => !finished.has(x.id))
         if (!left.length) return
-        await runAgent({ ...drawOpts(p, s, left), prompt: designBatchPrompt(p, left, chars, left.map((x) => target(p, x))) })
+        await runAgent({ ...drawOpts(p, s, left), prompt: designBatchPrompt(p, left, left.map((x) => target(p, x))) })
         for (const x of left) {
           if (existsSync(scenePath(p, x)) && (engineOf(p, x) !== 'hyperframes' || !isBareStarter(scenePath(p, x)))) await finishScene(p, x, 'First version', s)
           // A part the batch did not get to is drawn on its own.
-          else await agentScene(p, x, designPrompt(p, x, chars, target(p, x)), 'First version', s)
+          else await agentScene(p, x, designPrompt(p, x, target(p, x)), 'First version', s)
           finished.add(x.id)
           p.job.designDone = designed()
           emit(p)
@@ -320,7 +329,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
           detail: `One note, on part ${x.index + 1}: ${c.text.replace(/\.$/, '')}. The other ${others} part${others === 1 ? '' : 's'} stay exactly as they are.`
         })
         if (engineOf(p, x) === 'hyperframes') writeHfStarter(p, x)
-        await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, chars, c, attachments, target(p, x)), c.text, s))
+        await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, c, attachments, target(p, x)), c.text, s))
       })
       c.state = 'Done'
       emit(p)

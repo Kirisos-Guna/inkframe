@@ -16,7 +16,7 @@ export const BUILTIN_STYLES: StyleDef[] = [
     id: 'ink-wash-cartoon', name: 'Ink-and-wash Cartoon', tags: ['Cartoon', 'Story'], dim: '2D',
     description: 'A hand-inked cartoon with a real story and a punchline, painted in soft washes.',
     palette: { bg: '#f4eedf', ink: '#1d1b1a', accent: '#d9534f', paper: '#e8dcc2' }, stroke: { width: 4, jitter: 0.9, texture: 'brush' },
-    guide: 'Characters and props in confident black ink outlines, filled with soft, slightly blotchy watercolour washes (low-opacity fills that spill past the line). Each part is a small comic beat with a set-up and a payoff; give characters expressions and poses that act the line out. Warm paper background.'
+    guide: 'Characters and props in confident black ink outlines, filled with soft, slightly blotchy watercolour washes (low-opacity fills that spill past the line). Each part is a small comic beat with a set-up and a payoff; give the people and things in it expressions and poses that act the line out. Warm paper background.'
   }),
   s({
     id: 'living-ink', name: 'Living Ink', tags: ['Ink', 'Flowing'], dim: '2D',
@@ -47,12 +47,6 @@ export const BUILTIN_STYLES: StyleDef[] = [
     description: 'Torn-edge paper shapes with real shadows, animated on twos.',
     palette: { bg: '#f2b632', ink: '#1b1b1b', accent: '#ef5a2a' },
     guide: 'Flat paper shapes with slightly irregular edges and soft drop shadows, stacked in layers. Animate on twos (hold each pose for 2 frames) for a stop-motion feel.'
-  }),
-  s({
-    id: 'character-stories', name: 'Character Stories', tags: ['Characters', 'Narrative'], dim: '2D',
-    description: 'Your characters act the story out in simple sets, scene by scene.',
-    palette: { bg: '#fdf6ec', ink: '#2b2b33', accent: '#ff7a59' }, stroke: { width: 4, jitter: 0.2, texture: 'none' },
-    guide: 'Character-led: every part shows the video\'s characters doing or reacting to what is said, with clear poses and expressions, in a simple flat set (a room, a street, a lab). Use speech bubbles sparingly. Cut between wide and close framing from part to part.'
   }),
   s({
     id: 'flat-cartoon', name: '2D Animation', tags: ['Cartoon', 'Flat'], dim: '2D',
@@ -144,8 +138,8 @@ Look
     palette: { bg: '#000000', ink: '#ffffff', accent: '#ff8a1f' },
     guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, charts, code and clips listed
 for each part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
-  import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Caption, Code, Shell, Box, Flow, Loop,
-    Chart, Stats, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
+  import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Gif, Caption, Code, Shell, Diagram, Box,
+    Flow, Loop, Chart, Stats, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
   import { AbsoluteFill } from '@kit'
   <Cuts at={[0, at('word'), …]} whip?> one child per shot </Cuts>   each child fills the frame; cut on the word it is
     about; whip: a fast blurred slide between shots (use it where the topic turns)
@@ -153,8 +147,12 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
   <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? />  a page with its sentence
     highlighted (copy w, h, marks, marks2 and focus as listed). crop: only the headline and that paragraph, big (best
     for articles and filings); scroll: for a tall capture, moves down to the sentence; underline: a marker line instead
-  <Post name="m/…png" w h />  a real post        <Meme name="m/…jpg" top="…" bottom="…" />  a meme with its captions
-  <Caption text="WE'RE SO CLOSE. PLS VENMO ME" />  a sarcastic line over the shot before it (inside the same cut)
+  <Post name="m/…png" w h />  a real post
+  <Meme name="m/…jpg" w h template="Drake Hotline Bling" texts={['…', '…']} />  a meme: copy it exactly as listed; its
+    captions sit in the template's own boxes (Drake's white side, Gru's boards). Never put a Caption on a meme.
+  <Gif name="m/…mp4" w h text? />  a looping reaction GIF, as listed
+  <Caption text="WE'RE SO CLOSE. PLS VENMO ME" />  a sarcastic line over a photo, page or clip (inside the same cut);
+    at most 6 words, never on a meme, a GIF or code
   <Code code={…} lang="ts" file="index.ts" lines={[3]} tree={['src/', '  index.ts', '  db.ts', 'package.json']} />
     an editor; tree adds the file explorer        <Shell command="npm i x" output={['added 1 package']} />
   <Split left={<Code …/>} right={<Page …/>} />  two things side by side (the code and what it does, before and after)
@@ -164,10 +162,11 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
   <TitleCard text="Circular financing" accent="circular" />
   Edits, wrapped around a shot: <Punch at={[at('trillion')]}> zooms in hard on the word; <Shake at={[f]}> for an impact;
     <FreezeFrame at={f} label="THIS GUY"> stops the picture with a record scratch, for the beat before a punchline.
-  Diagrams on black: <AbsoluteFill style={{ background: '#000' }}> <Box x y label="NVIDIA" icon="🖥️" pulse? color="#76b900" />
-    <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </AbsoluteFill>   build them up box by
-    box; packets keep moving along the arrow (dots, or coins and data as emoji); pulse marks the busy one.
-    <Loop items={['build', 'test', 'deploy']} /> for a cycle.
+  Diagrams: <Diagram> <Box x y label="NVIDIA" icon="🖥️" pulse? color="#76b900" />
+    <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </Diagram>   Diagram zooms whatever is
+    inside it to fill the frame, so lay it out at any size; build it up box by box; packets keep moving along the
+    arrow; pulse marks the busy one. <Loop items={['build', 'test', 'deploy']} /> for a cycle (inside a Diagram too).
+    At most 5 boxes in one diagram, 1 to 3 words per label.
   Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
 
 Timing: every frame number is a frame of the part, what at('word') returns, also inside <Cuts> (start={at('knife')}
@@ -175,14 +174,21 @@ Timing: every frame number is a frame of the part, what at('word') returns, also
   Every shot shows its main thing from its first frame: never a shot that is black or empty while it waits.
 
 Pace and humour
-- A new picture every 1.5 to 2.5 seconds, cut exactly on the word it shows (at('word')). Never hold one picture longer
-  than 3 seconds: a long page gets a Punch or a second highlight halfway. A part of 10 seconds has 4 to 6 shots.
+- Every shot is on screen long enough to READ, cut exactly on the word it shows (at('word')): a photo or B-roll at
+  least 1.5 s; a meme or GIF at least 3 s; a page with its highlight at least 2.5 s; a diagram at least 3 s; code at
+  least 3.5 s plus 1 s for every 3 lines (it types in about a second, then the viewer reads it). A part of 10 seconds
+  has 3 or 4 shots, never 6. Shots under 0.8 s are dropped by the kit. Keep a long shot alive inside it instead of
+  cutting away: a Punch on the key word, a second highlight, the next box of the diagram.
+- No small card or ticket parked in a corner across shots: it is too small to read and covers the picture. Every
+  shot owns the whole frame.
 - Fill the frame: the main thing in each shot takes at least half of the picture (a page close up on its sentence, a
   photo full frame, a meme full height, code big). Never a small thing alone in the middle of black.
 - Real media first. Draw only what no real picture can show (a diagram of how it works), with Box, Flow and Loop;
   never thin hand-drawn line art.
-- The narration is dry and quick; the pictures carry the jokes: a meme, a FreezeFrame or a sarcastic Caption on the
-  ironic beat, a Punch on the big number, a Sticker and Label for each person the story is about.
+- The concept comes first: most shots show the real thing that proves the line (the docs sentence highlighted, the
+  real code, the real chart, a diagram of how it works). Humour is a light touch: the few memes or GIFs listed, a
+  FreezeFrame or a sarcastic Caption on a truly ironic beat (at most one Caption per part), a Punch on the big
+  number, a Sticker and Label for each person the story is about.
 - Mix kinds: never three of the same in a row. Diagrams for how money or data flows; charts for numbers; code for how
   it works.
 - Diagram colours: one flat colour per company or thing (NVIDIA green #76b900, AI companies purple #8b5cf6, banks

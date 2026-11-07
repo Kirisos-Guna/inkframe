@@ -1,4 +1,4 @@
-import type { CharacterDef, Comment, Part, Project, StyleDef } from '../../shared/types'
+import type { Comment, Part, Project, StyleDef } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 
 const t = (s: number) => s.toFixed(2)
@@ -141,7 +141,11 @@ function mediaSection(p: Project, part: Part) {
       const size = m.w ? ` ${m.w}x${m.h}` : ''
       if (m.kind === 'chart') return `${i + 1}. chart "${m.name}" (${m.note}; ${m.credit}): <Chart name> for a line, <Stats name> for GitHub numbers`
       if (m.kind === 'code') return `${i + 1}. code (${m.lang}, ${m.file ?? 'file'}): ${JSON.stringify(m.code)}`
-      if (m.kind === 'meme') return `${i + 1}. meme "${m.name}"${size}: top ${JSON.stringify(m.top ?? '')}, bottom ${JSON.stringify(m.bottom ?? '')}`
+      if (m.kind === 'meme')
+        return m.template
+          ? `${i + 1}. meme "${m.name}"${size}: <Meme name="${m.name}" w={${m.w}} h={${m.h}} template=${JSON.stringify(m.template)} texts={${JSON.stringify(m.texts ?? [])}} /> (the captions sit in the template's own boxes: add no Caption on it)`
+          : `${i + 1}. meme "${m.name}"${size}: top ${JSON.stringify(m.top ?? '')}, bottom ${JSON.stringify(m.bottom ?? '')}`
+      if (m.kind === 'gif') return `${i + 1}. gif "${m.name}"${size}: <Gif name="${m.name}" w={${m.w}} h={${m.h}}${m.text ? ` text=${JSON.stringify(m.text)}` : ''} /> (a looping reaction: ${m.note})`
       if (m.kind === 'page')
         return `${i + 1}. page "${m.name}"${size}${m.marks?.length ? `, highlight marks=${JSON.stringify(m.marks)}` : ''}${m.marks2?.length ? ` marks2=${JSON.stringify(m.marks2)}` : ''}${m.focus ? ` focus=${JSON.stringify(m.focus)}` : ''}${(m.h ?? 0) > (m.w ?? 1) * 1.3 ? ' (tall: use scroll)' : ''} (${m.credit}${m.note ? `: ${m.note}` : ''})`
       return `${i + 1}. ${m.kind} "${m.name}"${size}${m.cut ? `, cut-out "${m.cut}" for a Sticker` : ''} (${m.note ?? m.credit ?? ''})`
@@ -150,10 +154,10 @@ function mediaSection(p: Project, part: Part) {
 }
 
 /**
- * What every part of the video shares: the outline, the direction, characters and material. It is the same for every
+ * What every part of the video shares: the outline, the direction and material. It is the same for every
  * drawing session of a video, so it goes in the cached system prompt (see drawingSystem), not in each prompt.
  */
-export function videoContext(p: Project, chars: CharacterDef[]) {
+export function videoContext(p: Project) {
   return `The whole video, for context:
 ${p.parts.map((x) => `${x.index + 1}. ${x.title}: ${x.text.slice(0, 90)}`).join('\n')}
 
@@ -162,7 +166,6 @@ Direction from the user: ${p.direction || '(none)'}${
       ? '\nCaptions are shown along the bottom of the video: keep everything important above y = 860 (the bottom 220 px of the 1080 frame stays clear of text and key objects).'
       : ''
   }
-Characters in this video: ${chars.length ? chars.map((c) => `${c.name} (${c.outfit.toLowerCase()}, ${c.hair.toLowerCase()} hair${c.glasses ? ', glasses' : ''})`).join('; ') : 'none, do not use <Character>'}
 Material files you can show with <Picture name="...">: ${[...new Set(p.material.map((m) => m.split(/[\\/]/).pop()))].join(', ') || 'none'}${languageNote(p)}`
 }
 
@@ -176,22 +179,22 @@ function languageNote(p: Project) {
   return (isTamil(p) ? `\nAll on-screen text (titles, labels, pills) is in Tamil. ${TAMIL_STYLE} Few words, large.` : '') + heard
 }
 
-function partContext(p: Project, part: Part, _chars: CharacterDef[], target: SceneTarget = { file: '', engine: 'remotion' }) {
+function partContext(p: Project, part: Part, target: SceneTarget = { file: '', engine: 'remotion' }) {
   return `You are drawing ${partSection(p, part, target)}
 
-(The whole video's outline, direction, characters and material are in your instructions.)`
+(The whole video's outline, direction and material are in your instructions.)`
 }
 
 /**
  * Several parts in one session: the method, the style and the video's context are read once instead of once per
  * part, and Claude sees the neighbouring parts, which also helps the video flow.
  */
-export function designBatchPrompt(p: Project, parts: Part[], chars: CharacterDef[], targets: SceneTarget[]) {
+export function designBatchPrompt(p: Project, parts: Part[], targets: SceneTarget[]) {
   return `${NO_READ}
 
 You are drawing ${parts.length} parts of one video, in order. Make them feel like one continuous piece: the same scale and line
 weight, recurring visual motifs, and where it helps, start a part from what the previous part left on screen.
-The whole video's outline, direction, characters and material are in your instructions.
+The whole video's outline, direction and material are in your instructions.
 
 ${parts
   .map(
@@ -227,20 +230,20 @@ ${level === 'Low' ? 'Only flag problems that are obvious at first glance.' : lev
 Reply with JSON only: {"parts": [{"part": <number>, "ok": true or false, "notes": ["short note", ...]}]}  (notes empty when ok)`
 }
 
-export function designPrompt(p: Project, part: Part, chars: CharacterDef[], target: SceneTarget) {
+export function designPrompt(p: Project, part: Part, target: SceneTarget) {
   return `${NO_READ}
 
-${partContext(p, part, chars, target)}
+${partContext(p, part, target)}
 
 ${target.engine === 'hyperframes' ? `Fill in the starter at ${target.file}` : `Write the scene to ${target.file}`}. Do not create or change any other file.
 When you are done, reply with one short sentence that says what the part shows.`
 }
 
-export function fixPrompt(p: Project, part: Part, chars: CharacterDef[], c: Comment, attachments: string[], target: SceneTarget) {
+export function fixPrompt(p: Project, part: Part, c: Comment, attachments: string[], target: SceneTarget) {
   const others = p.parts.length - 1
   return `${NO_READ} First read the current scene, ${target.file}.
 
-${partContext(p, part, chars, target)}
+${partContext(p, part, target)}
 
 The user watched this part and left a note:
 "${c.text}"
@@ -261,34 +264,6 @@ ${error.slice(0, 3000)}
 
 Read ${target.file}, then fix it so it builds and renders (the method in your instructions has the rules and the kit). Keep the drawing the same: change only what the error needs.
 Reply with one short sentence.`
-}
-
-export function characterPrompt(current: CharacterDef, text: string) {
-  return `Design a cartoon character for an explainer video from this description:
-"${text}"
-
-Pick values only from these lists:
-skin: any hex colour
-head: Round | Oval | Square | Long | Wide
-eyes: Dots | Round | Big | Sleepy | Lashes
-eyeColour, hairColour, outfitColour: any hex colour
-eyebrows: None | Soft | Thick | Arched
-nose: None | Dot | Button | Long
-hair: Bob | Short | Long | Bun | Bald | Curly | Ponytail | Afro | Spiky | Side part
-glasses: true | false
-outfit: Lab coat | Hoodie | Suit | T-shirt | Apron | Jacket | Dress | Overalls | Sweater
-facialHair: None | Stubble | Beard | Mustache
-hat: None | Cap | Beanie | Hard hat
-headphones: true | false
-age: Kid | Adult | Older
-body: Slim | Average | Broad
-pose: Stand | Wave | Point | Point up | Thumbs up | Cheer | Shrug | Think | Arms crossed | Present | Hold | Hands on hips | Facepalm | Explain | Walk
-expression: Neutral | Happy | Laughing | Surprised | Sad | Angry | Thinking | Wink | Worried | Smug
-name: a short first name that fits (keep "${current.name}" unless the description names someone)
-
-The current character, for anything the description does not say: ${JSON.stringify({ ...current, id: undefined, description: undefined, drawnIn: undefined })}
-
-Reply with JSON only, with all the fields above.`
 }
 
 export function learnPrompt(frames: string[], stats: { duration: number; cutsPerMinute: number }, mode: string, name: string) {

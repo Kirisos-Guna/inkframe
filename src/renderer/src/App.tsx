@@ -5,7 +5,6 @@ import { Toast } from './components/ui'
 import NewVideo from './pages/NewVideo'
 import Editor from './pages/Editor'
 import Styles from './pages/Styles'
-import Characters from './pages/Characters'
 import Settings from './pages/Settings'
 
 export default function App() {
@@ -31,7 +30,6 @@ export default function App() {
         {route.name === 'home' && <NewVideo />}
         {route.name === 'editor' && <Editor id={route.id} />}
         {route.name === 'styles' && <Styles initialTab={route.tab} />}
-        {route.name === 'characters' && <Characters openId={route.id} />}
         {route.name === 'settings' && <Settings />}
       </main>
       </div>

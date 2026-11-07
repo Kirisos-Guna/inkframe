@@ -4,8 +4,7 @@ import React, { createContext, useContext, useId, useLayoutEffect, useMemo, useR
 import { AbsoluteFill, continueRender, delayRender, Freeze, Easing, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { evolvePath } from '@remotion/paths'
 import rough from 'roughjs'
-import type { CharacterDef, StyleDef } from '../../src/shared/types'
-import { CharacterArt } from '../../src/shared/CharacterArt'
+import type { StyleDef } from '../../src/shared/types'
 
 export interface SceneWord {
   w: string
@@ -21,7 +20,6 @@ export interface SceneProps {
   text: string
   words: { w: string; start: number; end: number }[] // seconds, relative to the part start
   style: StyleDef
-  characters: CharacterDef[]
   material: string[] // file names in the public folder
 }
 
@@ -454,70 +452,10 @@ export function useCamera(keys: { at: number; zoom: number; x: number; y: number
   return { zoom: pick('zoom'), x: pick('x'), y: pick('y') }
 }
 
-const DRAWN: Record<string, string> = {
-  'hand-drawn-board': 'Pen',
-  'notebook-sketch': 'Flat',
-  chalkboard: 'Chalk',
-  'pencil-sketch': 'Ink',
-  risograph: 'Riso',
-  'sumi-ink': 'Ink',
-  'paper-cutout': 'Paper',
-  blueprint: 'Blueprint',
-  'cartoon-history': 'Cartoon History',
-  watercolour: 'Watercolour',
-  'soft-3d': 'Soft 3D',
-  'flat-cartoon': 'Flat',
-  'cinematic-3d': 'Soft 3D',
-  'short-3d': 'Soft 3D',
-  'ink-wash-cartoon': 'Watercolour',
-  'living-ink': 'Ink',
-  'cut-paper-poster': 'Paper',
-  'shadow-puppets': 'Ink',
-  cutaways: 'Flat',
-  'character-stories': 'Flat',
-  'cartoon-music-video': 'Flat',
-  'paper-plane-3d': 'Paper',
-  'popup-book-3d': 'Paper',
-  'blueprint-3d': 'Blueprint',
-  'pencil-3d': 'Ink',
-  'little-worlds-3d': 'Soft 3D',
-  'interactive-3d': 'Flat'
-}
 
-/** One of the video's characters, drawn in the video's style. `name` matches the character's name. */
-export function Character({
-  name,
-  x,
-  y,
-  height = 520,
-  pose,
-  expression,
-  start = 0,
-  flip
-}: {
-  name?: string
-  x: number
-  y: number
-  height?: number
-  pose?: string
-  expression?: string
-  start?: number
-  flip?: boolean
-}) {
-  const s = useScene()
-  const frame = useFrameFor(start)
-  const c = s.characters.find((x) => !name || x.name.toLowerCase() === name.toLowerCase()) ?? s.characters[0]
-  if (!c || frame < start) return null
-  const def = { ...c, pose: pose ?? c.pose, expression: expression ?? c.expression, drawnIn: DRAWN[s.style.id] ?? 'Pen' }
-  const w = height // the drawing is centred in a square box
-  const bob = Math.sin((frame - start) / 9) * 3
-  return (
-    <g transform={`translate(${x - w / 2} ${y - height + bob}) ${flip ? `translate(${w} 0) scale(-1 1)` : ''}`}>
-      <g stroke="none">
-        <CharacterArt c={def} size={height} />
-      </g>
-    </g>
-  )
+/** Characters were removed (1.15). Kept as nothing so scenes saved by older versions still render. */
+export function Character(_: { name?: string; x?: number; y?: number; [k: string]: unknown }) {
+  return null
 }
 
 /** A picture from the user's material. */

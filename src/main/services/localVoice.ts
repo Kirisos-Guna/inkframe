@@ -1,5 +1,5 @@
 // Voiceovers made on this PC with Kokoro, a small open voice model (Apache 2.0): no account, no key, no cost. The model
-// (about 90 MB) is fetched once into the library. The script is spoken sentence by sentence, joined with short
+// (about 160 MB) is fetched once into the library. The script is spoken sentence by sentence, joined with short
 // breaths, pitched with FFmpeg, and saved as an MP3 in the save folder. English only.
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -61,25 +61,35 @@ export function chunkScript(script: string, max = 320): { text: string; pause: n
 type Tts = { generate: (text: string, o: { voice: string; speed: number }) => Promise<{ audio: Float32Array; sampling_rate: number }> }
 let loading: Promise<Tts> | null = null
 
-/** The voice model, loaded once (and fetched once, about 90 MB, with its progress). */
+const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX'
+
+/**
+ * The voice model, loaded once (and fetched once, about 160 MB, with its progress). The half-precision model: on a
+ * laptop CPU it speaks about 3x faster than the small 8-bit one (8.7 s of speech in 2.8 s instead of 9.2 s), and
+ * sounds closer to the original. DirectML (the GPU) cannot run this model, so it stays on the CPU.
+ */
 function model(onStatus: (s: string) => void): Promise<Tts> {
   loading ??= (async () => {
     const dir = libDir('voice', 'models')
-    const first = !existsSync(join(dir, 'onnx-community'))
-    onStatus(first ? 'Getting the voice model (once, about 90 MB)' : 'Loading the voice')
+    const onnx = join(dir, ...REPO.split('/'), 'onnx')
+    const first = !existsSync(join(onnx, 'model_fp16.onnx'))
+    onStatus(first ? 'Getting the voice model (once, about 160 MB)' : 'Loading the voice')
     const { env } = await import('@huggingface/transformers')
     env.cacheDir = dir
     const { KokoroTTS } = await import('kokoro-js')
     let last = -1
-    return (await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
-      dtype: 'q8',
+    const tts = (await KokoroTTS.from_pretrained(REPO, {
+      dtype: 'fp16',
       device: 'cpu',
       progress_callback: (p: { status: string; progress?: number; file?: string }) => {
         if (p.status !== 'progress' || !p.file?.endsWith('.onnx') || p.progress === undefined) return
         const pct = Math.floor(p.progress)
-        if (pct > last) onStatus(`Getting the voice model (once, about 90 MB) · ${(last = pct)}%`)
+        if (pct > last) onStatus(`Getting the voice model (once, about 160 MB) · ${(last = pct)}%`)
       }
     })) as unknown as Tts
+    // The 8-bit model older versions fetched is no longer used.
+    rmSync(join(onnx, 'model_quantized.onnx'), { force: true })
+    return tts
   })().catch((e) => {
     loading = null
     throw new Error(`The voice model could not be loaded: ${(e as Error).message}`)

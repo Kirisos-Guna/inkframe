@@ -3,11 +3,12 @@
 // templates from Imgflip, stock clips from Pexels or Pixabay (with the user's free key), and clips the user links to.
 // Everything is fetched on this computer; no AI and no tokens are used here.
 import { BrowserWindow } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { memeLayout } from '../../shared/memes'
 import { interFont } from './hyperframes'
 import { dirname, join } from 'path'
 import type { MediaItem, Shot } from '../../shared/types'
-import { run } from './media'
+import { run, videoEncoder } from './media'
 import { ffmpegPath } from './tools'
 import { ensureYtDlp } from './recreate'
 import { cutOut } from './cutout'
@@ -231,13 +232,31 @@ export async function memeTemplates() {
   return memeList
 }
 async function meme(template: string, to: string) {
+  // Only templates whose text boxes are known: captions go in the template's own panels.
+  const layout = memeLayout(template)
+  if (!layout) throw new Error(`"${template}" is not one of the meme templates with known text boxes`)
   const list = await memeTemplates()
-  const want = template.toLowerCase()
-  const m = list.find((x) => x.name.toLowerCase() === want) ?? list.find((x) => x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase()))
+  const m = list.find((x) => x.name === layout.name)
   if (!m) throw new Error(`No meme template called "${template}"`)
   const out = to.replace(/\.\w+$/, m.url.match(/\.(\w+)$/)?.[0] ?? '.jpg')
   await save(m.url, out)
   return { file: out, w: m.width, h: m.height }
+}
+
+// ---------- reaction GIFs: GIPHY (the user's free key) ----------
+/** The best GIF for the words, saved as a 10 second looping MP4 (GIPHY serves an MP4 of each GIF). */
+async function gif(query: string, to: string, key: string) {
+  const j = await getJson<{ data: { title: string; username?: string; images: { original: { mp4?: string; width: string; height: string } } }[] }>(
+    `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(key)}&limit=5&rating=pg-13&lang=en&q=${encodeURIComponent(query)}`
+  )
+  const g = j.data.find((x) => x.images.original.mp4)
+  if (!g) throw new Error(`No GIF for "${query}"`)
+  const raw = await save(g.images.original.mp4!, to.replace(/\.\w+$/, '-raw.mp4'))
+  const out = to.replace(/\.\w+$/, '.mp4')
+  // Looped to 10 s, even size, no sound: plays smoothly however long its shot is.
+  await run(ffmpegPath(), ['-y', '-stream_loop', '-1', '-i', raw, '-t', '10', '-an', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30', ...(await videoEncoder(true)).args, out])
+  rmSync(raw, { force: true })
+  return { file: out, w: Number(g.images.original.width), h: Number(g.images.original.height), credit: `GIF${g.username ? ` by ${g.username}` : ''} via GIPHY` }
 }
 
 // ---------- stock clips: Pexels or Pixabay (free keys) ----------
@@ -377,14 +396,14 @@ export function linksIn(text: string) {
  * Fetches one planned shot into the project's public/m folder. Code needs nothing fetched. A shot that cannot be
  * fetched returns null (the part is drawn without it), never stops the video.
  */
-export async function fetchShot(s: Shot, dir: string, name: string, keys: { pexels?: string; pixabay?: string; quotes?: boolean }): Promise<MediaItem | null> {
+export async function fetchShot(s: Shot, dir: string, name: string, keys: { pexels?: string; pixabay?: string; giphy?: string; quotes?: boolean }): Promise<MediaItem | null> {
   // One stubborn page or download never holds up the video.
   let timer: NodeJS.Timeout | undefined
   const limit = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), s.kind === 'clip' || s.kind === 'stock' || s.kind === 'quote' ? 180_000 : 60_000)))
   return Promise.race([fetchShotNow(s, dir, name, keys), limit]).finally(() => clearTimeout(timer))
 }
 
-async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?: string; pixabay?: string; quotes?: boolean }): Promise<MediaItem | null> {
+async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?: string; pixabay?: string; giphy?: string; quotes?: boolean }): Promise<MediaItem | null> {
   const base = join(dir, 'public', 'm', name)
   const rel = (file: string) => `m/${file.split(/[\\/]/).pop()}`
   try {
@@ -412,7 +431,13 @@ async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?:
       }
       case 'meme': {
         const got = await meme(s.template!, `${base}.jpg`)
-        return { kind: 'meme', name: rel(got.file), w: got.w, h: got.h, top: s.top, bottom: s.bottom, note: s.template }
+        const texts = s.texts?.length ? s.texts : [s.top ?? '', s.bottom ?? '']
+        return { kind: 'meme', name: rel(got.file), w: got.w, h: got.h, template: memeLayout(s.template)!.name, texts, note: s.template }
+      }
+      case 'gif': {
+        if (!keys.giphy) return null
+        const got = await gif(s.query!, `${base}.mp4`, keys.giphy)
+        return { kind: 'gif', name: rel(got.file), w: got.w, h: got.h, text: s.text, credit: got.credit, note: s.query }
       }
       case 'stock': {
         const got = await stock(s.query!, `${base}.mp4`, keys)

@@ -4,8 +4,8 @@ import { createHash } from 'crypto'
 import { basename, join } from 'path'
 import { build } from 'esbuild'
 import { exportsOf, fixImports, LIBRARY_NAMES, type Offered } from './sceneFix'
-import type { Part, Project, StyleDef, CharacterDef } from '../../shared/types'
-import { getStyle, listCharacters } from './store'
+import type { Part, Project, StyleDef } from '../../shared/types'
+import { getStyle } from './store'
 import { codeFont, handFont, interFont, markerFont, memeFont, tamilFont } from './hyperframes'
 
 export const appRoot = () => app.getAppPath()
@@ -20,8 +20,9 @@ export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${pa
  * The version of the drawing kit (remotion/kit). Raise it when a change to the kit changes what rendered parts look
  * like: parts rendered with an older one are rendered again on the next run (no AI, no tokens).
  * 2: times inside <Cuts> shots are frames of the part; roomy page crops; code typed in under a second.
+ * 3: meme captions in the template's own boxes; code sized to fill the editor; no flashes under 0.8 s.
  */
-export const KIT_VERSION = 2
+export const KIT_VERSION = 3
 
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
 
@@ -154,7 +155,6 @@ export async function stillScene(p: Project, serveUrl: string, sceneId: string, 
     text: p.title,
     words: [],
     style,
-    characters: listCharacters().filter((c) => p.settings.characterIds.includes(c.id)),
     material: [...new Set(p.material.map((m) => basename(m)))]
   }
   await withStillBrowser(async (puppeteerInstance) => {
@@ -291,7 +291,6 @@ export function propsFor(p: Project, part: Part, opts?: { height?: number; fps?:
   const fps = opts?.fps ?? p.settings.quality.fps
   const { width, height } = sizeFor(opts?.height ?? p.settings.quality.height)
   const style: StyleDef = getStyle(part.styleId ?? p.settings.styleId)
-  const characters: CharacterDef[] = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   const words = p.words.filter((w) => w.start >= part.start - 0.05 && w.start < part.end).map((w) => ({ w: w.w, start: w.start - part.start, end: w.end - part.start }))
   return {
     partId: part.id,
@@ -302,7 +301,6 @@ export function propsFor(p: Project, part: Part, opts?: { height?: number; fps?:
     text: part.text,
     words,
     style,
-    characters,
     material: part.material.map((m) => basename(m)).concat(p.material.map((m) => basename(m)))
   }
 }

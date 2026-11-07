@@ -18,6 +18,9 @@ import 'prismjs/components/prism-sql'
 import { AbsoluteFill, cancelRender, continueRender, delayRender, Easing, Freeze, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 
 import { CutAt, useFrameFor, usePartFrame } from './index'
+import { fitText, memeLayout } from '../../src/shared/memes'
+import { flashFree } from './flash'
+export { flashFree }
 
 const MEME = "'Meme', Impact, 'Arial Black', sans-serif"
 const CODE = "'Code', 'Cascadia Mono', Consolas, monospace"
@@ -36,20 +39,21 @@ function useLocal(start = 0, dur = 12) {
 
 /** Shows its children one after another: the first from at[0], the next from at[1]… until the part ends. */
 export function Cuts({ at, children, whip = false }: { at: number[]; children: React.ReactNode; whip?: boolean }) {
-  const { durationInFrames } = useVideoConfig()
+  const { durationInFrames, fps } = useVideoConfig()
   // Inside another shot, Remotion counts from that shot's start; the times given here are frames of the part.
   const outer = React.useContext(CutAt)
-  const list = React.Children.toArray(children)
+  const shots = flashFree(React.Children.toArray(children), at, durationInFrames, Math.round(fps * 0.8))
   return (
     <>
-      {list.map((c, i) => (
-        <Sequence key={i} from={(at[i] ?? 0) - outer} durationInFrames={Math.max(1, (at[i + 1] ?? durationInFrames) - (at[i] ?? 0))} layout="none">
-          <CutAt.Provider value={at[i] ?? 0}>{whip && i > 0 ? <WhipIn>{c}</WhipIn> : c}</CutAt.Provider>
+      {shots.map(({ c, from, to }, i) => (
+        <Sequence key={i} from={from - outer} durationInFrames={Math.max(1, to - from)} layout="none">
+          <CutAt.Provider value={from}>{whip && i > 0 ? <WhipIn>{c}</WhipIn> : c}</CutAt.Provider>
         </Sequence>
       ))}
     </>
   )
 }
+
 
 /** The next shot slams in from the right with a motion blur (a whip pan), over 6 frames. */
 function WhipIn({ children }: { children: React.ReactNode }) {
@@ -299,15 +303,94 @@ function MemeText({ text, top, size = 96 }: { text: string; top: boolean; size?:
   )
 }
 
-/** A meme: the template, with top and bottom captions. */
-export function Meme({ name, top = '', bottom = '', start = 0 }: { name: string; top?: string; bottom?: string; start?: number }) {
+/** Where a picture of w x h sits when it is fitted whole into the 1920 x 1080 frame. */
+function fitted(w: number, h: number, maxW = 1920, maxH = 1080) {
+  const k = Math.min(maxW / w, maxH / h)
+  return { x: (1920 - w * k) / 2, y: (1080 - h * k) / 2, w: w * k, h: h * k }
+}
+
+/** One caption placed in a box of the template (in frame pixels), sized to fit it. */
+function MemeBoxText({ text, box, kind }: { text: string; box: { x: number; y: number; w: number; h: number }; kind: 'panel' | 'label' }) {
+  if (!text) return null
+  const pad = Math.min(box.w, box.h) * 0.08
+  const w = box.w - pad * 2
+  const h = box.h - pad * 2
+  const panel = kind === 'panel'
+  const fit = fitText(panel ? text : text.toUpperCase(), w, h, panel ? { max: 76, min: 22, cw: 0.56, lh: 1.15 } : { max: 104, min: 26, cw: 0.5, lh: 1.05 })
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: box.x + pad,
+        top: box.y + pad,
+        width: w,
+        height: h,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        fontSize: fit.size,
+        lineHeight: panel ? 1.15 : 1.05,
+        ...(panel
+          ? { fontFamily: UI, fontWeight: 800, color: '#111' }
+          : { fontFamily: MEME, color: '#fff', textTransform: 'uppercase', WebkitTextStroke: `${fit.size / 18}px #000`, paintOrder: 'stroke fill', textShadow: '0 3px 10px rgba(0,0,0,.6)' })
+      }}
+    >
+      <div>
+        {fit.lines.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A meme: the template as big as the frame allows, over a blurred copy of itself, with its captions in the template's
+ * own boxes (`template` is the Imgflip name and `texts` one caption per box, as listed for the part). Without a known
+ * template, `top` and `bottom` go at the top and bottom of the picture itself.
+ */
+export function Meme({ name, w, h, template, texts, top = '', bottom = '', start = 0 }: { name: string; w?: number; h?: number; template?: string; texts?: string[]; top?: string; bottom?: string; start?: number }) {
   const { f, t } = useLocal(start, 6)
   if (f < 0) return null
+  const r = w && h ? fitted(w, h) : { x: 0, y: 0, w: 1920, h: 1080 }
+  const layout = memeLayout(template)
+  const boxes = layout?.boxes ?? [
+    { at: [0.02, 0.01, 0.96, 0.2] as const, kind: 'label' as const },
+    { at: [0.02, 0.79, 0.96, 0.2] as const, kind: 'label' as const }
+  ]
+  const words = layout && texts?.length ? texts : [top, bottom]
+  const s = 1.03 - 0.03 * t
   return (
-    <AbsoluteFill style={{ background: '#000' }}>
-      <Img src={staticFile(name)} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${1.04 - 0.04 * t})` }} />
-      <MemeText text={top} top />
-      <MemeText text={bottom} top={false} />
+    <AbsoluteFill style={{ background: '#000', overflow: 'hidden' }}>
+      {w && h && <Img src={staticFile(name)} style={{ position: 'absolute', inset: -60, width: 2040, height: 1200, objectFit: 'cover', filter: 'blur(40px) brightness(0.45)' }} />}
+      <AbsoluteFill style={{ transform: `scale(${s})` }}>
+        <Img src={staticFile(name)} style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, objectFit: 'contain' }} />
+        {boxes.map((b, i) => (
+          <MemeBoxText key={i} text={words[i] ?? ''} kind={b.kind} box={{ x: r.x + b.at[0] * r.w, y: r.y + b.at[1] * r.h, w: b.at[2] * r.w, h: b.at[3] * r.h }} />
+        ))}
+      </AbsoluteFill>
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * A reaction GIF (fetched as a looping MP4), as big as the frame allows over a blurred copy, with an optional caption
+ * at the bottom of the picture.
+ */
+export function Gif({ name, w = 480, h = 270, text = '', start = 0 }: { name: string; w?: number; h?: number; text?: string; start?: number }) {
+  const { f } = useLocal(start, 6)
+  const cut = React.useContext(CutAt)
+  if (f < 0) return null
+  const r = fitted(w, h)
+  const src = staticFile(name)
+  return (
+    <AbsoluteFill style={{ background: '#000', overflow: 'hidden' }}>
+      <Sequence from={Math.max(0, start - cut)} layout="none">
+        <OffthreadVideo src={src} muted style={{ position: 'absolute', inset: -60, width: 2040, height: 1200, objectFit: 'cover', filter: 'blur(40px) brightness(0.45)' }} />
+        <OffthreadVideo src={src} muted style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h }} />
+      </Sequence>
+      {text && <MemeBoxText text={text} kind="label" box={{ x: r.x, y: r.y + r.h * 0.78, w: r.w, h: Math.min(r.h * 0.22, 220) }} />}
     </AbsoluteFill>
   )
 }
@@ -345,10 +428,13 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   const { fps } = useVideoConfig()
   if (f < 0) return null
   const grammar = Prism.languages[lang] ?? Prism.languages[{ js: 'javascript', sh: 'bash', shell: 'bash', py: 'python', yml: 'yaml' }[lang] ?? 'javascript']
-  // Typed fast enough to be read in a quick shot: all of it within about 0.8 s, however long it is.
-  let left = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, code.length / 0.8)))
+  // Typed in at most about 1.2 s, so the rest of the shot is for reading it.
+  let left = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, code.length / 1.2)))
   const typed = left >= code.length
   const rows = code.split('\n')
+  // As big as the editor allows: a short snippet is read from across the room, a long one still fits.
+  const longest = Math.max(12, ...rows.map((r) => r.replace(/\t/g, '  ').length))
+  const font = Math.round(Math.max(24, Math.min(54, (1560 - 140 - (tree ? 300 : 0)) / (longest * 0.6), 860 / (rows.length * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 1560, borderRadius: 14, overflow: 'hidden', background: '#1e1e1e', boxShadow: '0 40px 120px rgba(0,0,0,.6)', opacity: t, transform: `translateY(${(1 - t) * 40}px)` }}>
@@ -376,7 +462,7 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
             })}
           </div>
         )}
-        <div style={{ flex: 1, padding: '24px 0', fontFamily: CODE, fontSize: 30, lineHeight: '46px' }}>
+        <div style={{ flex: 1, padding: '24px 0', fontFamily: CODE, fontSize: font, lineHeight: `${Math.round(font * 1.5)}px`, fontVariantLigatures: 'none' }}>
           {rows.map((row, i) => {
             const n = Math.min(row.length, left)
             left -= n + 1
@@ -385,7 +471,7 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
             const lit = typed && lines.includes(i + 1)
             return (
               <div key={i} style={{ display: 'flex', background: lit ? 'rgba(255,215,0,.12)' : undefined, borderLeft: lit ? '4px solid #ffd700' : '4px solid transparent' }}>
-                <span style={{ width: 90, textAlign: 'right', paddingRight: 28, color: '#6e7681' }}>{i + 1}</span>
+                <span style={{ width: font * 3, textAlign: 'right', paddingRight: font * 0.9, color: '#6e7681', flexShrink: 0 }}>{i + 1}</span>
                 <span style={{ whiteSpace: 'pre' }}>
                   {pieces(Prism.tokenize(shown, grammar)).map((pc, k) => (
                     <span key={k} style={{ color: pc.color }}>
@@ -430,14 +516,63 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   )
 }
 
+/**
+ * A diagram on black that fills the frame: it finds where its Boxes, Flows, Loops and Labels are (from their x, y, w,
+ * h, from and to) and zooms and centres them to fill about 88% of the frame, however small they were placed.
+ */
+export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: React.ReactNode; bg?: string; fill?: number }) {
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
+  const add = (x: number, y: number) => {
+    b.x0 = Math.min(b.x0, x)
+    b.y0 = Math.min(b.y0, y)
+    b.x1 = Math.max(b.x1, x)
+    b.y1 = Math.max(b.y1, y)
+  }
+  const walk = (node: React.ReactNode) =>
+    React.Children.forEach(node, (c) => {
+      if (!React.isValidElement(c)) return
+      const p = c.props as Record<string, unknown>
+      const num = (v: unknown) => typeof v === 'number' && isFinite(v)
+      if (c.type === Box && num(p.x) && num(p.y)) {
+        const w = (p.w as number) ?? 340
+        const h = (p.h as number) ?? 136
+        add((p.x as number) - w / 2, (p.y as number) - h / 2)
+        add((p.x as number) + w / 2, (p.y as number) + h / 2)
+      } else if (c.type === Loop) {
+        const r = (p.r as number) ?? 300
+        const x = (p.x as number) ?? 960
+        const y = (p.y as number) ?? 540
+        add(x - r - 170, y - r - 52)
+        add(x + r + 170, y + r + 52)
+      } else if (c.type === Flow && Array.isArray(p.from) && Array.isArray(p.to)) {
+        add(p.from[0], p.from[1] - 50)
+        add(p.to[0], p.to[1])
+      } else if (num(p.x) && num(p.y) && c.type !== Diagram) add(p.x as number, p.y as number)
+      if (p.children) walk(p.children as React.ReactNode)
+    })
+  walk(children)
+  let transform: string | undefined
+  if (isFinite(b.x0) && b.x1 > b.x0 && b.y1 > b.y0) {
+    const k = Math.min((1920 * fill) / (b.x1 - b.x0), (1080 * fill) / (b.y1 - b.y0), 1.8)
+    const cx = (b.x0 + b.x1) / 2
+    const cy = (b.y0 + b.y1) / 2
+    transform = `translate(${960 - cx * k}px, ${540 - cy * k}px) scale(${k})`
+  }
+  return (
+    <AbsoluteFill style={{ background: bg, overflow: 'hidden' }}>
+      <AbsoluteFill style={{ transform, transformOrigin: '0 0' }}>{children}</AbsoluteFill>
+    </AbsoluteFill>
+  )
+}
+
 /** A flat diagram box (like Fireship's company boxes): a solid colour, the name in dark capitals. */
-export function Box({ x, y, w = 300, h = 124, label, color = '#76b900', start = 0, sub, icon, pulse = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean }) {
+export function Box({ x, y, w = 340, h = 136, label, color = '#76b900', start = 0, sub, icon, pulse = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean }) {
   const { f, t } = useLocal(start, 8)
   if (f < 0) return null
   // A pulse: a ring that grows out of the box and fades, once a second.
   const beat = pulse ? (f % 30) / 30 : 0
   return (
-    <div style={{ position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, background: color, borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`, opacity: t, fontFamily: CODE, fontWeight: 700, color: '#0b0b0d', fontSize: 31, letterSpacing: 1 }}>
+    <div style={{ position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, background: color, borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`, opacity: t, fontFamily: CODE, fontWeight: 700, color: '#0b0b0d', fontSize: 36, letterSpacing: 1 }}>
       {pulse && <div style={{ position: 'absolute', inset: -6 - beat * 40, border: `4px solid ${color}`, borderRadius: 12 + beat * 20, opacity: 1 - beat }} />}
       {icon && <span style={{ fontSize: 44, lineHeight: 1, marginBottom: 6 }}>{icon}</span>}
       {label.toUpperCase()}
@@ -455,6 +590,13 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
   const ex = x1 + (x2 - x1) * t
   const ey = y1 + (y2 - y1) * t
   const a = Math.atan2(y2 - y1, x2 - x1)
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1
+  let nx = -(y2 - y1) / len
+  let ny = (x2 - x1) / len
+  if (ny > 0 || (ny === 0 && nx > 0)) (nx = -nx), (ny = -ny)
+  const off = 16 + Math.abs(nx) * 0.3 * (label?.length ?? 0) * 19
+  const lx = (x1 + x2) / 2 + nx * off
+  const ly = (y1 + y2) / 2 + ny * (off > 30 ? 30 : off)
   return (
     <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
       <line x1={x1} y1={y1} x2={ex} y2={ey} stroke={color} strokeWidth={4} strokeDasharray={dashed ? '12 10' : undefined} />
@@ -475,7 +617,8 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
           )
         })}
       {label && t > 0.5 && (
-        <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 14} textAnchor="middle" fontFamily={CODE} fontWeight={700} fontSize={26} fill={color} letterSpacing={1}>
+        // Beside the arrow, on its upper side, so the line never runs through the word.
+        <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={32} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
           {label.toUpperCase()}
         </text>
       )}

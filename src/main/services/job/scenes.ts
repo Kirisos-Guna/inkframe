@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Comment, Part, Project } from '../../../shared/types'
-import { getStyle, listCharacters, styleGuide } from '../store'
+import { getStyle, styleGuide } from '../store'
 import { runAgent } from '../agent'
 import { bundleProject, fixSceneImports, hfMethodFile, methodFile, syncMaterial, thumbFile } from '../render'
 import { checkAny, engineOf, sceneRel, scenePath, stillAny } from '../engines'
@@ -31,9 +31,8 @@ export function writeGuides(p: Project) {
   // video cannot use saves tokens on each one.
   let method = readFileSync(methodFile(), 'utf8')
   if (style.render !== 'three') method = method.replace(/## Real 3D[\s\S]*?(?=\n## )/, '')
-  const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   // The video's outline goes with it once there are parts (writeGuides runs again after planning).
-  systems.set(p.id, drawingSystem(method, html ? readFileSync(hfMethodFile(), 'utf8') : null, doc, p.parts.length ? videoContext(p, chars) : ''))
+  systems.set(p.id, drawingSystem(method, html ? readFileSync(hfMethodFile(), 'utf8') : null, doc, p.parts.length ? videoContext(p) : ''))
 }
 
 /** Options for a drawing session: the method and style come along as the (cached) system prompt. */

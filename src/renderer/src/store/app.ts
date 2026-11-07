@@ -1,10 +1,9 @@
 import { create } from 'zustand'
-import type { AppSettings, CharacterDef, Project, Status, StyleDef } from '@shared/types'
+import type { AppSettings, Project, Status, StyleDef } from '@shared/types'
 
 export type Route =
   | { name: 'home' }
   | { name: 'styles'; tab?: 'Library' | 'My styles' | 'Learn from a video' }
-  | { name: 'characters'; id?: string }
   | { name: 'settings' }
   | { name: 'editor'; id: string }
 
@@ -13,7 +12,6 @@ interface AppState {
   go: (r: Route) => void
   projects: Project[]
   styles: StyleDef[]
-  characters: CharacterDef[]
   settings?: AppSettings
   status?: Status
   toast?: { text: string; at: number }
@@ -27,21 +25,19 @@ export const useApp = create<AppState>((set, get) => ({
   go: (route) => set({ route }),
   projects: [],
   styles: [],
-  characters: [],
   showToast: (text) => {
     const at = Date.now()
     set({ toast: { text, at } })
     setTimeout(() => get().toast?.at === at && set({ toast: undefined }), 3200)
   },
   refresh: async () => {
-    const [projects, styles, characters, settings, status] = await Promise.all([
+    const [projects, styles, settings, status] = await Promise.all([
       window.api.projects.list(),
       window.api.styles.list(),
-      window.api.characters.list(),
       window.api.settings.get(),
       window.api.status()
     ])
-    set({ projects, styles, characters, settings, status })
+    set({ projects, styles, settings, status })
   },
   upsertProject: (p) =>
     set((s) => {

@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
-import { getProject, getSettings, getStyle, libDir, listCharacters, styleGuide } from './store'
+import { getProject, getSettings, getStyle, libDir, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
@@ -204,12 +204,11 @@ ${cuts.length ? `Cut-outs from the video you can use: ${cuts.slice(0, 8).join(',
 
 // ---------- thumbnails ----------
 // Different concepts for the variants, so "Make 3" gives three real choices (see remotion/THUMBNAILS.md).
-const CONCEPTS = ['The glowing object', 'Reaction', 'Big number', 'Before → after / versus', 'Mystery']
+const CONCEPTS = ['The glowing object', 'Big number', 'Before → after / versus', 'Mystery']
 
 export async function makeThumbnails(id: string, count: number, note?: string, onStatus?: (s: string) => void): Promise<Project> {
   const p = getProject(id)!
   const style = getStyle(p.settings.styleId)
-  const chars = listCharacters().filter((c) => p.settings.characterIds.includes(c.id))
   mkdirSync(join(p.dir, 'scenes'), { recursive: true })
   copyFileSync(thumbMethodFile(), join(p.dir, 'THUMBNAILS.md'))
   // A few of the video's own frames, so the thumbnail matches what the viewer will see.
@@ -218,8 +217,7 @@ export async function makeThumbnails(id: string, count: number, note?: string, o
     .filter((_, i, a) => a.length <= 4 || i % Math.ceil(a.length / 4) === 0)
     .slice(0, 4)
     .map((x) => `thumbs/${x.id}.png`)
-  // Characters make the Reaction concept; without them, skip it.
-  const concepts = CONCEPTS.filter((c) => c !== 'Reaction' || chars.length)
+  const concepts = CONCEPTS
   // The same instructions for every thumbnail session, as the cached system prompt.
   const system = `${drawingSystem(readFileSync(methodFile(), 'utf8'), null, styleDoc(style, styleGuide(style.id)))}\n\n---\n\n# How to make the thumbnail\n\n${readFileSync(thumbMethodFile(), 'utf8')}`
   const draw = { provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, system }
@@ -236,7 +234,7 @@ Title: ${p.publish?.titles[0] ?? p.title}
 What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).slice(0, 1500)}
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
 Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
-${chars.length ? `Characters you may use: ${chars.map((c) => c.name).join(', ')}\n` : ''}Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
+Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
 ${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}${remixThumb(p)}
 Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).

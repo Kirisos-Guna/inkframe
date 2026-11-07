@@ -399,20 +399,6 @@ export function StylePreview({ id }: { id: string }) {
           <text x="244" y="116" fontSize="10" fill={ink} fontFamily="Segoe UI">BATTERY</text>
         </g>
       )}
-      {id === 'character-stories' && (
-        <g>
-          <rect y="130" width="320" height="50" fill="#e9dcc6" />
-          <rect x="30" y="40" width="70" height="90" fill="#cfe3f0" stroke={ink} strokeWidth="3" />
-          <g stroke={ink} strokeWidth="3">
-            <circle cx="170" cy="80" r="16" fill="#f2c29b" />
-            <rect x="156" y="98" width="28" height="34" rx="6" fill={accent} />
-            <circle cx="245" cy="84" r="14" fill="#c98f6a" />
-            <rect x="232" y="100" width="26" height="32" rx="6" fill="#4f6fd8" />
-          </g>
-          <path d="M190 40 h70 v26 h-50 l-10 10 v-10 h-10z" fill="#fff" stroke={ink} strokeWidth="2" />
-          <text x="200" y="58" fontSize="12" fontFamily={font} fill={ink}>Wait, what?</text>
-        </g>
-      )}
       {id === 'cartoon-music-video' && (
         <g>
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (

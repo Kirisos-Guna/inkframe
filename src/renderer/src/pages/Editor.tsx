@@ -16,7 +16,6 @@ import {
   Play,
   Scissors,
   Trash2,
-  Users,
   Video,
   ZoomIn,
   ZoomOut,
@@ -189,9 +188,6 @@ export default function Editor({ id }: { id: string }) {
         )}
         <button className="btn ml-1 gap-1.5 px-2.5 py-1.5 font-normal" title={`Style: ${style?.name ?? ''}`} onClick={() => go({ name: 'styles' })}>
           <Palette size={14} /> <span className="hidden max-w-[150px] truncate lg:inline">{style?.name ?? 'Style'}</span>
-        </button>
-        <button className="btn gap-1.5 px-2.5 py-1.5 font-normal" title="Characters" onClick={() => go({ name: 'characters' })}>
-          <Users size={14} /> <span className="hidden 2xl:inline">Characters</span>
         </button>
         {p.job.running ? (
           <span className="flex items-center gap-2 rounded-lg border border-accent/70 bg-accent/10 px-2.5 py-1.5 font-medium text-accent2" title={p.job.paused ? 'Paused' : `${APP_NAME} is working`}>

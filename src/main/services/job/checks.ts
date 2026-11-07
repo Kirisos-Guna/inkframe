@@ -28,7 +28,7 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
   const items: { part: Part; sheet: string; said: string[] }[] = []
   // What FFmpeg finds in each rendered part (black stretches, shots held too long in the fast styles): no AI.
   const measured = new Map<string, string[]>()
-  const longest = getStyle(p.settings.styleId).realMedia ? 3.5 : undefined
+  const longest = getStyle(p.settings.styleId).realMedia ? 7 : undefined
   for (const x of parts) {
     const done = part(p, x.id)?.checks
     if (since && done && done.at >= since) {
@@ -95,9 +95,11 @@ export function faultNote(p: Project, x: Part, q: PartFault) {
   const from = q.at.toFixed(1)
   const said = saidAround(p, x.start + q.at + Math.min(q.dur, 3))
   const words = said ? ` (while "${said.slice(-60)}" is said)` : ''
-  return q.kind === 'black'
-    ? `The picture is black for ${q.dur.toFixed(1)} s from ${from} s into the part${words}: every shot must show something big from its first frame (no shot that waits for its start, no empty frame)`
-    : `One shot holds for ${q.dur.toFixed(1)} s from ${from} s into the part${words}: cut to a new picture at least every 2.5 s here (Cuts on the words), or Punch in on the word`
+  if (q.kind === 'black')
+    return `The picture is black for ${q.dur.toFixed(1)} s from ${from} s into the part${words}: every shot must show something big from its first frame (no shot that waits for its start, no empty frame)`
+  if (q.kind === 'fast')
+    return `${q.dur} shots last under a second, from ${from} s into the part: too fast to read. Use fewer shots and hold each one long enough to read (a meme 3 s, code 3.5 s or more, a page 2.5 s, a photo 1.5 s)`
+  return `One shot holds for ${q.dur.toFixed(1)} s from ${from} s into the part${words} with nothing changing: keep it alive (a Punch on the key word, a second highlight, the next diagram box) or cut to the next picture on its word`
 }
 
 /** The three moments of a part the check looks at (fractions of the part). */

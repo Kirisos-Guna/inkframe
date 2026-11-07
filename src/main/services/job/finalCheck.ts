@@ -59,7 +59,7 @@ export async function checkFinalVideo(p: Project, file: string, signal?: AbortSi
 
 /** What a rendered part shows wrong by itself: black stretches and, for the fast styles, shots held too long. */
 export interface PartFault {
-  kind: 'black' | 'long'
+  kind: 'black' | 'long' | 'fast'
   /** Seconds from the start of the part. */
   at: number
   dur: number
@@ -67,19 +67,26 @@ export interface PartFault {
 
 /**
  * Reads the FFmpeg log of one rendered part (blackdetect, and scene cuts through showinfo when `longest` is given):
- * black stretches of 0.3 s or more, and shots that stay on screen longer than `longest` seconds.
+ * black stretches of 0.3 s or more, shots that stay on screen longer than `longest` seconds, and a part that cuts too
+ * fast to read (two or more shots under a second).
  */
 export function readPartLog(log: string, len: number, longest?: number): PartFault[] {
   const out: PartFault[] = []
   for (const m of log.matchAll(/black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)/g)) out.push({ kind: 'black', at: +m[1], dur: +m[3] })
   if (longest) {
-    const cuts = [...log.matchAll(/Parsed_showinfo[^\n]*pts_time:([\d.]+)/g)].map((m) => +m[1])
-    const edges = [0, ...cuts, len]
+    // Every change of picture with its score (metadata=print): a cut between two dark shots scores as little as 0.1,
+    // so any change counts for "held too long"; only clear cuts (0.25 and up) count as flashes.
+    const changes = [...log.matchAll(/pts_time:([\d.]+)[^\n]*\r?\n[^\n]*lavfi\.scene_score=([\d.]+)/g)].map((m) => ({ t: +m[1], score: +m[2] }))
+    const edges = [0, ...changes.map((c) => c.t), len]
     for (let i = 1; i < edges.length; i++) {
       const dur = edges[i] - edges[i - 1]
       // A black stretch is already reported as black.
       if (dur > longest && !out.some((b) => b.kind === 'black' && b.at < edges[i] && b.at + b.dur > edges[i - 1] && b.dur > dur * 0.5)) out.push({ kind: 'long', at: edges[i - 1], dur })
     }
+    // Flashes: a shot under a second cannot be read. One quick punch is fine; two or more is a part cut too fast.
+    const clear = [0, ...changes.filter((c) => c.score >= 0.25).map((c) => c.t), len]
+    const quick = clear.slice(1).map((e, i) => ({ at: clear[i], dur: e - clear[i] })).filter((x, i, all) => x.dur < 1 && i > 0 && i < all.length - 1)
+    if (quick.length >= 2) out.push({ kind: 'fast', at: quick[0].at, dur: quick.length })
   }
   return out
 }
@@ -88,7 +95,7 @@ export function readPartLog(log: string, len: number, longest?: number): PartFau
 export async function checkPartVideo(file: string, len: number, longest?: number, signal?: AbortSignal) {
   const r = await run(
     ffmpegPath(),
-    ['-hide_banner', '-i', file, '-vf', `scale=320:-2,blackdetect=d=0.3:pix_th=0.02${longest ? ",select='gt(scene,0.25)',showinfo" : ''}`, '-an', '-f', 'null', '-'],
+    ['-hide_banner', '-i', file, '-vf', `scale=320:-2,blackdetect=d=0.3:pix_th=0.02${longest ? ",select='gt(scene,0.09)',metadata=print:key=lavfi.scene_score" : ''}`, '-an', '-f', 'null', '-'],
     { signal }
   )
   return readPartLog(r.stderr, len, longest)

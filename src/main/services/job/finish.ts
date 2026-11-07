@@ -3,7 +3,7 @@ import { existsSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
 import type { Comment, Part, Project } from '../../../shared/types'
-import { getStyle } from '../store'
+import { getSettings, getStyle } from '../store'
 import { finishVideo } from '../media'
 import { captionAss, captionFilters, linesFromWords, needsShaping, prepareCaptionFonts, prepareShapingFont } from '../captions'
 import { buildSfxTrack } from '../sfx'
@@ -56,6 +56,7 @@ export async function finish(p: Project, out: string, size: { height: number; fp
     if (track) sfx = { file: track.file, volume: p.settings.sfxVolume ?? 0.6 }
   }
   return finishVideo({
+    gpu: getSettings().gpu !== false,
     sfx,
     clips: p.parts.map((x, i) => ({ file: clips[i], dur: x.end - x.start })),
     voice: p.voiceover!.file,

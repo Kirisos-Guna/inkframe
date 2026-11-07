@@ -2,10 +2,9 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { AppSettings, CharacterDef, LearnSession, Project, StyleDef } from '../../shared/types'
+import type { AppSettings, LearnSession, Project, StyleDef } from '../../shared/types'
 import { APP_NAME } from '../../shared/brand'
 import { BUILTIN_STYLES } from '../../shared/styles'
-import { fromLook, STARTER_CAST } from '../../shared/characterDefaults'
 
 export const userDir = () => app.getPath('userData')
 export const libDir = (...p: string[]) => {
@@ -124,7 +123,6 @@ export function createProject(partial: Partial<Project>): Project {
       tone: ['Calm', 'Nerdy'],
       creativity: 'Storytelling',
       styleId: 'hand-drawn-board',
-      characterIds: [],
       quality: { height: 1080, fps: 60 },
       checks: s.defaultChecks,
       provider: s.defaultProvider,
@@ -185,51 +183,35 @@ export function listStyles(): StyleDef[] {
     .filter((f) => f.endsWith('.json'))
     .map((f) => readJson<StyleDef | null>(join(dir, f), null))
     .filter(Boolean) as StyleDef[]
-  return [...BUILTIN_STYLES, ...custom]
+  const hidden = new Set(getSettings().hiddenStyles ?? [])
+  return [...BUILTIN_STYLES.map((s) => (hidden.has(s.id) ? { ...s, hidden: true } : s)), ...custom]
 }
 export const getStyle = (id: string) => listStyles().find((s) => s.id === id) ?? BUILTIN_STYLES[0]
 export function saveStyle(s: StyleDef) {
   writeJson(join(libDir('styles'), `${s.id}.json`), { ...s, custom: true })
   return s
 }
+/**
+ * Deletes a style. Your own styles are deleted for good; a library style is hidden (videos already made with it keep
+ * rendering, and it can be brought back). The last style left can't be deleted.
+ */
 export function removeStyle(id: string) {
+  const left = listStyles().filter((s) => !s.hidden && s.id !== id)
+  if (!left.length) throw new Error('Keep at least one style')
+  if (BUILTIN_STYLES.some((s) => s.id === id)) {
+    setSettings({ hiddenStyles: [...new Set([...(getSettings().hiddenStyles ?? []), id])] })
+    return
+  }
   rmSync(join(libDir('styles'), `${id}.json`), { force: true })
   rmSync(libDir('styles', id), { recursive: true, force: true })
 }
+/** Brings back the library styles you deleted. */
+export const restoreStyles = () => setSettings({ hiddenStyles: [] })
 /** Extra notes a learned style carries for the designers (written by Claude). */
 export function styleGuide(id: string) {
   const f = join(libDir('styles', id), 'style.md')
   return existsSync(f) ? readFileSync(f, 'utf8') : ''
 }
-
-// ---------- characters ----------
-export function listCharacters(): CharacterDef[] {
-  const dir = libDir('characters')
-  const list = readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => readJson<CharacterDef | null>(join(dir, f), null))
-    .filter(Boolean) as CharacterDef[]
-  if (!list.length && !existsSync(join(dir, '.seeded'))) {
-    // First run: start with one character so the page is not empty.
-    writeFileSync(join(dir, '.seeded'), '')
-    const cast = STARTER_CAST.map((look) => fromLook(randomUUID(), look))
-    cast.forEach(saveCharacter)
-    return cast
-  }
-  return list.sort((a, b) => a.name.localeCompare(b.name))
-}
-export function saveCharacter(c: CharacterDef) {
-  writeJson(join(libDir('characters'), `${c.id}.json`), c)
-  return c
-}
-/** Adds the starter cast members you do not have yet (matched by name). Returns how many were added. */
-export function addStarterCast() {
-  const have = new Set(listCharacters().map((c) => c.name.toLowerCase()))
-  const missing = STARTER_CAST.filter((l) => !have.has(l.name.toLowerCase()))
-  missing.forEach((l) => saveCharacter(fromLook(randomUUID(), l)))
-  return missing.length
-}
-export const removeCharacter = (id: string) => rmSync(join(libDir('characters'), `${id}.json`), { force: true })
 
 // ---------- learning sessions ----------
 const learnFile = () => join(userDir(), 'learn.json')

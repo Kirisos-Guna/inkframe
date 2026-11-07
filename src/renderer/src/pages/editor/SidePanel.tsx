@@ -94,7 +94,7 @@ function Changes({
   pending: Comment[]
   setPending: (c: Comment[]) => void
 }) {
-  const { styles, characters, go } = useApp()
+  const { styles, go } = useApp()
   const [text, setText] = useState('')
   const [mode, setMode] = useState<Comment['mode']>('Fix just this')
   const [attachments, setAttachments] = useState<string[]>([])
@@ -160,7 +160,7 @@ function Changes({
                 {styles.find((s) => s.id === p.settings.styleId)?.name} (the video's style)
               </option>
               {styles
-                .filter((s) => s.id !== p.settings.styleId)
+                .filter((s) => s.id !== p.settings.styleId && (!s.hidden || s.id === one.styleId))
                 .map((s) => (
                   <option key={s.id} value={s.id} className="bg-card">
                     {s.name}
@@ -178,14 +178,6 @@ function Changes({
               <option value="remotion" className="bg-card">React scene (lines, 3D)</option>
               <option value="hyperframes" className="bg-card">HTML (HyperFrames)</option>
             </select>
-            <span className="text-muted">Characters</span>
-            {p.settings.characterIds.length ? (
-              <span>{characters.filter((c) => p.settings.characterIds.includes(c.id)).map((c) => c.name).join(', ')}</span>
-            ) : (
-              <button className="text-left font-semibold text-accent" onClick={() => go({ name: 'characters' })}>
-                Add characters to this video
-              </button>
-            )}
             <span className="text-muted">Status</span>
             <span className="flex items-center gap-4">
               <span

@@ -185,7 +185,7 @@ async function testClip(s: LearnSession, style: StyleDef, guide: string, signal:
     words,
     parts: [part],
     material: [],
-    settings: { styleId: style.id, characterIds: [], quality: { height: 720, fps: 30 } }
+    settings: { styleId: style.id, quality: { height: 720, fps: 30 } }
   } as unknown as Project
   await runAgent({
     provider: s.provider!,

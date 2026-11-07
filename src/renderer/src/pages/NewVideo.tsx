@@ -24,7 +24,6 @@ import type { Effort, Project, ProjectSettings, Provider, VideoKind } from '@sha
 import { APP_NAME } from '@shared/brand'
 import { errorText, fmtTime, useApp } from '@/store/app'
 import { Chips, Row, Select, StepBadge, Waveform } from '@/components/ui'
-import { CharacterSvg } from '@/components/CharacterSvg'
 import { StylePreview } from '@/components/StylePreview'
 import { ScriptWriter } from '@/components/ScriptWriter'
 import { VoiceMaker } from '@/components/VoiceMaker'
@@ -77,7 +76,6 @@ const defaultSettings = (): ProjectSettings => ({
   tone: ['Calm', 'Nerdy'],
   creativity: 'Storytelling',
   styleId: 'hand-drawn-board',
-  characterIds: [],
   quality: { height: 1080, fps: 60 },
   checks: 'High',
   provider: 'Claude Code',
@@ -93,7 +91,7 @@ const defaultSettings = (): ProjectSettings => ({
 })
 
 export default function NewVideo() {
-  const { settings: app, styles, characters, go, showToast, upsertProject, status } = useApp()
+  const { settings: app, styles, go, showToast, upsertProject, status } = useApp()
   const [draft, setDraft] = useState<Project | null>(null)
   const [peaks, setPeaks] = useState<number[]>([])
   const [adding, setAdding] = useState(0)
@@ -194,7 +192,12 @@ export default function NewVideo() {
 
   const words = direction.trim() ? direction.trim().split(/\s+/).length : 0
   const style = styles.find((x) => x.id === s.styleId)
-  const filtered = styles.filter((x) => styleDim === 'All' || x.dim === styleDim)
+  // Deleted library styles are not offered; a video set to one moves to the first style left.
+  const filtered = styles.filter((x) => !x.hidden && (styleDim === 'All' || x.dim === styleDim))
+  useEffect(() => {
+    const first = styles.find((x) => !x.hidden)
+    if (style?.hidden && first) set({ styleId: first.id })
+  }, [style?.id, style?.hidden])
   // The chosen style always stays visible, even when the list is short.
   const shownStyles = allStyles ? filtered : [...filtered.slice(0, 8), ...filtered.slice(8).filter((x) => x.id === s.styleId)]
   const set = (patch: Partial<ProjectSettings>) => setS((x) => ({ ...x, ...patch }))
@@ -553,7 +556,7 @@ export default function NewVideo() {
                 </button>
               ))}
               <button className="ml-2 text-[14px] font-semibold text-accent" onClick={() => setAllStyles(!allStyles)}>
-                {allStyles ? 'Show fewer' : `Show all ${styles.length} styles`}
+                {allStyles ? 'Show fewer' : `Show all ${filtered.length} styles`}
               </button>
             </div>
           </div>
@@ -575,33 +578,6 @@ export default function NewVideo() {
               </button>
             ))}
           </div>
-          <div className="mt-6 flex items-center justify-between">
-            <div className="text-[15px] font-semibold text-ink/90">Characters</div>
-            <button className="text-[14px] font-semibold text-accent" onClick={() => go({ name: 'characters' })}>
-              Make a character
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {characters.length === 0 && <div className="text-[14px] text-dim">No characters yet. Videos work fine without them.</div>}
-            {characters.map((c) => {
-              const on = s.characterIds.includes(c.id)
-              return (
-                <button
-                  key={c.id}
-                  onClick={() =>
-                    set({ characterIds: on ? s.characterIds.filter((x) => x !== c.id) : [...s.characterIds, c.id] })
-                  }
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${on ? 'border-accent bg-accent/[.06]' : 'border-line bg-card2'}`}
-                >
-                  <div className="h-9 w-9 overflow-hidden rounded-lg bg-[#0d0d0f]">
-                    <CharacterSvg c={c} mini />
-                  </div>
-                  <span className="text-[14px] font-medium">{c.name}</span>
-                </button>
-              )
-            })}
-          </div>
-
           <div className="mt-6 grid grid-cols-1 gap-6 2xl:grid-cols-3">
             <div>
               <div className="text-[15px] font-semibold text-ink/90">Drawn with</div>
@@ -659,7 +635,6 @@ export default function NewVideo() {
           <Row k="Language" v={s.outputLang ?? 'English'} />
           <Row k="Captions" v={s.captions ?? 'Off'} />
           <Row k="Sound effects" v={s.sfx ?? 'Off'} />
-          <Row k="Characters" v={s.characterIds.length ? characters.filter((c) => s.characterIds.includes(c.id)).map((c) => c.name).join(', ') : '—'} />
           <Row
             k="Quality"
             v={

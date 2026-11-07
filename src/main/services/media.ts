@@ -39,6 +39,35 @@ export async function ffmpeg(args: string[], signal?: AbortSignal) {
   return r
 }
 
+/** CPU H.264 at high quality: the fallback when the GPU has no encoder FFmpeg can use. */
+export const X264 = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p']
+
+// The GPU's H.264 encoder, at about the quality of X264 (NVIDIA NVENC, Intel Quick Sync, AMD AMF), best first.
+const GPU_ENCODERS: { name: string; args: string[] }[] = [
+  { name: 'NVIDIA', args: ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '19', '-b:v', '0', '-pix_fmt', 'yuv420p'] },
+  { name: 'Intel Quick Sync', args: ['-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', '20', '-pix_fmt', 'nv12'] },
+  { name: 'AMD', args: ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '18', '-qp_p', '20', '-pix_fmt', 'yuv420p'] }
+]
+let probing: Promise<{ name: string; args: string[] } | null> | null = null
+
+/** The first GPU encoder that really encodes on this PC (tried once on a tiny clip; a missing one just fails). */
+export function gpuEncoder() {
+  probing ??= (async () => {
+    for (const e of GPU_ENCODERS) {
+      const r = await run(ffmpegPath(), ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=0.3', ...e.args, '-f', 'null', '-']).catch(() => null)
+      if (r?.code === 0) return e
+    }
+    return null
+  })()
+  return probing
+}
+
+/** The video encoder to use: the GPU's when there is one and the setting allows it, otherwise the CPU's. */
+export async function videoEncoder(useGpu: boolean) {
+  const gpu = useGpu ? await gpuEncoder() : null
+  return gpu ? { ...gpu, gpu: true } : { name: 'CPU', args: X264, gpu: false }
+}
+
 export async function duration(file: string) {
   const r = await run(ffmpegPath(), ['-hide_banner', '-i', file])
   const m = r.stderr.match(/Duration: (\d+):(\d+):(\d+\.\d+)/)
@@ -129,6 +158,8 @@ const XFADE: Record<string, string> = { Fade: 'fade', Flash: 'fadewhite', Wipe: 
  * that ducks under the voice.
  */
 export async function finishVideo(o: {
+  /** Encode on the GPU when it can (falls back to the CPU if that fails). */
+  gpu?: boolean
   clips: { file: string; dur: number }[]
   voice: string
   out: string
@@ -212,12 +243,14 @@ export async function finishVideo(o: {
   args.push(
     '-filter_complex_script', 'finish.filter',
     '-map', `[${last}]`, '-map', '[aout]',
-    '-t', total.toFixed(3),
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(o.fps),
-    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', o.out
+    '-t', total.toFixed(3)
   )
+  const tail = ['-r', String(o.fps), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', o.out]
+  const enc = await videoEncoder(o.gpu ?? true)
   // Run inside workDir so the filter script and captions file are plain relative names (no Windows path escaping).
-  const r = await run(ffmpegPath(), args, { cwd: o.workDir, signal: o.signal })
+  let r = await run(ffmpegPath(), [...args, ...enc.args, ...tail], { cwd: o.workDir, signal: o.signal })
+  // A GPU encoder can still refuse a long or odd job (driver, memory): the CPU always can.
+  if (r.code !== 0 && enc.gpu && !o.signal?.aborted) r = await run(ffmpegPath(), [...args, ...X264, ...tail], { cwd: o.workDir, signal: o.signal })
   if (r.code !== 0) throw new Error('FFmpeg: ' + r.stderr.split('\n').filter(Boolean).slice(-4).join(' '))
   return o.out
 }

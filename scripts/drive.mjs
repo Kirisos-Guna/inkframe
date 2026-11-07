@@ -54,10 +54,6 @@ if (mode === 'ui') {
   await shot('styles')
   await page.click('text=Learn from a video >> nth=1')
   await shot('styles-learn')
-  await nav('Characters')
-  await shot('characters')
-  await page.locator('main .card').first().click()
-  await shot('character-editor')
   await nav('Settings').catch(() => page.click('text=Settings'))
   await shot('settings')
 }
@@ -192,7 +188,7 @@ if (mode === 'restore') {
     await page.locator('textarea').first().fill('A script that must not get lost.')
   }
   await page.waitForTimeout(1200)
-  await nav('Characters')
+  await nav('Styles')
   await page.waitForTimeout(800)
   await nav('Home')
   await page.waitForSelector('text=New video')

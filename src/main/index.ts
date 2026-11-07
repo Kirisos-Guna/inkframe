@@ -2,11 +2,11 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, pr
 import { createReadStream, existsSync, mkdirSync, statSync } from 'fs'
 import { extname, join } from 'path'
 import { Readable } from 'stream'
-import type { CharacterDef, Comment, Part, Project } from '../shared/types'
+import type { Comment, Part, Project } from '../shared/types'
 import { APP_NAME } from '../shared/brand'
 import * as store from './services/store'
 import { getStatus, resetToolCache } from './services/tools'
-import { duration, peaks } from './services/media'
+import { duration, gpuEncoder, peaks } from './services/media'
 import { engineOf } from './services/engines'
 import { closeStillBrowser } from './services/render'
 import { recreateVideo, type RecreateRequest } from './services/recreate'
@@ -16,7 +16,6 @@ import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { scoutStyle } from './services/styleScout'
 import { extractJson, runAgent } from './services/agent'
-import { characterPrompt } from './services/prompts'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
 import { toSrt, toVtt, linesFromWords } from './services/captions'
 import { killAllAgents, onUsage, type Usage } from './services/agent'
@@ -297,44 +296,11 @@ function registerIpc() {
   h('parts:cut', (id: string, from: number, to: number) => pipeline.cutRanges(id, [[from, to]]))
   h('parts:restore', (id: string, partId: string, file: string) => pipeline.restoreVersion(id, partId, file))
 
+  h('gpu:info', async () => (await gpuEncoder())?.name ?? null)
   h('styles:list', () => store.listStyles())
   h('styles:save', (s) => store.saveStyle(s as never))
   h('styles:remove', (id: string) => store.removeStyle(id))
-
-  h('characters:list', () => store.listCharacters())
-  h('characters:save', (c: CharacterDef) => store.saveCharacter(c))
-  h('characters:remove', (id: string) => store.removeCharacter(id))
-  h('characters:addCast', () => store.addStarterCast())
-  h('characters:describe', async (c: CharacterDef, text: string) => {
-    const s = store.getSettings()
-    const reply = await runAgent({ provider: s.defaultProvider, model: s.defaultModel, effort: 'Low', cwd: store.libDir('characters'), prompt: characterPrompt(c, text) })
-    const got = extractJson<Partial<CharacterDef>>(reply)
-    const pick = <K extends keyof CharacterDef>(k: K, allowed?: readonly unknown[]) =>
-      got[k] !== undefined && (!allowed || allowed.includes(got[k])) ? got[k] : c[k]
-    const hex = (k: 'skin' | 'eyeColour' | 'hairColour' | 'outfitColour') => (typeof got[k] === 'string' && /^#[0-9a-f]{6}$/i.test(got[k] as string) ? (got[k] as string) : c[k])
-    return {
-      ...c,
-      name: typeof got.name === 'string' && got.name.trim() ? got.name.trim().slice(0, 24) : c.name,
-      skin: hex('skin'),
-      eyeColour: hex('eyeColour'),
-      hairColour: hex('hairColour'),
-      outfitColour: hex('outfitColour'),
-      head: pick('head', ['Round', 'Oval', 'Square', 'Long', 'Wide']),
-      eyes: pick('eyes', ['Dots', 'Round', 'Big', 'Sleepy', 'Lashes']),
-      eyebrows: pick('eyebrows', ['None', 'Soft', 'Thick', 'Arched']),
-      nose: pick('nose', ['None', 'Dot', 'Button', 'Long']),
-      hair: pick('hair', ['Bob', 'Short', 'Long', 'Bun', 'Bald', 'Curly', 'Ponytail', 'Afro', 'Spiky', 'Side part']),
-      outfit: pick('outfit', ['Lab coat', 'Hoodie', 'Suit', 'T-shirt', 'Apron', 'Jacket', 'Dress', 'Overalls', 'Sweater']),
-      facialHair: pick('facialHair', ['None', 'Stubble', 'Beard', 'Mustache']),
-      hat: pick('hat', ['None', 'Cap', 'Beanie', 'Hard hat']),
-      age: pick('age', ['Kid', 'Adult', 'Older']),
-      headphones: typeof got.headphones === 'boolean' ? got.headphones : c.headphones,
-      body: pick('body', ['Slim', 'Average', 'Broad']),
-      glasses: typeof got.glasses === 'boolean' ? got.glasses : c.glasses,
-      pose: typeof got.pose === 'string' ? got.pose : c.pose,
-      expression: typeof got.expression === 'string' ? got.expression : c.expression
-    } as CharacterDef
-  })
+  h('styles:restore', () => store.restoreStyles())
 
   h('learn:list', () => store.listLearn())
   h('learn:start', (s) => startLearn(s as never))

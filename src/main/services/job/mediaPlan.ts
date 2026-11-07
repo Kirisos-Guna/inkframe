@@ -4,21 +4,31 @@ import type { MediaItem, Part, Project, Shot } from '../../../shared/types'
 import { extractJson, runAgent } from '../agent'
 import { getSettings, libDir } from '../store'
 import { writer } from '../publish'
-import { fetchShot, linksIn, memeTemplates } from '../realMedia'
+import { fetchShot, linksIn } from '../realMedia'
+import { memeMenu } from '../../../shared/memes'
 import { emit, step } from './events'
 import { limiter } from './util'
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function mediaPlanPrompt(p: Project, parts: Part[], memes: string[], links: { link: string; from: string; to: string }[], stock: boolean, quotes = false) {
+export function mediaPlanPrompt(p: Project, parts: Part[], links: { link: string; from: string; to: string }[], stock: boolean, quotes = false, gifs = false) {
   return `You are the researcher for a fast, Fireship-style tech video made of REAL media: screenshots of real pages,
-real posts, real photos, memes, charts, code and clips, a new picture every 1.5 to 2.5 seconds. Plan the shots for every part.
+real posts, real photos, charts, code, clips, and now and then a reaction (a meme or GIF). Plan the shots for every part.
+
+The video teaches a real concept, so almost every shot is a REFERENCE that shows or proves what is said: the
+official docs or spec (MDN, RFCs, the language reference, the vendor's docs), the real source code or README on
+GitHub, the engineering blog post or postmortem where it happened, the real post, a real chart, a real photo of the
+thing. Prefer the most authoritative source you can open, and highlight the exact sentence that backs the line.
+Reactions are seasoning, not the meal: at most ${reactionCap(parts)} memes and GIFs in the whole video together, only on
+the 2 or 3 beats that are really funny or ironic, never two in the same part.
 
 ${p.direction ? `The creator's direction: ${p.direction}\n` : ''}The parts (number, time, what is said):
 ${parts.map((x) => `${x.index + 1}. [${fmt(x.start)}-${fmt(x.end)}, ${(x.end - x.start).toFixed(0)} s] ${x.text.slice(0, 300)}`).join('\n')}
 
-Search the web for what each part talks about and pick its shots, in the order they are seen. About one shot per 2
-seconds of the part (a punchline may get two quick ones). Kinds:
+Search the web for what each part talks about and pick its shots, in the order they are seen. The viewer must be able
+to READ every shot, so plan how long each one needs on screen and fit the part: a photo 1.5-2 s, a meme 3 s, a page
+with its highlighted sentence 3 s, code 4-6 s. That is about one shot per 3 seconds of the part; a 9 second part has
+3 shots, not 6. Fewer, better shots beat many flashes. Kinds:
 - {"kind":"page","url":"https://…","mark":"a sentence copied EXACTLY from that page, to highlight","why":"…"}
   Real primary sources: official docs, the company's own blog or press release, a reputable news article, the GitHub
   repo or README, a filing, a changelog, a pricing page, a Hacker News thread, an old.reddit.com thread. Only URLs you
@@ -31,8 +41,14 @@ seconds of the part (a punchline may get two quick ones). Kinds:
 - {"kind":"photo","query":"Jensen Huang","cutout":true}: a real photo of a person, product, building or logo (searched on
   Wikimedia Commons, free licences). Use a name, not a description. "cutout": true lifts the person or logo out of
   its background, for a sticker with a label (do this for the people the story is about, and for logos).
-- {"kind":"meme","template":"<one name from the list below>","top":"…","bottom":"…"}: a reaction at the funny or
-  ironic beat. Captions short, dry and sharp, in capitals, like Fireship.
+- {"kind":"meme","template":"<one name from the list below>","texts":["…","…"]}: a reaction at the funny or ironic
+  beat. One caption per box of the template, in the order listed (what each box means is given): Drake's two texts
+  go in his two white panels, Gru's four on his four boards. Each caption 2 to 6 words, dry and sharp, readable in a
+  second. Only where the joke lands. The (anime) templates suit an anime reaction.${gifs ? `
+- {"kind":"gif","query":"2-4 words of the reaction","text":"…"?}: a real reaction GIF (looping) for a beat a still
+  meme cannot carry: surprise, panic, celebration. "text" is an optional short caption under it. About half of the
+  reactions in the video are ANIME reactions: start their query with "anime" ("anime shocked", "anime facepalm",
+  "anime crying", "anime thumbs up", "anime nervous sweat"); the others plain ("mind blown", "slow clap").` : ''}
 - {"kind":"chart","source":"price","symbol":"NVDA","range":"1y","label":"Nvidia stock"}: a real chart of a stock price
   (range 1mo, 6mo, 1y, 2y or 5y), {"kind":"chart","source":"npm","package":"react"} for weekly downloads, or
   {"kind":"chart","source":"github","repo":"owner/name"} for its stars, forks and issues. Use them when the voice
@@ -50,7 +66,8 @@ seconds of the part (a punchline may get two quick ones). Kinds:
 
 Mix kinds through the video; never three of the same kind in a row. Diagrams and titles are drawn later by the
 animator; do not plan them.
-Meme templates you can use: ${memes.slice(0, 100).join(' | ')}
+Meme templates you can use (name (when it fits): what each box is):
+${memeMenu()}
 
 Reply with JSON only: {"parts": [{"part": 1, "shots": [ … ]}, …]}`
 }
@@ -60,6 +77,27 @@ Reply with JSON only: {"parts": [{"part": 1, "shots": [ … ]}, …]}`
  * not be fetched is drawn without them.
  */
 const plans = new Map<string, { key: string; plan: { parts: { part: number; shots: Shot[] }[] } }>()
+
+/** How many reactions (memes and GIFs together) the video gets: one per 45 seconds, at least one. */
+export function reactionCap(parts: Part[]) {
+  const secs = parts.reduce((n, x) => n + (x.end - x.start), 0)
+  return Math.max(1, Math.floor(secs / 45))
+}
+
+/** The plan's shots with reactions over the cap (and a second one in the same part) left out, in order. */
+export function capReactions<T extends { kind: string }>(byPart: T[][], cap: number) {
+  let used = 0
+  return byPart.map((shots) => {
+    let here = 0
+    return shots.filter((s) => {
+      if (s.kind !== 'meme' && s.kind !== 'gif') return true
+      if (used >= cap || here >= 1) return false
+      used++
+      here++
+      return true
+    })
+  })
+}
 
 export async function gatherMedia(p: Project, signal: AbortSignal) {
   const parts = p.parts.filter((x) => !p.media?.[x.id])
@@ -76,9 +114,6 @@ export async function gatherMedia(p: Project, signal: AbortSignal) {
 async function research(p: Project, parts: Part[], signal: AbortSignal) {
   const s = getSettings()
   const { provider, model } = await writer()
-  const memes = await memeTemplates()
-    .then((m) => m.map((x) => x.name))
-    .catch(() => [] as string[])
   const links = linksIn(p.direction ?? '')
   step(p, 'Researching real media', { title: 'Researching real media', detail: `${provider} searches the web for the pages, posts, photos and code each part shows.` })
   const reply = await runAgent({
@@ -88,17 +123,23 @@ async function research(p: Project, parts: Part[], signal: AbortSignal) {
     cwd: libDir('writing'),
     search: true,
     signal,
-    prompt: mediaPlanPrompt(p, parts, memes, links, !!(s.pexelsKey || s.pixabayKey), !!s.quoteClips)
+    prompt: mediaPlanPrompt(p, parts, links, !!(s.pexelsKey || s.pixabayKey), !!s.quoteClips, !!s.giphyKey)
   })
   return extractJson<{ parts: { part: number; shots: Shot[] }[] }>(reply)
 }
 
 async function fetchAll(p: Project, parts: Part[], plan: { parts: { part: number; shots: Shot[] }[] }, s: ReturnType<typeof getSettings>, signal: AbortSignal) {
   const jobs: { x: Part; shot: Shot; i: number }[] = []
-  for (const x of parts) {
-    const shots = (plan.parts?.find((y) => Number(y.part) === x.index + 1)?.shots ?? []).slice(0, 8)
-    shots.forEach((shot, i) => jobs.push({ x, shot, i }))
-  }
+  // Reactions stay rare: the cap holds even if the plan asked for more.
+  const planned = capReactions(
+    parts.map((x) => plan.parts?.find((y) => Number(y.part) === x.index + 1)?.shots ?? []),
+    reactionCap(p.parts.length ? p.parts : parts)
+  )
+  parts.forEach((x, k) => {
+    // Never more shots than the part has time to show readably (the designer adds diagrams and titles too).
+    const room = Math.max(2, Math.ceil((x.end - x.start) / 2.4))
+    planned[k].slice(0, room).forEach((shot, i) => jobs.push({ x, shot, i }))
+  })
   step(p, `Getting ${jobs.length} pieces of real media`, { detail: 'Screenshots in a real browser, posts, photos, memes and clips. No AI in this step.' })
   const got = new Map<string, (MediaItem | null)[]>()
   let done = 0
@@ -107,7 +148,7 @@ async function fetchAll(p: Project, parts: Part[], plan: { parts: { part: number
     jobs.map(({ x, shot, i }) =>
       slot(async () => {
         if (signal.aborted) return
-        const m = await fetchShot(shot, p.dir, `p${x.index + 1}-${i + 1}-${x.id.slice(0, 6)}`, { pexels: s.pexelsKey, pixabay: s.pixabayKey, quotes: !!s.quoteClips })
+        const m = await fetchShot(shot, p.dir, `p${x.index + 1}-${i + 1}-${x.id.slice(0, 6)}`, { pexels: s.pexelsKey, pixabay: s.pixabayKey, giphy: s.giphyKey, quotes: !!s.quoteClips })
         const list = got.get(x.id) ?? []
         list[i] = m
         got.set(x.id, list)

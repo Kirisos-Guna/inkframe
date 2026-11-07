@@ -3,7 +3,6 @@ import type {
   LocalVoice,
   VoiceChoice,
   AppSettings,
-  CharacterDef,
   Comment,
   LearnSession,
   Project,
@@ -82,18 +81,16 @@ const api = {
     restore: (id: string, partId: string, file: string) =>
       invoke<Project>('parts:restore', id, partId, file)
   },
+  gpu: {
+    info: () => invoke<string | null>('gpu:info')
+  },
   styles: {
     list: () => invoke<StyleDef[]>('styles:list'),
     save: (s: StyleDef) => invoke<StyleDef>('styles:save', s),
-    remove: (id: string) => invoke<void>('styles:remove', id)
+    remove: (id: string) => invoke<void>('styles:remove', id),
+    restore: () => invoke<void>('styles:restore')
   },
-  characters: {
-    list: () => invoke<CharacterDef[]>('characters:list'),
-    save: (c: CharacterDef) => invoke<CharacterDef>('characters:save', c),
-    remove: (id: string) => invoke<void>('characters:remove', id),
-    addCast: () => invoke<number>('characters:addCast'),
-    describe: (c: CharacterDef, text: string) => invoke<CharacterDef>('characters:describe', c, text)
-  },
+
   learn: {
     list: () => invoke<LearnSession[]>('learn:list'),
     start: (s: Partial<LearnSession> & { source: string }) => invoke<LearnSession>('learn:start', s),

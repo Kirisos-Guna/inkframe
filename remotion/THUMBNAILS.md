@@ -6,7 +6,7 @@ the size of a stamp, next to a dozen others, by someone scrolling. It has half a
 ## First: it is a frame of THIS video
 The thumbnail must look like it came out of the video: someone who clicks should recognise it in the first seconds.
 - **Same look as the frames you are shown.** Same background (the style's palette.bg, its paper or texture), the same
-  kind of drawing (the same line, fills, mock-ups, layers, characters), the same colours. Draw it the way the video's
+  kind of drawing (the same line, fills, mock-ups, layers), the same colours. Draw it the way the video's
   parts are drawn, following the style in your instructions.
 - **Same lettering.** Text uses the video's font: `BigText` and `Sticker` already do (`font` from `useScene()`), so
   a marker style gets marker capitals, a hand-drawn style gets its handwriting. Never switch to a different font.
@@ -19,7 +19,7 @@ The thumbnail must look like it came out of the video: someone who clicks should
   marker style: a thick marker ring; a diagram style: a connector line or a highlighted box). No stock red arrows.
 
 ## Then: make it clickable, inside that look
-1. **One subject, big.** One object, screen, diagram or character fills 35–60% of the frame, slightly off-centre (left
+1. **One subject, big.** One object, screen or diagram fills 35–60% of the frame, slightly off-centre (left
    or right third). Never a scene with many small things.
 2. **2 to 4 words, huge.** 160–260 px with `BigText` (it adds a dark outline). Never the video's title, never a
    sentence. The words *add* to the picture (curiosity, stakes, a number); they do not describe it.
@@ -31,14 +31,11 @@ The thumbnail must look like it came out of the video: someone who clicks should
 6. **Keep the bottom-right corner empty** (the video length badge sits there): nothing important below y = 820 on
    the right third.
 7. If the style is real 3D, build the subject in 3D with `@kit/three`, as the video does.
-8. If the video has characters, a character with a **strong expression** (Surprised, Worried, Laughing) looking or
-   pointing at the subject beats anything else.
-9. **Not AI-looking:** no glowing brains, robots, node networks, sparkles or gradient blobs. A real, specific object
+8. **Not AI-looking:** no glowing brains, robots, node networks, sparkles or gradient blobs. A real, specific object
    (the actual chip, the actual app screen, the actual place) drawn the video's way beats any symbol.
 
 ## Concepts (each variant uses a different one)
 - **The key object:** the one thing the video is about, huge, with 2 words. ("ONE CHIP")
-- **Reaction:** a character with a big expression next to the subject, 2–3 words. ("WAIT, WHAT?")
 - **Before → after / versus:** the two states side by side (`ThumbBg variant="split"` only if the style is loud;
   otherwise two panels in the style), 1–2 words per side.
 - **Big number:** a number that surprises (`BigText` with the number highlighted) next to a small subject.
@@ -46,7 +43,7 @@ The thumbnail must look like it came out of the video: someone who clicks should
 
 ## The kit (`@kit/thumb`, plus everything in `@kit`)
 ```tsx
-import { useScene, Board, Character, Picture } from '@kit'
+import { useScene, Board, Picture } from '@kit'
 import { ThumbBg, BigText, Arrow, Ring, Sticker, Subject } from '@kit/thumb'
 
 export default function Scene() {
@@ -67,5 +64,5 @@ export default function Scene() {
   (default -3; use 0 for calm styles). It uses the video's font.
 - `Arrow from to`, `Ring x y rx ry` (the style's accent), `Sticker text x y`, `GlowBehind x y r` (only for glowing
   styles), `Subject` (white rim + shadow: only when the style uses outlines like that).
-- `<Character name pose expression x y height start={0} />` and `<Picture name x y w h start={0} />` work too
+- `<Picture name x y w h start={0} />` work too
   (always `start={0}`).
