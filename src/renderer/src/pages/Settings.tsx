@@ -152,28 +152,6 @@ export default function Settings() {
         </label>
       </section>
 
-      <section className="card mt-5 px-7 py-5">
-        <div className="text-[19px] font-semibold">ElevenLabs voiceovers</div>
-        <div className="mb-4 mt-1 text-[14px] text-muted">
-          Optional. With your key, New video can make the voiceover from your script: the writer picks the voice that fits it (from your voices and the
-          ElevenLabs library), and you can hear it and change it first. Uses characters from your ElevenLabs plan. The key stays on this PC.
-        </div>
-        <label className="text-[13.5px] text-muted">
-          ElevenLabs API key ·{' '}
-          <a className="text-accent" href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noreferrer">
-            get yours
-          </a>
-          <input
-            key={s.elevenLabsKey ?? ''}
-            type="password"
-            className="input mt-1 py-2 text-[14px]"
-            defaultValue={s.elevenLabsKey ?? ''}
-            placeholder="Not set"
-            onBlur={(e) => e.target.value.trim() !== (s.elevenLabsKey ?? '') && save({ elevenLabsKey: e.target.value.trim() })}
-          />
-        </label>
-      </section>
-
       <section className="card mb-10 mt-5 px-7 py-3">
         <div className="pb-1 pt-3 text-[19px] font-semibold">Tools on this computer</div>
         {pathRow('Claude Code', 'claudePath', status?.claude && status.claudeSignedIn, status?.claude && !status.claudeSignedIn ? 'Found, but not signed in. Install the Claude Code CLI, run claude in a terminal and sign in once.' : 'Makes the videos. Install it and sign in once.')}

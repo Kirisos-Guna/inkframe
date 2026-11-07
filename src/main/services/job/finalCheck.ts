@@ -56,3 +56,40 @@ export async function checkFinalVideo(p: Project, file: string, signal?: AbortSi
   )
   return { at: Date.now(), notes: readFinalLog(r.stderr, p, pace) }
 }
+
+/** What a rendered part shows wrong by itself: black stretches and, for the fast styles, shots held too long. */
+export interface PartFault {
+  kind: 'black' | 'long'
+  /** Seconds from the start of the part. */
+  at: number
+  dur: number
+}
+
+/**
+ * Reads the FFmpeg log of one rendered part (blackdetect, and scene cuts through showinfo when `longest` is given):
+ * black stretches of 0.3 s or more, and shots that stay on screen longer than `longest` seconds.
+ */
+export function readPartLog(log: string, len: number, longest?: number): PartFault[] {
+  const out: PartFault[] = []
+  for (const m of log.matchAll(/black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)/g)) out.push({ kind: 'black', at: +m[1], dur: +m[3] })
+  if (longest) {
+    const cuts = [...log.matchAll(/Parsed_showinfo[^\n]*pts_time:([\d.]+)/g)].map((m) => +m[1])
+    const edges = [0, ...cuts, len]
+    for (let i = 1; i < edges.length; i++) {
+      const dur = edges[i] - edges[i - 1]
+      // A black stretch is already reported as black.
+      if (dur > longest && !out.some((b) => b.kind === 'black' && b.at < edges[i] && b.at + b.dur > edges[i - 1] && b.dur > dur * 0.5)) out.push({ kind: 'long', at: edges[i - 1], dur })
+    }
+  }
+  return out
+}
+
+/** Looks at one rendered part with FFmpeg (no AI): about a second per part. */
+export async function checkPartVideo(file: string, len: number, longest?: number, signal?: AbortSignal) {
+  const r = await run(
+    ffmpegPath(),
+    ['-hide_banner', '-i', file, '-vf', `scale=320:-2,blackdetect=d=0.3:pix_th=0.02${longest ? ",select='gt(scene,0.25)',showinfo" : ''}`, '-an', '-f', 'null', '-'],
+    { signal }
+  )
+  return readPartLog(r.stderr, len, longest)
+}

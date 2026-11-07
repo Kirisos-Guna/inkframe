@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Project } from '../src/shared/types'
-import { readFinalLog } from '../src/main/services/job/finalCheck'
-import { saidAround } from '../src/main/services/job/checks'
+import type { Part, Project } from '../src/shared/types'
+import { readFinalLog, readPartLog } from '../src/main/services/job/finalCheck'
+import { faultNote, saidAround } from '../src/main/services/job/checks'
 
 const p = {
   voiceover: { duration: 26 },
@@ -66,5 +66,24 @@ describe('pace', () => {
     const log = `${ok}\n${Array.from({ length: 12 }, (_, i) => cut(i * 2 + 1)).join('\n')}`
     expect(readFinalLog(log, p, 2.5)).toEqual([])
     expect(readFinalLog(`${ok}\n${cut(10)}`, p)).toEqual([])
+  })
+})
+
+describe('checking one rendered part', () => {
+  const black = '[blackdetect @ 0x1] black_start:4.8 black_end:8.4 black_duration:3.6\n'
+  const cuts = (ts: number[]) => ts.map((t) => `[Parsed_showinfo_3 @ 0x2] n:0 pts:1 pts_time:${t} duration:1`).join('\n')
+  it('finds black stretches', () => {
+    expect(readPartLog(black, 12)).toEqual([{ kind: 'black', at: 4.8, dur: 3.6 }])
+  })
+  it('finds shots held too long in the fast styles, but not the ones that are black', () => {
+    expect(readPartLog(cuts([2, 4, 8.5]), 10, 3.5)).toEqual([{ kind: 'long', at: 4, dur: 4.5 }])
+    expect(readPartLog(black + cuts([2, 4.8, 8.4]), 10, 3.5)).toEqual([{ kind: 'black', at: 4.8, dur: 3.6 }])
+  })
+  it('says where it is and what is said there', () => {
+    const p = { words: [{ w: 'every', start: 102, end: 102.3 }, { w: 'cut', start: 102.3, end: 102.6 }] } as unknown as Project
+    const x = { start: 100, end: 110 } as unknown as Part
+    const note = faultNote(p, x, { kind: 'black', at: 1.5, dur: 1 })
+    expect(note).toContain('black for 1.0 s from 1.5 s')
+    expect(note).toContain('every cut')
   })
 })

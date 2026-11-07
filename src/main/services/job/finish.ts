@@ -10,10 +10,20 @@ import { buildSfxTrack } from '../sfx'
 
 const req = createRequire(__filename)
 
+/**
+ * The transition between parts. The real-media styles cut hard, like the channels they come from: the app's default
+ * fade (0.4 s of two pictures melting into each other, every few seconds) is not used there; a transition picked on
+ * purpose (flash, wipe…) still is.
+ */
+export const transitionOf = (p: Project) => {
+  const t = p.settings.transition
+  return getStyle(p.settings.styleId).realMedia && t === 'Fade' ? 'None' : t
+}
+
 export const finishDetail = (p: Project) =>
   [
     'Joining the parts and laying the voiceover on top',
-    p.settings.transition && p.settings.transition !== 'None' ? `${p.settings.transition.toLowerCase()} between parts` : '',
+    transitionOf(p) && transitionOf(p) !== 'None' ? `${transitionOf(p)!.toLowerCase()} between parts` : '',
     p.settings.captions && p.settings.captions !== 'Off' ? `${p.settings.captions.toLowerCase()} captions` : '',
     p.settings.music ? 'music under the voice' : '',
     p.settings.sfx && p.settings.sfx !== 'Off' ? `${p.settings.sfx.toLowerCase()} sound effects` : ''
@@ -53,7 +63,7 @@ export async function finish(p: Project, out: string, size: { height: number; fp
     workDir,
     height: size.height,
     fps: size.fps,
-    transition: p.settings.transition,
+    transition: transitionOf(p),
     captions,
     assFile,
     music: p.settings.music && existsSync(p.settings.music.file) ? p.settings.music : null,

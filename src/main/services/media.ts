@@ -46,6 +46,23 @@ export async function duration(file: string) {
   return +m[1] * 3600 + +m[2] * 60 + +m[3]
 }
 
+/** The pauses in speech, [start, end] in seconds (quieter than -35 dB for at least 0.1 s). */
+export async function pausesOf(file: string): Promise<[number, number][]> {
+  const r = await run(ffmpegPath(), ['-hide_banner', '-i', file, '-af', 'silencedetect=n=-35dB:d=0.1', '-f', 'null', '-'])
+  const out: [number, number][] = []
+  let from: number | null = null
+  for (const l of r.stderr.split('\n')) {
+    const s = l.match(/silence_start: (-?[\d.]+)/)
+    const e = l.match(/silence_end: ([\d.]+)/)
+    if (s) from = Math.max(0, +s[1])
+    else if (e && from !== null) {
+      out.push([from, +e[1]])
+      from = null
+    }
+  }
+  return out
+}
+
 const peakCache = new Map<string, number[]>()
 /** Loudness peaks for drawing a waveform, 0..1. */
 export async function peaks(file: string, n = 600) {

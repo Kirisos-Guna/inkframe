@@ -30,6 +30,8 @@ export function startTranscription(id: string) {
         hint
       )
       p.words = heard.words
+      // Put on the pauses and given the script's spelling when the video is made (see runJob).
+      p.wordsTuned = false
       p.language = heard.language
       // A Tamil voiceover gets Tamil on screen and in the title and description, until the user says otherwise.
       if (heard.language === 'ta' && !p.settings.outputLang) p.settings.outputLang = 'Tamil'

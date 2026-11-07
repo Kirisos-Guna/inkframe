@@ -41,6 +41,8 @@ export interface Part {
   video?: string
   /** When the clip was last rendered (so the page loads the new one). */
   renderedAt?: number
+  /** The version of the drawing kit it was rendered with: a part rendered with an older kit is rendered again. */
+  kit?: number
   history: PartVersion[]
   /** The last check of this part. It is valid while newer than renderedAt. afterFix: already fixed once for its notes. */
   checks?: { ok: boolean; notes: string[]; at: number; afterFix?: boolean }
@@ -198,6 +200,8 @@ export interface ProjectSettings {
 
 export interface Project {
   draft?: boolean
+  /** The heard words were put on the pauses in the audio (and given the script's spelling): see wordTimes.ts. */
+  wordsTuned?: boolean
   transcribing?: boolean
   transcribeError?: string
   /** What hearing is doing right now, with its progress. */
@@ -321,9 +325,8 @@ export interface AppSettings {
   /** Free API keys for stock clips (remix styles). */
   pexelsKey?: string
   pixabayKey?: string
-  /** ElevenLabs: makes the voiceover from the script, with the voice the writer picks. */
-  elevenLabsKey?: string
-  elevenLabsModel?: string
+  /** The local voice last used to make a voiceover (see localVoice.ts). */
+  voice?: VoiceChoice
   /** Fast Tech Remix may use short clips of real people saying a line (from YouTube). Off: other channels can claim them. */
   quoteClips?: boolean
 }
@@ -339,22 +342,16 @@ export interface Status {
   usage?: number
 }
 
-/** A voice that can speak the script: one in the ElevenLabs account, or one from its library (added when used). */
-export interface ElevenVoice {
+/** A voice of the local voice model. */
+export interface LocalVoice {
   id: string
   name: string
   about: string
-  mine: boolean
-  library?: boolean
-  owner?: string
-  preview?: string
 }
 
-/** The voice picked for a script, and how it should speak. */
-export interface VoicePick {
+/** Which local voice speaks, how fast (1 is normal) and at what pitch (semitones, 0 is the voice's own). */
+export interface VoiceChoice {
   id: string
-  why: string
   speed: number
-  stability: number
-  style: number
+  pitch: number
 }

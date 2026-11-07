@@ -4,7 +4,7 @@ import { basename, join } from 'path'
 import type { Comment, Part, Project } from '../../shared/types'
 import { getProject, getStyle, listCharacters } from './store'
 import { asLimit, extractJson, LimitError, runAgent } from './agent'
-import { bundleProject, clearRenderBundles, clipFile, thumbFile } from './render'
+import { bundleProject, clearRenderBundles, clipFile, KIT_VERSION, thumbFile } from './render'
 import { engineOf, renderAny, scenePath, writeHfStarter } from './engines'
 import { designBatchPrompt, designPrompt, fixPrompt, repairPrompt, splitPrompt } from './prompts'
 import { APP_NAME } from '../../shared/brand'
@@ -16,6 +16,8 @@ import { hearing, startTranscription } from './job/hearing'
 import { busy, CHECK_BATCH, DESIGN_BATCH, finishing, guarded, HELPERS, jobs, RENDERS, resumeWaiters, stepControllers } from './job/control'
 import { agentOpts, agentScene, drawOpts, finishScene, isBareStarter, repairOpts, target, writeGuides } from './job/scenes'
 import { checkParts } from './job/checks'
+import { fitToScript, snapToPauses } from './wordTimes'
+import { pausesOf } from './media'
 import { finish, finishDetail } from './job/finish'
 import { checkFinalVideo } from './job/finalCheck'
 import { gatherMedia } from './job/mediaPlan'
@@ -102,6 +104,16 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   if (signal.aborted) throw new Error('Stopped')
 
   // 2 · Parts
+  // The heard words onto the pauses in the audio (whisper's boundaries often sit inside them), and, before the parts
+  // are planned, the script's spelling (names, products), so parts, pictures and captions match it. A video that has
+  // parts keeps its words' spelling: its scenes look words up by it.
+  if (!p.wordsTuned && p.words.length && p.voiceover) {
+    p.words = snapToPauses(p.words, await pausesOf(p.voiceover.file).catch(() => []))
+    if (!p.parts.length && p.script?.trim()) p.words = fitToScript(p.words, p.script)
+    p.wordsTuned = true
+    emit(p, true)
+  }
+
   p.job.stage = 'Parts'
   if (!p.parts.length) {
     step(p, `Reading the ${APP_NAME} method`, { title: 'Planning the video', detail: `${style.name}. Reading your direction.` })
@@ -132,7 +144,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   signal.addEventListener('abort', stopBg, { once: true })
   const renderSlot = limiter(RENDERS)
   const background: Promise<void>[] = []
-  const needsRender = (x: Part) => !(x.status === 'Up to date' || x.status === 'Rendered') || !x.video || !existsSync(x.video)
+  const needsRender = (x: Part) => !(x.status === 'Up to date' || x.status === 'Rendered') || !x.video || !existsSync(x.video) || (x.kit ?? 1) < KIT_VERSION
   const countRendered = () => (p.job.renderDone = p.parts.filter((y) => !needsRender(y)).length)
   const bundleFor = (x: Part) => (engineOf(p, x) === 'remotion' ? bundleProject(p, (s) => step(p, s), 'render', { versioned: true, need: [x.id] }) : Promise.resolve(undefined))
   const renderOne = async (x: Part, sig: AbortSignal, foreground: boolean) => {
@@ -152,7 +164,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
       await guarded(p, sig, async (s) => renderAny(p, x, { serveUrl: await bundleFor(x), signal: s }))
     }
     renderedNow.add(x.id)
-    setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x), renderedAt: Date.now() })
+    setPart(p, x.id, { status: 'Rendered', video: clipFile(p, x), renderedAt: Date.now(), kit: KIT_VERSION })
     countRendered()
     emit(p)
   }

@@ -16,6 +16,13 @@ export const thumbMethodFile = () => join(appRoot(), 'remotion', 'THUMBNAILS.md'
 
 export const sceneFile = (p: Project, part: Part) => join(p.dir, 'scenes', `${part.id}.tsx`)
 export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${part.id}.png`)
+/**
+ * The version of the drawing kit (remotion/kit). Raise it when a change to the kit changes what rendered parts look
+ * like: parts rendered with an older one are rendered again on the next run (no AI, no tokens).
+ * 2: times inside <Cuts> shots are frames of the part; roomy page crops; code typed in under a second.
+ */
+export const KIT_VERSION = 2
+
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
 
 // ANGLE gives Chrome real WebGL for the three.js styles (and is fine for 2D).

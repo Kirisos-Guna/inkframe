@@ -1,5 +1,8 @@
 // Checking parts: three moments of each part in one picture, several parts per call, on a quick model.
+import { existsSync } from 'fs'
 import { join } from 'path'
+import { getStyle } from '../store'
+import { checkPartVideo, type PartFault } from './finalCheck'
 import type { Comment, Part, Project } from '../../../shared/types'
 import { extractJson, LimitError, runAgent } from '../agent'
 import { stripImage } from '../media'
@@ -23,6 +26,9 @@ export const checkModel = (p: Project) =>
 export async function checkParts(p: Project, parts: Part[], serveUrl: string | undefined, signal: AbortSignal, since = 0) {
   const results = new Map<string, { ok: boolean; notes: string[]; at: number }>()
   const items: { part: Part; sheet: string; said: string[] }[] = []
+  // What FFmpeg finds in each rendered part (black stretches, shots held too long in the fast styles): no AI.
+  const measured = new Map<string, string[]>()
+  const longest = getStyle(p.settings.styleId).realMedia ? 3.5 : undefined
   for (const x of parts) {
     const done = part(p, x.id)?.checks
     if (since && done && done.at >= since) {
@@ -36,6 +42,10 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
         const f = join(p.dir, 'work', `check-${x.index + 1}-${i + 1}.png`)
         await stillAny(p, x, at, f, serveUrl, signal)
         frames.push(f)
+      }
+      if (x.video && existsSync(x.video)) {
+        const faults = await checkPartVideo(x.video, x.end - x.start, longest, signal).catch(() => [])
+        if (faults.length) measured.set(x.id, faults.map((q) => faultNote(p, x, q)))
       }
       const sheet = join(p.dir, 'work', `check-${x.index + 1}.jpg`)
       await stripImage(frames, sheet)
@@ -61,9 +71,10 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
         // Checking the same drawing again keeps "already fixed once": it is not fixed a second time for nothing.
         const prev = part(p, x.id)
         const afterFix = !!prev && checkValid(prev) && !!prev.checks!.afterFix
-        const notes = (Array.isArray(got.notes) ? got.notes : []).map(String).filter(Boolean).slice(0, 5)
+        const seen = measured.get(x.id) ?? []
+        const notes = [...seen, ...(Array.isArray(got.notes) ? got.notes : []).map(String).filter(Boolean)].slice(0, 6)
         // "ok: false" with no notes says nothing to fix: take it as fine rather than fixing blind.
-        const checks = { ok: got.ok !== false || !notes.length, notes, at: Date.now(), ...(afterFix ? { afterFix } : {}) }
+        const checks = { ok: !seen.length && (got.ok !== false || !notes.length), notes, at: Date.now(), ...(afterFix ? { afterFix } : {}) }
         results.set(x.id, checks)
         setPart(p, x.id, { checks })
       }
@@ -78,6 +89,16 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
   return results
 }
 
+
+/** A fault FFmpeg found in a part, as a note the fixing session can act on (where it is, and what is said there). */
+export function faultNote(p: Project, x: Part, q: PartFault) {
+  const from = q.at.toFixed(1)
+  const said = saidAround(p, x.start + q.at + Math.min(q.dur, 3))
+  const words = said ? ` (while "${said.slice(-60)}" is said)` : ''
+  return q.kind === 'black'
+    ? `The picture is black for ${q.dur.toFixed(1)} s from ${from} s into the part${words}: every shot must show something big from its first frame (no shot that waits for its start, no empty frame)`
+    : `One shot holds for ${q.dur.toFixed(1)} s from ${from} s into the part${words}: cut to a new picture at least every 2.5 s here (Cuts on the words), or Punch in on the word`
+}
 
 /** The three moments of a part the check looks at (fractions of the part). */
 const MOMENTS = [0.2, 0.55, 0.97]

@@ -10,8 +10,8 @@ import { duration, peaks } from './services/media'
 import { engineOf } from './services/engines'
 import { closeStillBrowser } from './services/render'
 import { recreateVideo, type RecreateRequest } from './services/recreate'
-import { listVoices, pickVoice, speak } from './services/elevenlabs'
-import type { ElevenVoice, VoicePick } from '../shared/types'
+import { DEFAULT_VOICE, previewVoice, speak, VOICES } from './services/localVoice'
+import type { VoiceChoice } from '../shared/types'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { scoutStyle } from './services/styleScout'
@@ -231,13 +231,16 @@ function registerIpc() {
     })
   )
   h('writer:publish', (id: string) => writePublishKit(id))
-  h('voice:list', (language?: string) => listVoices(language))
-  h('voice:pick', (script: string, voices: ElevenVoice[], o: { language?: string; style?: string; fast?: boolean }) => pickVoice(script, voices, o))
-  h('voice:speak', (script: string, pick: VoicePick, voice: ElevenVoice, language?: string) =>
-    speak(script, pick, voice, language, (s) => {
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('voice:status', s)
-    })
-  )
+  const voiceStatus = (s: string) => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('voice:status', s)
+  }
+  h('voice:list', () => ({ voices: VOICES, choice: store.getSettings().voice ?? DEFAULT_VOICE }))
+  h('voice:preview', (choice: VoiceChoice) => previewVoice(choice, voiceStatus))
+  h('voice:speak', async (script: string, choice: VoiceChoice) => {
+    const file = await speak(script, choice, voiceStatus)
+    store.setSettings({ voice: choice })
+    return file
+  })
   h('style:scout', (id: string) =>
     scoutStyle(id, (s) => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('scout:status', s)

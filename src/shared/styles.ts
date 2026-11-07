@@ -170,9 +170,17 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     <Loop items={['build', 'test', 'deploy']} /> for a cycle.
   Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
 
+Timing: every frame number is a frame of the part, what at('word') returns, also inside <Cuts> (start={at('knife')}
+  inside the shot that begins at 'knife' comes in on that word). Something with no start comes in when its shot does.
+  Every shot shows its main thing from its first frame: never a shot that is black or empty while it waits.
+
 Pace and humour
 - A new picture every 1.5 to 2.5 seconds, cut exactly on the word it shows (at('word')). Never hold one picture longer
-  than 3 seconds: a long page gets a Punch or a second highlight halfway.
+  than 3 seconds: a long page gets a Punch or a second highlight halfway. A part of 10 seconds has 4 to 6 shots.
+- Fill the frame: the main thing in each shot takes at least half of the picture (a page close up on its sentence, a
+  photo full frame, a meme full height, code big). Never a small thing alone in the middle of black.
+- Real media first. Draw only what no real picture can show (a diagram of how it works), with Box, Flow and Loop;
+  never thin hand-drawn line art.
 - The narration is dry and quick; the pictures carry the jokes: a meme, a FreezeFrame or a sarcastic Caption on the
   ironic beat, a Punch on the big number, a Sticker and Label for each person the story is about.
 - Mix kinds: never three of the same in a row. Diagrams for how money or data flows; charts for numbers; code for how

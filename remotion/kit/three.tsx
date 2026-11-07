@@ -2,10 +2,10 @@
 // Scenes import from '@kit/three' plus 'three' and '@react-three/fiber'.
 import React, { useMemo } from 'react'
 import { ThreeCanvas } from '@remotion/three'
-import { interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion'
+import { interpolate, useVideoConfig, Easing } from 'remotion'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useScene } from './index'
+import { useFrameFor, usePartFrame, useScene } from './index'
 
 const ease = Easing.bezier(0.45, 0, 0.25, 1)
 
@@ -18,7 +18,7 @@ export interface CameraKey {
 }
 
 function Camera({ keys }: { keys: CameraKey[] }) {
-  const frame = useCurrentFrame()
+  const frame = usePartFrame()
   const { camera } = useThree()
   const ks = keys.length ? keys : [{ at: 0, pos: [0, 3, 9] as Vec3, look: [0, 0, 0] as Vec3 }]
   const ats = ks.map((k) => k.at)
@@ -92,7 +92,7 @@ export function Stage3D({
 
 /** 0 → 1 between two frames, eased: use it to grow, move or fade 3D things in sync with words. */
 export function useProgress(start: number, dur = 20) {
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   return interpolate(frame, [start, start + Math.max(1, dur)], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
 }
 

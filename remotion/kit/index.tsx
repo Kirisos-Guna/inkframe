@@ -26,6 +26,26 @@ export interface SceneProps {
 }
 
 const Ctx = createContext<SceneProps | null>(null)
+
+/**
+ * Where the <Cuts> shot being drawn starts, in frames of the part. Inside a shot Remotion's own clock starts again at
+ * 0, but scenes give every time as a frame of the part (what at('word') returns): these clocks keep that count.
+ */
+export const CutAt = createContext(0)
+/** The frame in the part, also inside a <Cuts> shot. */
+export function usePartFrame() {
+  return useCurrentFrame() + useContext(CutAt)
+}
+/**
+ * The clock for something that starts at `start` (a frame of the part). Inside a shot that begins later than `start`
+ * (a time from before the cut, or a 0 meaning "from the beginning"), it comes in when the shot begins instead, so it is
+ * never missed and never seen half-done.
+ */
+export function useFrameFor(start = 0) {
+  const cut = useContext(CutAt)
+  const rel = useCurrentFrame()
+  return start >= cut ? rel + cut : rel + start
+}
 export const SceneProvider = Ctx.Provider
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '')
@@ -33,7 +53,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '')
 export function useScene() {
   const p = useContext(Ctx)
   if (!p) throw new Error('useScene must be used inside a scene')
-  const frame = useCurrentFrame()
+  const frame = usePartFrame()
   const { fps } = useVideoConfig()
   return useMemo(() => {
     const words: SceneWord[] = p.words.map((w) => ({ w: w.w, start: Math.round(w.start * fps), end: Math.round(w.end * fps) }))
@@ -235,7 +255,7 @@ export function Draw({
   clean?: boolean
 }) {
   const s = useScene()
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const p = prog(frame, start, dur)
   const craft = craftOf(s.style)
   const line = useMemo(() => {
@@ -319,7 +339,7 @@ export function Write({
   font?: string
 }) {
   const s = useScene()
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const id = useId().replace(/:/g, '')
   const d = dur ?? Math.max(8, text.length * 1.6)
   const p = prog(frame, start, d)
@@ -351,7 +371,7 @@ export function Write({
 /** Text typed letter by letter. */
 export function Typewriter({ text, x, y, size = 64, start = 0, cps = 18, color, align = 'start' }: { text: string; x: number; y: number; size?: number; start?: number; cps?: number; color?: string; align?: 'start' | 'middle' | 'end' }) {
   const s = useScene()
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const n = Math.max(0, Math.floor(((frame - start) / s.fps) * cps))
   if (frame < start) return null
   const letters = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((g) => g.segment)
@@ -366,7 +386,7 @@ export function Typewriter({ text, x, y, size = 64, start = 0, cps = 18, color, 
 
 /** Springs its children in, scaling from (x, y). */
 export function Pop({ start = 0, x = 960, y = 540, children }: { start?: number; x?: number; y?: number; children: React.ReactNode }) {
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const { fps } = useVideoConfig()
   if (frame < start) return null
   const s = spring({ frame: frame - start, fps, config: { damping: 12, stiffness: 140 } })
@@ -375,7 +395,7 @@ export function Pop({ start = 0, x = 960, y = 540, children }: { start?: number;
 
 /** Fades children in at `start` (and out at `out`, if given). */
 export function Fade({ start = 0, dur = 12, out, children }: { start?: number; dur?: number; out?: number; children: React.ReactNode }) {
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const a = prog(frame, start, dur)
   const b = out !== undefined ? 1 - prog(frame, out, dur) : 1
   if (a <= 0) return null
@@ -384,7 +404,7 @@ export function Fade({ start = 0, dur = 12, out, children }: { start?: number; d
 
 /** Moves children from one offset to another. */
 export function Move({ from, to, start = 0, dur = 30, children }: { from: [number, number]; to: [number, number]; start?: number; dur?: number; children: React.ReactNode }) {
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const p = prog(frame, start, dur)
   const x = from[0] + (to[0] - from[0]) * p
   const y = from[1] + (to[1] - from[1]) * p
@@ -393,7 +413,7 @@ export function Move({ from, to, start = 0, dur = 30, children }: { from: [numbe
 
 /** Moves a small dot (or children) along a path. */
 export function Travel({ d, start = 0, dur = 40, r = 10, color, children }: { d: string; start?: number; dur?: number; r?: number; color?: string; children?: React.ReactNode }) {
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const s = useScene()
   const p = prog(frame, start, dur)
   const pt = useMemo(() => {
@@ -411,7 +431,7 @@ export function Travel({ d, start = 0, dur = 40, r = 10, color, children }: { d:
 /** A number that counts up. */
 export function Count({ from = 0, to, start = 0, dur = 40, x, y, size = 160, prefix = '', suffix = '', decimals = 0, color }: { from?: number; to: number; start?: number; dur?: number; x: number; y: number; size?: number; prefix?: string; suffix?: string; decimals?: number; color?: string }) {
   const s = useScene()
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   if (frame < start) return null
   const v = from + (to - from) * prog(frame, start, dur)
   return (
@@ -425,7 +445,7 @@ export function Count({ from = 0, to, start = 0, dur = 40, x, y, size = 160, pre
 
 /** A camera that zooms/pans the whole board. Wrap the scene's content in it. */
 export function useCamera(keys: { at: number; zoom: number; x: number; y: number }[]) {
-  const frame = useCurrentFrame()
+  const frame = usePartFrame()
   if (!keys.length) return { zoom: 1, x: 960, y: 540 }
   const ats = keys.map((k) => k.at)
   if (keys.length === 1) return keys[0]
@@ -485,7 +505,7 @@ export function Character({
   flip?: boolean
 }) {
   const s = useScene()
-  const frame = useCurrentFrame()
+  const frame = useFrameFor(start)
   const c = s.characters.find((x) => !name || x.name.toLowerCase() === name.toLowerCase()) ?? s.characters[0]
   if (!c || frame < start) return null
   const def = { ...c, pose: pose ?? c.pose, expression: expression ?? c.expression, drawnIn: DRAWN[s.style.id] ?? 'Pen' }
@@ -550,4 +570,6 @@ export function makeRoot(scenes: Record<string, React.ComponentType>) {
   }
 }
 
-export { AbsoluteFill, interpolate, spring, useCurrentFrame, Easing }
+export { AbsoluteFill, interpolate, spring, Easing }
+// Scenes that read the frame from '@kit' get the frame in the part (the same count as at('word')), also inside <Cuts>.
+export { usePartFrame as useCurrentFrame }

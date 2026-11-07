@@ -17,27 +17,34 @@ import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-sql'
 import { AbsoluteFill, cancelRender, continueRender, delayRender, Easing, Freeze, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 
+import { CutAt, useFrameFor, usePartFrame } from './index'
+
 const MEME = "'Meme', Impact, 'Arial Black', sans-serif"
 const CODE = "'Code', 'Cascadia Mono', Consolas, monospace"
 const UI = "'Inter', 'Tamil', 'Segoe UI', sans-serif"
 const ease = Easing.bezier(0.2, 0.8, 0.2, 1)
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
 
-/** Frames since `start`, and a 0 → 1 ease over `dur` frames. */
+/**
+ * Frames since `start` (a frame of the part, like at('word')), and a 0 → 1 ease over `dur` frames. Inside a <Cuts>
+ * shot that begins later than `start`, it counts from the shot's first frame.
+ */
 function useLocal(start = 0, dur = 12) {
-  const f = useCurrentFrame() - start
+  const f = useFrameFor(start) - start
   return { f, t: interpolate(f, [0, Math.max(1, dur)], [0, 1], { ...clamp, easing: ease }) }
 }
 
 /** Shows its children one after another: the first from at[0], the next from at[1]… until the part ends. */
 export function Cuts({ at, children, whip = false }: { at: number[]; children: React.ReactNode; whip?: boolean }) {
   const { durationInFrames } = useVideoConfig()
+  // Inside another shot, Remotion counts from that shot's start; the times given here are frames of the part.
+  const outer = React.useContext(CutAt)
   const list = React.Children.toArray(children)
   return (
     <>
       {list.map((c, i) => (
-        <Sequence key={i} from={at[i] ?? 0} durationInFrames={Math.max(1, (at[i + 1] ?? durationInFrames) - (at[i] ?? 0))} layout="none">
-          {whip && i > 0 ? <WhipIn>{c}</WhipIn> : c}
+        <Sequence key={i} from={(at[i] ?? 0) - outer} durationInFrames={Math.max(1, (at[i + 1] ?? durationInFrames) - (at[i] ?? 0))} layout="none">
+          <CutAt.Provider value={at[i] ?? 0}>{whip && i > 0 ? <WhipIn>{c}</WhipIn> : c}</CutAt.Provider>
         </Sequence>
       ))}
     </>
@@ -57,7 +64,7 @@ function WhipIn({ children }: { children: React.ReactNode }) {
  * a later punch goes closer again. `x`, `y` is what it zooms toward (default the centre).
  */
 export function Punch({ at, amount = 0.14, x = 960, y = 540, children }: { at: number[]; amount?: number; x?: number; y?: number; children: React.ReactNode }) {
-  const f = useCurrentFrame()
+  const f = usePartFrame()
   let k = 1
   for (const a of at) k += amount * interpolate(f, [a, a + 3], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) })
   return <AbsoluteFill style={{ transform: `scale(${k})`, transformOrigin: `${x}px ${y}px` }}>{children}</AbsoluteFill>
@@ -65,7 +72,7 @@ export function Punch({ at, amount = 0.14, x = 960, y = 540, children }: { at: n
 
 /** A short camera shake at each frame in `at` (a punchline, an impact), dying away over 10 frames. */
 export function Shake({ at, power = 16, children }: { at: number[]; power?: number; children: React.ReactNode }) {
-  const f = useCurrentFrame()
+  const f = usePartFrame()
   let dx = 0
   let dy = 0
   for (const a of at) {
@@ -83,13 +90,14 @@ export function Shake({ at, power = 16, children }: { at: number[]; power?: numb
  * ("Yep, that's me.") — the "record scratch" moment.
  */
 export function FreezeFrame({ at, label, children }: { at: number; label?: string; children: React.ReactNode }) {
-  const f = useCurrentFrame()
+  const f = usePartFrame()
+  const cut = React.useContext(CutAt)
   if (f < at) return <>{children}</>
   const t = interpolate(f, [at, at + 6], [0, 1], { ...clamp, easing: ease })
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${1 + 0.06 * t})`, filter: `saturate(${1 - 0.6 * t}) contrast(${1 + 0.15 * t})` }}>
-        <Freeze frame={at}>{children}</Freeze>
+        <Freeze frame={Math.max(0, at - cut)}>{children}</Freeze>
       </AbsoluteFill>
       {label && (
         <div style={{ position: 'absolute', left: 80, bottom: 90, fontFamily: MEME, fontSize: 84, color: '#fff', textTransform: 'uppercase', WebkitTextStroke: '5px #000', paintOrder: 'stroke fill', opacity: t, transform: `rotate(-3deg)` }}>
@@ -163,8 +171,9 @@ export function Page({
   const { f, t } = useLocal(start, 14)
   const { durationInFrames } = useVideoConfig()
   if (f < 0) return null
-  // The part of the picture shown: the tight crop, or all of it.
-  const [fx, fy, fw, fh] = crop && focus ? focus : [0, 0, w, h]
+  // The part of the picture shown: the tight crop, or all of it. A crop is never a thin strip: it grows taller around
+  // the highlight until it fills most of the frame (a one-line crop of a wide page was a sliver on black).
+  const [fx, fy, fw, fh] = crop && focus ? roomy(focus, [...marks, ...marks2], w, h) : [0, 0, w, h]
   const width = crop && focus ? Math.min(1640, (fw / fh) * 860) : 1560
   const k = width / fw
   const tallView = scroll ? 900 / k : fh
@@ -220,6 +229,16 @@ export function Page({
       </div>
     </AbsoluteFill>
   )
+}
+
+/** A crop box made at most 2.2 times as wide as it is tall, centred on the highlight, inside the picture. */
+export function roomy([x, y, fw, fh]: number[], marks: number[][], w: number, h: number): number[] {
+  const want = fw / 2.2
+  if (fh >= want) return [x, y, fw, fh]
+  const tall = Math.min(h, want)
+  const mid = marks.length ? (Math.min(...marks.map((m) => m[1])) + Math.max(...marks.map((m) => m[1] + m[3]))) / 2 : y + fh / 2
+  const top = Math.max(0, Math.min(h - tall, mid - tall / 2))
+  return [x, top, fw, tall]
 }
 
 /** Two things side by side (code and what it does, before and after), each half the frame. */
@@ -326,7 +345,8 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   const { fps } = useVideoConfig()
   if (f < 0) return null
   const grammar = Prism.languages[lang] ?? Prism.languages[{ js: 'javascript', sh: 'bash', shell: 'bash', py: 'python', yml: 'yaml' }[lang] ?? 'javascript']
-  let left = Math.max(0, Math.floor(((f - 8) / fps) * cps))
+  // Typed fast enough to be read in a quick shot: all of it within about 0.8 s, however long it is.
+  let left = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, code.length / 0.8)))
   const typed = left >= code.length
   const rows = code.split('\n')
   return (
@@ -389,7 +409,7 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   const { f, t } = useLocal(start, 10)
   const { fps } = useVideoConfig()
   if (f < 0) return null
-  const typedChars = Math.max(0, Math.floor(((f - 8) / fps) * cps))
+  const typedChars = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, command.length / 0.6)))
   const doneAt = 8 + (command.length / cps) * fps
   const outN = Math.max(0, Math.floor((f - doneAt - 6) / 5))
   return (
@@ -411,17 +431,17 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
 }
 
 /** A flat diagram box (like Fireship's company boxes): a solid colour, the name in dark capitals. */
-export function Box({ x, y, w = 260, h = 110, label, color = '#76b900', start = 0, sub, icon, pulse = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean }) {
+export function Box({ x, y, w = 300, h = 124, label, color = '#76b900', start = 0, sub, icon, pulse = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean }) {
   const { f, t } = useLocal(start, 8)
   if (f < 0) return null
   // A pulse: a ring that grows out of the box and fades, once a second.
   const beat = pulse ? (f % 30) / 30 : 0
   return (
-    <div style={{ position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, background: color, borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`, opacity: t, fontFamily: CODE, fontWeight: 700, color: '#0b0b0d', fontSize: 26, letterSpacing: 1 }}>
+    <div style={{ position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, background: color, borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`, opacity: t, fontFamily: CODE, fontWeight: 700, color: '#0b0b0d', fontSize: 31, letterSpacing: 1 }}>
       {pulse && <div style={{ position: 'absolute', inset: -6 - beat * 40, border: `4px solid ${color}`, borderRadius: 12 + beat * 20, opacity: 1 - beat }} />}
       {icon && <span style={{ fontSize: 44, lineHeight: 1, marginBottom: 6 }}>{icon}</span>}
       {label.toUpperCase()}
-      {sub && <span style={{ fontSize: 20, fontWeight: 500, marginTop: 6 }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 23, fontWeight: 500, marginTop: 6 }}>{sub}</span>}
     </div>
   )
 }
@@ -455,7 +475,7 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
           )
         })}
       {label && t > 0.5 && (
-        <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 14} textAnchor="middle" fontFamily={CODE} fontWeight={700} fontSize={20} fill={color} letterSpacing={1}>
+        <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 14} textAnchor="middle" fontFamily={CODE} fontWeight={700} fontSize={26} fill={color} letterSpacing={1}>
           {label.toUpperCase()}
         </text>
       )}
@@ -480,7 +500,7 @@ export function Loop({ items, x = 960, y = 540, r = 300, color = '#3ddc97', star
         const p = interpolate(f, [k * every, k * every + 8], [0, 1], { ...clamp, easing: ease })
         if (p <= 0) return null
         return (
-          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 130, top: y + r * Math.sin(at(k)) - 40, width: 260, height: 80, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 26, color: '#fff', transform: `scale(${0.7 + 0.3 * p})`, opacity: p }}>
+          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 150, top: y + r * Math.sin(at(k)) - 46, width: 300, height: 92, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 31, color: '#fff', transform: `scale(${0.7 + 0.3 * p})`, opacity: p }}>
             {label.toUpperCase()}
           </div>
         )

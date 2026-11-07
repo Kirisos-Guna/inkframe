@@ -1,8 +1,7 @@
 // Stand-in for '@kit/remix' when finding sound cues: a whoosh on every cut, typing for code and terminals, a pen for
 // the highlighter and the drawn circle, pops for things that appear.
 import React from 'react'
-import { useCue } from './record'
-import { Sequence } from './remotion'
+import { CutStart, useCue } from './record'
 
 type Kids = { children?: React.ReactNode }
 type Any = { start?: number; [k: string]: unknown }
@@ -12,9 +11,9 @@ export function Cuts({ at, children, whip = false }: { at: number[]; whip?: bool
   return (
     <>
       {React.Children.toArray(children).map((c, i) => (
-        <Sequence key={i} from={at[i] ?? 0}>
+        <CutStart.Provider key={i} value={at[i] ?? 0}>
           {c}
-        </Sequence>
+        </CutStart.Provider>
       ))}
     </>
   )
@@ -51,11 +50,12 @@ export function Page({ start = 0, markAt = 18, marks = [] }: Any & { markAt?: nu
   return null
 }
 export function Code({ code = '', start = 0, cps = 45 }: Any & { code?: string; cps?: number }) {
-  useCue('typing', start + 8, (code.length / cps) * 30)
+  // Typed in at most 0.8 s, as in the real kit.
+  useCue('typing', start + 4, Math.min(code.length / cps, 0.8) * 30)
   return null
 }
 export function Shell({ command = '', start = 0, cps = 30 }: Any & { command?: string; cps?: number }) {
-  useCue('typing', start + 8, (command.length / cps) * 30)
+  useCue('typing', start + 4, Math.min(command.length / cps, 0.6) * 30)
   return null
 }
 export function Flow({ start = 0 }: Any) {

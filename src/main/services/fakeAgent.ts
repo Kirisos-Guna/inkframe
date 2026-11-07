@@ -42,10 +42,6 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
   }
   // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
-  if (p.includes('You cast the narrator for a video')) {
-    const id = p.match(/^(\S+) \| /m)?.[1] ?? ''
-    return JSON.stringify({ id, why: 'A calm explainer voice suits a tech walkthrough.', speed: 1.05, stability: 0.45, style: 0.25 })
-  }
   if (p.includes('You are the researcher for a fast, Fireship-style')) {
     const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
     const kinds = [
@@ -78,9 +74,9 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     return '{"name":"Pen on Black","tags":["Pen","Dark"],"description":"Glowing white pen lines on a deep blue-black board.","dim":"2D","palette":{"bg":"#06101c","ink":"#e8f2ff","accent":"#f5a623"},"stroke":{"width":2,"jitter":0.3,"texture":"pen"}}'
   }
   // Scripts: a deliberately weak first draft (a tired opening, the wrong length), so the app's check and its one
-  // revision run; the revision fixes both.
+  // editor's pass run; the edit fixes both.
   const filler = (n: number) => Array.from({ length: Math.max(0, n) }, (_, i) => (i % 11 === 10 ? 'waves.' : 'radio')).join(' ')
-  if (p.includes('This voiceover script needs a revision')) {
+  if (p.includes('You are the script editor of a channel')) {
     log('script revision')
     const n = Number(p.match(/Stay at about (\d+) words/)?.[1] ?? 150)
     return JSON.stringify({ script: `Your question never reaches the cloud. It walks.\n\n${filler(n - 8)}` })

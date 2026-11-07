@@ -18,10 +18,16 @@ let cues: Cue[] = []
 export const FrameCtx = createContext({ frame: 0, fps: 30, dur: 1 })
 /** Frames added by enclosing <Sequence from>. */
 export const SeqOffset = createContext(0)
+/**
+ * Where the <Cuts> shot around it starts. Times inside a shot are frames of the part (as in the real kit), and
+ * something set to start before its shot comes in when the shot does.
+ */
+export const CutStart = createContext(0)
 
 export function useCue(kind: CueKind, at: number, dur?: number, strength = 1) {
   const off = useContext(SeqOffset)
-  if (Number.isFinite(at)) cues.push({ kind, at: Math.round(at + off), dur: dur && Number.isFinite(dur) ? Math.round(dur) : undefined, strength })
+  const cut = useContext(CutStart)
+  if (Number.isFinite(at)) cues.push({ kind, at: Math.round(Math.max(at, cut) + off), dur: dur && Number.isFinite(dur) ? Math.round(dur) : undefined, strength })
 }
 
 export function takeCues() {

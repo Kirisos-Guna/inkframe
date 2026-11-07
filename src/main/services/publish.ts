@@ -9,7 +9,7 @@ import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
 import { drawingSystem, isTamil, styleDoc, TAMIL_STYLE } from './prompts'
 import { mediaCredits } from './job/mediaPlan'
-import { FAST_FUNNY, lintScript, revisePrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS } from './scriptCraft'
+import { HOUSE_VOICE, lintScript, retentionPrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS, WPM } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
@@ -32,15 +32,12 @@ export interface ScriptRequest {
   platform: 'YouTube' | 'YouTube Shorts' | 'Instagram Reels' | 'TikTok'
   tone: string
   research: boolean
-  /** The fast and funny voice (developer news channels like Fireship). */
-  fast?: boolean
 }
 
 export async function writeScript(r: ScriptRequest) {
   const w = await writer()
   const short = r.platform !== 'YouTube'
-  // The fast voice is spoken at about 190 words a minute.
-  const wpm = r.fast ? 190 : 150
+  const wpm = WPM
   const words = short ? Math.round(Math.min(r.minutes, 1.5) * wpm) : Math.round(r.minutes * wpm)
   const reply = await runAgent({
     ...w,
@@ -67,7 +64,9 @@ ${
       : ''
 }
 ${SCRIPT_CRAFT}
-${r.fast ? `\n${FAST_FUNNY}\n` : ''}
+
+${HOUSE_VOICE}
+
 
 ${SCRIPT_PROCESS}
 
@@ -77,7 +76,7 @@ Reply with JSON only:
   })
   const out = extractJson<{ title: string; script: string; hooks?: string[]; sources?: string[] }>(reply)
   if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
-  const script = await polishScript(w, out.script, words, r.fast)
+  const script = await polishScript(w, out.script, words)
   return { title: out.title ?? '', script, hooks: cleanHooks(out.hooks), sources: out.sources ?? [], by: `${w.provider} · ${w.model}` }
 }
 
@@ -94,13 +93,14 @@ const cleanHooks = (h: unknown) => (Array.isArray(h) ? h.map(String).map((s) => 
  * is off, asks the writer for one revision that names exactly what to change. A revision that comes back worse is
  * not used.
  */
-export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number, fast = false) {
-  const issues = lintScript(script, targetWords, fast)
-  if (!issues.length) return script
+export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number) {
+  const issues = lintScript(script, targetWords)
   try {
-    const reply = await runAgent({ ...w, effort: 'Medium', cwd: libDir('writing'), prompt: revisePrompt(script, issues, targetWords) })
+    // Every script gets the editor's pass for the thread and the jumps between beats (what makes people leave), plus
+    // whatever the local check found. A rewrite that the local check likes less is not used.
+    const reply = await runAgent({ ...w, effort: 'High', cwd: libDir('writing'), prompt: retentionPrompt(script, issues, targetWords) })
     const revised = extractJson<{ script: string }>(reply).script?.trim()
-    return revised && lintScript(revised, targetWords, fast).length <= issues.length ? revised : script
+    return revised && lintScript(revised, targetWords).length <= issues.length ? revised : script
   } catch {
     // The first version is still a whole script: better than nothing.
     return script

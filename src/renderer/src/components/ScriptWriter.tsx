@@ -15,7 +15,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
  * Writes a voiceover script with the writer (Codex by default): from a topic, or by recreating a YouTube video's
  * concept in new words. Record it, then drop the voiceover.
  */
-export function ScriptWriter({ onClose, onUse, fastDefault = false }: { onClose: () => void; onUse: (script: string, title: string, direction?: string) => void; fastDefault?: boolean }) {
+export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (script: string, title: string, direction?: string) => void }) {
   const { status, settings, showToast } = useApp()
   const [mode, setMode] = useState<'Topic' | 'Recreate'>('Topic')
   const [topic, setTopic] = useState('')
@@ -24,7 +24,6 @@ export function ScriptWriter({ onClose, onUse, fastDefault = false }: { onClose:
   const [platform, setPlatform] = useState<(typeof PLATFORMS)[number]>('YouTube')
   const [tone, setTone] = useState<(typeof TONES)[number]>('Calm and nerdy')
   const [research, setResearch] = useState(true)
-  const [fast, setFast] = useState(fastDefault)
   const [url, setUrl] = useState('')
   const [reMinutes, setReMinutes] = useState(0)
   const [reTone, setReTone] = useState<(typeof RE_TONES)[number]>('Like the original')
@@ -39,9 +38,9 @@ export function ScriptWriter({ onClose, onUse, fastDefault = false }: { onClose:
     setBusy(true)
     setStage('')
     try {
-      if (mode === 'Topic') setOut(await window.api.writer.script({ topic, angle, minutes: platform === 'YouTube' ? minutes : Math.min(minutes, 1.5), platform, tone, research, fast }))
+      if (mode === 'Topic') setOut(await window.api.writer.script({ topic, angle, minutes: platform === 'YouTube' ? minutes : Math.min(minutes, 1.5), platform, tone, research }))
       else {
-        const r = await window.api.writer.recreate({ url, minutes: reMinutes, tone: reTone === 'Like the original' ? 'the same tone as the original' : reTone, notes: notes.trim() || undefined, research, fast })
+        const r = await window.api.writer.recreate({ url, minutes: reMinutes, tone: reTone === 'Like the original' ? 'the same tone as the original' : reTone, notes: notes.trim() || undefined, research })
         setOut({ title: r.title, script: r.script, hooks: r.hooks, sources: [r.source.url], by: r.by, direction: r.direction, recreated: r })
       }
     } catch (e) {
@@ -76,12 +75,6 @@ export function ScriptWriter({ onClose, onUse, fastDefault = false }: { onClose:
                   </button>
                 ))}
               </div>
-              <label className="flex cursor-pointer items-center gap-2.5 text-[15px]">
-                <input type="checkbox" className="h-4 w-4 accent-accent" checked={fast} disabled={busy} onChange={(e) => setFast(e.target.checked)} />
-                <span>
-                  <b>Fast and funny</b> <span className="text-[13.5px] text-muted">· deadpan jokes every 10–15 s, rapid sentences, like developer news channels (Fireship)</span>
-                </span>
-              </label>
               {mode === 'Recreate' ? (
                 <>
                   <div>

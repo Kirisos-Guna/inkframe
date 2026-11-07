@@ -375,19 +375,16 @@ export default function NewVideo() {
               <button
                 className="font-semibold text-accent disabled:text-muted"
                 disabled={!script?.trim()}
-                onClick={() => (app?.elevenLabsKey || window.api.fake ? setVoicing(true) : showToast('Add your ElevenLabs API key in Settings first'))}
+                onClick={() => setVoicing(true)}
               >
-                No voiceover yet? Make it with ElevenLabs
+                No voiceover yet? Make it on this PC
               </button>
-              <span className="text-muted">· {script?.trim() ? 'the best voice for this script is picked for you' : 'write or paste the script first'}</span>
+              <span className="text-muted">· {script?.trim() ? 'free, a quick developer-explainer voice' : 'write or paste the script first'}</span>
             </div>
           )}
           {voicing && script?.trim() && (
             <VoiceMaker
               script={script}
-              language={/[஀-௿]/.test(script) ? 'Tamil' : s.outputLang}
-              style={style?.name}
-              fast={!!style?.realMedia}
               onClose={() => setVoicing(false)}
               onDone={(file) => {
                 setVoicing(false)
@@ -397,7 +394,6 @@ export default function NewVideo() {
           )}
           {writing && (
             <ScriptWriter
-              fastDefault={!!style?.realMedia}
               onClose={() => setWriting(false)}
               onUse={(text, title, dir) => {
                 setScript(text)
@@ -621,6 +617,7 @@ export default function NewVideo() {
               <div className="mt-3">
                 <Chips options={TRANSITIONS} value={s.transition ?? 'None'} onToggle={(transition) => set({ transition })} size="sm" />
               </div>
+              {style?.realMedia && s.transition === 'Fade' && <div className="mt-2 text-[13px] text-dim">This style cuts hard between parts; Fade is not used.</div>}
             </div>
             <div>
               <div className="text-[15px] font-semibold text-ink/90">Captions</div>

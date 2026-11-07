@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
-  ElevenVoice,
-  VoicePick,
+  LocalVoice,
+  VoiceChoice,
   AppSettings,
   CharacterDef,
   Comment,
@@ -52,9 +52,9 @@ const api = {
     url: (file: string) => 'media://f/' + encodeURIComponent(file)
   },
   voice: {
-    list: (language?: string) => invoke<{ voices: ElevenVoice[]; left?: number }>('voice:list', language),
-    pick: (script: string, voices: ElevenVoice[], o: { language?: string; style?: string; fast?: boolean }) => invoke<VoicePick>('voice:pick', script, voices, o),
-    speak: (script: string, pick: VoicePick, voice: ElevenVoice, language?: string) => invoke<string>('voice:speak', script, pick, voice, language),
+    list: () => invoke<{ voices: LocalVoice[]; choice: VoiceChoice }>('voice:list'),
+    preview: (choice: VoiceChoice) => invoke<string>('voice:preview', choice),
+    speak: (script: string, choice: VoiceChoice) => invoke<string>('voice:speak', script, choice),
     onStatus: (cb: (s: string) => void) => on<string>('voice:status', cb)
   },
   pick: {
@@ -104,9 +104,9 @@ const api = {
     onStatus: (cb: (status: string) => void) => on<string>('scout:status', cb)
   },
   writer: {
-    script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean; fast?: boolean }) =>
+    script: (r: { topic: string; angle?: string; minutes: number; platform: string; tone: string; research: boolean }) =>
       invoke<{ title: string; script: string; hooks: string[]; sources: string[]; by: string }>('writer:script', r),
-    recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean; fast?: boolean }) =>
+    recreate: (r: { url: string; minutes: number; tone: string; notes?: string; research: boolean }) =>
       invoke<{
         title: string
         script: string

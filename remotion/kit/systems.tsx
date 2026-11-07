@@ -4,8 +4,7 @@
 // They are flat: each sets stroke="none" on its group, so the Board's pen outline (meant for drawn lines) stays off.
 import React from 'react'
 import { interpolate, Easing } from 'remotion'
-import { useCurrentFrame } from 'remotion'
-import { useScene } from './index'
+import { useFrameFor, usePartFrame, useScene } from './index'
 
 /** The signal colours: one per idea, kept for the whole video. */
 export const SIGNAL = { cyan: '#4cc4d6', amber: '#f6b73c', pink: '#f0569a', purple: '#9b7cf0', orange: '#e8873a' } as const
@@ -19,7 +18,7 @@ const ease = Easing.bezier(0.2, 0.8, 0.2, 1)
 
 /** 0 → 1 from `start` over `dur` frames, eased. */
 export function useIn(start = 0, dur = 12) {
-  const f = useCurrentFrame()
+  const f = useFrameFor(start)
   return interpolate(f, [start, start + Math.max(1, dur)], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
 }
 
@@ -109,7 +108,7 @@ export function Server({ x, y, w = 300, h = 170, rows = 3, logo = [SIGNAL.cyan],
 
 /** A terminal with lines typed one after another (cps: characters per second). */
 export function Terminal({ x, y, w = 620, h = 300, lines, start = 0, cps = 30, color = SIGNAL.cyan }: { x: number; y: number; w?: number; h?: number; lines: string[]; start?: number; cps?: number; color?: string }) {
-  const f = useCurrentFrame()
+  const f = useFrameFor(start)
   const { fps } = useScene()
   let shown = Math.max(0, Math.floor(((f - start - 8) / fps) * cps))
   return (
@@ -177,7 +176,7 @@ export function Connector({ x1, y1, x2, y2, color = SIGNAL.cyan, start = 0, dur 
 /** A small card of data sliding from (x1, y1) to (x2, y2), e.g. "<html>" travelling down a connector. */
 export function Packet({ x1, y1, x2, y2, text, color = SIGNAL.amber, start = 0, dur = 30 }: { x1: number; y1: number; x2: number; y2: number; text: string; color?: string; start?: number; dur?: number }) {
   const t = useIn(start, dur)
-  if (useCurrentFrame() < start) return null
+  if (useFrameFor(start) < start) return null
   const x = x1 + (x2 - x1) * t
   const y = y1 + (y2 - y1) * t
   const w = text.length * 13 + 36
@@ -277,7 +276,7 @@ export function Steps({ x = 960, y = 940, count, current, colors = [SIGNAL.orang
  * comes back into focus at `end` (if given).
  */
 export function Focus({ start, end, children }: { start: number; end?: number; children: React.ReactNode }) {
-  const f = useCurrentFrame()
+  const f = useFrameFor(start)
   const into = useIn(start, 12)
   const back = end === undefined ? 0 : interpolate(f, [end, end + 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
   const d = into * (1 - back)

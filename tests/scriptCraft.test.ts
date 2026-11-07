@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lintScript } from '../src/main/services/scriptCraft'
+import { lintScript, retentionPrompt } from '../src/main/services/scriptCraft'
 
 const words = (n: number) => Array.from({ length: n }, (_, i) => (i % 12 === 11 ? 'word.' : 'word')).join(' ')
 const good = `Your question never reaches the cloud. It walks.\n\n${words(140)}`
@@ -33,10 +33,37 @@ describe('lintScript', () => {
   })
 })
 
-describe('lintScript, fast and funny', () => {
-  it('wants shorter sentences', () => {
-    const mid = Array.from({ length: 23 }, () => 'and').join(' ') + '.'
-    expect(lintScript(`It walks. ${mid} ${words(120)}`, 150).join(' ')).not.toMatch(/Split these long sentences/)
-    expect(lintScript(`It walks. ${mid} ${words(120)}`, 150, true).join(' ')).toMatch(/Split these long sentences/)
+describe('lintScript, the house voice', () => {
+  it('wants sentences of at most 24 words', () => {
+    const ok = Array.from({ length: 23 }, () => 'and').join(' ') + '.'
+    const long = Array.from({ length: 26 }, () => 'and').join(' ') + '.'
+    expect(lintScript(`It walks. ${ok} ${words(120)}`, 150).join(' ')).not.toMatch(/Split these long sentences/)
+    expect(lintScript(`It walks. ${long} ${words(120)}`, 150).join(' ')).toMatch(/Split these long sentences/)
+  })
+})
+
+describe('lintScript, the thread', () => {
+  const opening = 'Five hours, three agents, and the token limit hits. You cannot explain a line you shipped.'
+  it('catches a beat that opens on a new subject with no bridge', () => {
+    const issues = lintScript(`${opening}\n\nNow meet Chris Wellons, skeeto on GitHub.\n\nHere's the secret: it's fun.`, 0)
+    expect(issues.some((i) => i.includes('open cold') && i.includes('Now meet') && i.includes("Here's the secret"))).toBe(true)
+  })
+  it('lets bridged beats through', () => {
+    expect(lintScript(`${opening}\n\nSo who still writes code by hand? Chris Wellons does.\n\nBut here is why it pays.`, 0).filter((i) => i.includes('open cold'))).toEqual([])
+  })
+  it('catches a line that talks down to the viewer', () => {
+    expect(lintScript(`${opening} Fine, you don't care.`, 0).some((i) => i.includes('talks down'))).toBe(true)
+  })
+})
+
+describe('the editor pass', () => {
+  it('asks for the jumps and the thread, with the local findings and the house voice', () => {
+    const p = retentionPrompt('A script.', ['It is 10 words; it must be about 300.'], 300)
+    expect(p).toContain('Jumps')
+    expect(p).toContain('It is 10 words')
+    expect(p).toContain('THE HOUSE VOICE')
+    expect(p).toContain('CHAIN')
+    expect(p).toContain('Stay at about 300 words')
+    expect(p).toContain('THE THREAD')
   })
 })
