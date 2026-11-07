@@ -152,7 +152,8 @@ async function capture(
     win.webContents.setAudioMuted(true)
     if (opt.tall) win.setContentSize(W, height)
     const load = target.url ? win.loadURL(target.url) : win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(target.html!))
-    await Promise.race([load, sleep(25000)])
+    // A redirect or a slow resource can fail the first load while the page itself shows fine: what it draws decides.
+    await Promise.race([load.catch(() => {}), sleep(25000)])
     await sleep(wait)
     // Some PCs replace the system fonts by name: embeds (which use the system font) get Inter instead, in every frame.
     if (opt.uiFont) {
@@ -352,7 +353,8 @@ async function quoteClip(s: Shot, out: string) {
   const official = (c = '') => (words(c).some((w) => w.length > 2 && asked.includes(w)) ? 0 : 1)
   ids.sort((a, b) => official(a[1]) - official(b[1]))
   for (const [id, channel] of ids.slice(0, 3)) {
-    const subs = out.replace(/\.\w+$/, '')
+    // Each candidate's captions in their own file, so a later one never reads an earlier one's.
+    const subs = `${out.replace(/\.\w+$/, '')}-${id}`
     await run(yt, ['--no-warnings', '--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*,en', '--sub-format', 'vtt', '-o', subs, `https://www.youtube.com/watch?v=${id}`])
     const vtt = [`${subs}.en.vtt`, `${subs}.en-US.vtt`, `${subs}.en-orig.vtt`].find(existsSync)
     if (!vtt) continue

@@ -190,6 +190,10 @@ function registerIpc() {
     if (newVoice) {
       p.words = []
       p.parts = []
+      p.captionLines = undefined
+      p.media = undefined
+      p.finalCheck = undefined
+      p.output = undefined
       pipeline.startTranscription(p.id)
     }
     pipeline.emit(p, true)

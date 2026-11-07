@@ -21,12 +21,18 @@ describe('clips from the direction', () => {
 describe('media credits', () => {
   it('lists each licence credit once, and not screenshots or posts', () => {
     const p = {
+      parts: [{ id: 'a' }, { id: 'b' }],
       media: {
         a: [{ kind: 'photo', name: 'm/1.jpg', credit: 'Jensen.jpg by X, CC BY 4.0, via Wikimedia Commons' }, { kind: 'page', name: 'm/2.png', credit: 'Screenshot of nvidia.com' }],
         b: [{ kind: 'photo', name: 'm/3.jpg', credit: 'Jensen.jpg by X, CC BY 4.0, via Wikimedia Commons' }, { kind: 'tweet', name: 'm/4.png', credit: 'Post by Elon Musk on X' }, { kind: 'clip', name: 'm/5.mp4', credit: 'Video by Ana on Pexels' }]
       }
     } as unknown as Project
     expect(mediaCredits(p)).toEqual(['Jensen.jpg by X, CC BY 4.0, via Wikimedia Commons', 'Video by Ana on Pexels'])
+  })
+
+  it('leaves out media of parts that are no longer in the video', () => {
+    const p = { parts: [{ id: 'a' }], media: { a: [{ kind: 'photo', name: 'm/1.jpg', credit: 'One' }], gone: [{ kind: 'clip', name: 'm/2.mp4', credit: 'Two' }] } } as unknown as Project
+    expect(mediaCredits(p)).toEqual(['One'])
   })
 })
 

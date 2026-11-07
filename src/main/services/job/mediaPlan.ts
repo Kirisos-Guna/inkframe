@@ -3,7 +3,7 @@
 import type { MediaItem, Part, Project, Shot } from '../../../shared/types'
 import { extractJson, runAgent } from '../agent'
 import { getSettings, libDir } from '../store'
-import { codexPath } from '../tools'
+import { writer } from '../publish'
 import { fetchShot, linksIn, memeTemplates } from '../realMedia'
 import { emit, step } from './events'
 import { limiter } from './util'
@@ -59,13 +59,23 @@ Reply with JSON only: {"parts": [{"part": 1, "shots": [ … ]}, …]}`
  * Plans and fetches real media for the parts that have none yet. Parts keep what they got: a part whose shots could
  * not be fetched is drawn without them.
  */
+const plans = new Map<string, { key: string; plan: { parts: { part: number; shots: Shot[] }[] } }>()
+
 export async function gatherMedia(p: Project, signal: AbortSignal) {
   const parts = p.parts.filter((x) => !p.media?.[x.id])
   if (!parts.length) return
   const s = getSettings()
-  const codex = !!(await codexPath())
-  const provider = (s.writerProvider ?? 'Codex') === 'Codex' && codex ? ('Codex' as const) : ('Claude Code' as const)
-  const model = provider === 'Codex' ? (s.writerModel ?? 'Codex default') : 'Sonnet 5.5'
+  const key = parts.map((x) => `${x.id}:${x.start.toFixed(2)}`).join(',')
+  const cached = plans.get(p.id)
+  const plan = cached?.key === key ? cached.plan : await research(p, parts, signal)
+  plans.set(p.id, { key, plan })
+  await fetchAll(p, parts, plan, s, signal)
+  plans.delete(p.id)
+}
+
+async function research(p: Project, parts: Part[], signal: AbortSignal) {
+  const s = getSettings()
+  const { provider, model } = await writer()
   const memes = await memeTemplates()
     .then((m) => m.map((x) => x.name))
     .catch(() => [] as string[])
@@ -80,7 +90,10 @@ export async function gatherMedia(p: Project, signal: AbortSignal) {
     signal,
     prompt: mediaPlanPrompt(p, parts, memes, links, !!(s.pexelsKey || s.pixabayKey), !!s.quoteClips)
   })
-  const plan = extractJson<{ parts: { part: number; shots: Shot[] }[] }>(reply)
+  return extractJson<{ parts: { part: number; shots: Shot[] }[] }>(reply)
+}
+
+async function fetchAll(p: Project, parts: Part[], plan: { parts: { part: number; shots: Shot[] }[] }, s: ReturnType<typeof getSettings>, signal: AbortSignal) {
   const jobs: { x: Part; shot: Shot; i: number }[] = []
   for (const x of parts) {
     const shots = (plan.parts?.find((y) => Number(y.part) === x.index + 1)?.shots ?? []).slice(0, 8)
@@ -110,6 +123,6 @@ export async function gatherMedia(p: Project, signal: AbortSignal) {
 
 /** Every licence credit in the video, once each, for the description. */
 export function mediaCredits(p: Project) {
-  const all = Object.values(p.media ?? {}).flat()
+  const all = p.parts.flatMap((x) => p.media?.[x.id] ?? [])
   return [...new Set(all.map((m) => m.credit).filter((c): c is string => !!c && !c.startsWith('Screenshot of') && !c.startsWith('Post by')))]
 }

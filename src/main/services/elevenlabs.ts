@@ -1,6 +1,6 @@
 // Voiceovers made with ElevenLabs: the writer picks the voice that fits the script, then the script is spoken in a few
 // pieces (each knows the text around it, so the delivery flows) and joined into one file. The key stays on this PC.
-import { mkdirSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import type { ElevenVoice, VoicePick } from '../../shared/types'
 import { getSettings, libDir } from './store'
@@ -118,9 +118,15 @@ export async function speak(script: string, pick: VoicePick, voice: ElevenVoice,
     return out
   }
   // A library voice is added to the account once, then used like the others.
+  let id = pick.id
   if (voice.library && voice.owner) {
     onStatus(`Adding ${voice.name} to your voices`)
-    await call(`/v1/voices/add/${voice.owner}/${voice.id}`, { method: 'POST', body: JSON.stringify({ new_name: voice.name }) })
+    // Already added before (the request then fails): the voice is in the account under the same id.
+    const added = await call<{ voice_id?: string }>(`/v1/voices/add/${voice.owner}/${voice.id}`, { method: 'POST', body: JSON.stringify({ new_name: voice.name }) }).catch((e: Error) => {
+      if (/already|exists/i.test(e.message)) return {} as { voice_id?: string }
+      throw e
+    })
+    id = added.voice_id ?? voice.id
   }
   const pieces = splitScript(script)
   const model = language && language !== 'English' ? 'eleven_multilingual_v2' : s.elevenLabsModel ?? 'eleven_multilingual_v2'
@@ -129,7 +135,7 @@ export async function speak(script: string, pick: VoicePick, voice: ElevenVoice,
   mkdirSync(work, { recursive: true })
   for (const [i, text] of pieces.entries()) {
     onStatus(`Speaking ${i + 1} of ${pieces.length}`)
-    const audio = await call<ArrayBuffer>(`/v1/text-to-speech/${pick.id}?output_format=mp3_44100_128`, {
+    const audio = await call<ArrayBuffer>(`/v1/text-to-speech/${id}?output_format=mp3_44100_128`, {
       method: 'POST',
       headers: { Accept: 'audio/mpeg' },
       body: JSON.stringify({
@@ -149,5 +155,6 @@ export async function speak(script: string, pick: VoicePick, voice: ElevenVoice,
   const inputs = parts.flatMap((f) => ['-i', f])
   const chain = parts.map((_, i) => `[${i}:a]aresample=44100,apad=pad_dur=${i < parts.length - 1 ? 0.25 : 0}[a${i}]`).join(';')
   await ffmpeg(['-y', ...inputs, '-filter_complex', `${chain};${parts.map((_, i) => `[a${i}]`).join('')}concat=n=${parts.length}:v=0:a=1[out]`, '-map', '[out]', '-b:a', '192k', out])
+  rmSync(work, { recursive: true, force: true })
   return out
 }

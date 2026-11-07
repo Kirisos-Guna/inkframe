@@ -300,7 +300,7 @@ export default function NewVideo() {
           {voicing && script?.trim() && (
             <VoiceMaker
               script={script}
-              language={s.outputLang}
+              language={/[஀-௿]/.test(script) ? 'Tamil' : s.outputLang}
               style={style?.name}
               fast={!!style?.realMedia}
               onClose={() => setVoicing(false)}
