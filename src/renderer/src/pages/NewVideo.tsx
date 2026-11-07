@@ -62,6 +62,16 @@ const LANGS = ['English', 'Tamil'] as const
 const MODELS = ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']
 const CODEX_MODELS = ['Codex default']
 
+/** What New video keeps while it is being filled in (this computer only). */
+const FORM = 'inkframe:new-video'
+interface SavedForm {
+  draftId?: string
+  script: string | null
+  direction: string
+  material: string[]
+  settings: ProjectSettings
+}
+
 const defaultSettings = (): ProjectSettings => ({
   kind: 'Explainer',
   tone: ['Calm', 'Nerdy'],
@@ -120,6 +130,68 @@ export default function NewVideo() {
     return () => audio.pause()
   }, [])
 
+  // Nothing typed here is lost by going to another page or closing the app: the unfinished video comes back.
+  const [restored, setRestored] = useState(false)
+  useEffect(() => {
+    let saved: Partial<SavedForm> = {}
+    try {
+      saved = JSON.parse(localStorage.getItem(FORM) ?? '{}')
+    } catch {
+      /* nothing saved */
+    }
+    ;(async () => {
+      try {
+        // The draft being worked on, or (nothing saved yet) the newest one with a voiceover.
+        const d = saved.draftId ? await window.api.projects.get(saved.draftId) : await window.api.projects.lastDraft()
+        const live = d?.draft ? d : undefined
+        if (live?.voiceover) {
+          setDraft(live)
+          audio.src = window.api.media.url(live.voiceover.file)
+          window.api.media.peaks(live.voiceover.file).then(setPeaks)
+          setAdding(100)
+        }
+        const script = saved.script !== undefined ? saved.script : live?.script ?? null
+        setScript(script)
+        setDirection(saved.direction ?? live?.direction ?? '')
+        setMaterial(saved.material ?? live?.material ?? [])
+        const settings = saved.settings ?? (live?.settings?.styleId ? live.settings : undefined)
+        if (settings) setS({ ...defaultSettings(), ...settings })
+      } finally {
+        setRestored(true)
+      }
+    })()
+  }, [])
+  useEffect(() => {
+    if (!restored) return
+    const form: SavedForm = { draftId: draft?.id, script, direction, material, settings: s }
+    try {
+      localStorage.setItem(FORM, JSON.stringify(form))
+    } catch {
+      /* storage full or blocked: the draft below still keeps it */
+    }
+    // The draft keeps it too (and stays fresh, so it is not cleaned up while being worked on).
+    if (!draft) return
+    const t = setTimeout(() => window.api.projects.update(draft.id, { script: script ?? undefined, direction, material, settings: s }).catch(() => {}), 800)
+    return () => clearTimeout(t)
+  }, [restored, draft?.id, script, direction, material, s])
+
+  function startOver() {
+    try {
+      localStorage.removeItem(FORM)
+    } catch {
+      /* nothing saved */
+    }
+    audio.pause()
+    setPlaying(false)
+    setDraft(null)
+    setPeaks([])
+    setAdding(0)
+    setScript(null)
+    setDirection('')
+    setMaterial([])
+    setS(defaultSettings())
+  }
+
   const words = direction.trim() ? direction.trim().split(/\s+/).length : 0
   const style = styles.find((x) => x.id === s.styleId)
   const filtered = styles.filter((x) => styleDim === 'All' || x.dim === styleDim)
@@ -174,6 +246,12 @@ export default function NewVideo() {
         settings: s
       })
       upsertProject(p)
+      // Made: the next New video starts empty.
+      try {
+        localStorage.removeItem(FORM)
+      } catch {
+        /* nothing saved */
+      }
       await window.api.job.start(p.id)
       showToast(`${APP_NAME} is making your video`)
       go({ name: 'editor', id: p.id })
@@ -197,7 +275,14 @@ export default function NewVideo() {
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-6 px-6 pb-6 pt-12 xl:flex-row xl:px-10 2xl:gap-9 2xl:px-12">
       <div className="min-w-0 flex-1">
-        <h1 className="text-[34px] font-bold tracking-tight">New video</h1>
+        <div className="flex items-baseline gap-4">
+          <h1 className="text-[34px] font-bold tracking-tight">New video</h1>
+          {(draft || script || direction.trim()) && (
+            <button className="text-[15px] text-muted hover:text-ink" onClick={startOver} title="Clears this page. The voiceover file stays where it is.">
+              Start over
+            </button>
+          )}
+        </div>
         <p className="mt-1 text-[17px] text-muted">
           Drop your voiceover, then tell Claude everything you have in mind. The more you say, the closer the first version.
         </p>

@@ -185,6 +185,22 @@ if (mode === 'publish') {
 }
 
 // comment = open the most recent video and send one comment on part 2 (uses an existing userdata folder).
+// restore: what is typed in New video survives going to another page (and, run twice, a restart).
+if (mode === 'restore') {
+  if (!(await page.locator('textarea').first().inputValue().catch(() => ''))) {
+    await page.click('text=Add your script')
+    await page.locator('textarea').first().fill('A script that must not get lost.')
+  }
+  await page.waitForTimeout(1200)
+  await nav('Characters')
+  await page.waitForTimeout(800)
+  await nav('Home')
+  await page.waitForSelector('text=New video')
+  await page.waitForTimeout(1200)
+  console.log('script after coming back:', JSON.stringify(await page.locator('textarea').first().inputValue().catch(() => '(none)')))
+  await shot('restored')
+}
+
 // voice: makes the voiceover from a pasted script with ElevenLabs (the stand-in with FAKE=1), up to Replace.
 if (mode === 'voice') {
   await page.click('text=Add your script')

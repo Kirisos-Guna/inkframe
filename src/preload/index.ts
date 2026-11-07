@@ -41,6 +41,7 @@ const api = {
   projects: {
     list: () => invoke<Project[]>('projects:list'),
     get: (id: string) => invoke<Project>('projects:get', id),
+    lastDraft: () => invoke<Project | undefined>('projects:lastDraft'),
     create: (p: Partial<Project>) => invoke<Project>('projects:create', p),
     update: (id: string, patch: Partial<Project>) => invoke<Project>('projects:update', id, patch),
     remove: (id: string) => invoke<void>('projects:remove', id)

@@ -164,6 +164,7 @@ function registerIpc() {
 
   h('projects:list', () => store.listProjects())
   h('projects:get', (id: string) => store.getProject(id))
+  h('projects:lastDraft', () => store.lastDraft())
   h('projects:create', (partial: Partial<Project>) => {
     const p = store.createProject(partial)
     if (p.voiceover) pipeline.startTranscription(p.id)

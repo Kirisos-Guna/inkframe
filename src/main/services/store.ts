@@ -155,6 +155,16 @@ export function removeProject(id: string) {
  * Removes "New video" drafts that were started but never made, once they are a day old. Only the folder the app
  * created for the draft goes; a draft whose folder holds the voiceover itself is kept. Returns how many went.
  */
+/** The newest unfinished New video (a voiceover was added, Make was not pressed yet), to carry on with it. */
+export function lastDraft(): Project | undefined {
+  let best: Project | undefined
+  for (const [id, dir] of Object.entries(index())) {
+    const p = getProject(id, dir)
+    if (p?.draft && p.voiceover && (!best || p.updatedAt > best.updatedAt)) best = p
+  }
+  return best
+}
+
 export function cleanDrafts(maxAgeMs = 24 * 60 * 60 * 1000) {
   let n = 0
   for (const [id, dir] of Object.entries(index())) {
