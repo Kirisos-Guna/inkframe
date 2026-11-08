@@ -110,7 +110,7 @@ export async function recreateVideo(r: RecreateRequest, onStatus: (s: string) =>
       model,
       effort: 'High',
       cwd: libDir('writing'),
-      search: r.research && provider === 'Codex',
+      search: r.research,
       prompt: `You help a creator make their own version of a YouTube video they admire: the same concept, told their way.
 
 The original video
@@ -133,7 +133,7 @@ ${transcript.slice(0, 60000)}
      specific example where the original is vague, no slow stretches.
    - Every sentence is yours. Do not copy or closely paraphrase its sentences, jokes or catchphrases, and do not
      mention the original video, its channel or its host.
-   - Keep facts and numbers correct${r.research && provider === 'Codex' ? '; check them on the web and update anything out of date' : '; if one looks wrong or dated, say it more carefully rather than repeating it'}.
+   - Keep facts and numbers correct${r.research ? '; check them on the web and update anything out of date' : '; if one looks wrong or dated, say it more carefully rather than repeating it'}.
    - About ${targetWords} words (${Math.max(1, Math.round(targetWords / 150))} min spoken), within 10%. Tone: ${r.tone}.${r.notes ? `\n   - The creator adds (follow it): ${r.notes}` : ''}
 3. Write a short direction (under 120 words) for the animator: the visual idea for each beat, as one paragraph, in no
    particular art style (the creator picks the style).

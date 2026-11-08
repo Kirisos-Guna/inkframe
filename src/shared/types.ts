@@ -343,3 +343,29 @@ export interface VoiceChoice {
   speed: number
   pitch: number
 }
+
+/** One trending item read from a source (Hacker News, Reddit, GitHub, YouTube…), with its numbers. */
+export interface TrendSignal {
+  source: string
+  title: string
+  url: string
+  metric?: string
+}
+export interface TrendRequest {
+  /** 1 = today, 7 = this week */
+  days: number
+  /** What the creator wants ideas about (optional): "AI", "web dev"… */
+  focus?: string
+  minutes?: number
+}
+/** A ranked video idea from what is trending. */
+export interface TrendIdea {
+  title: string
+  hook: string
+  why: string
+  concept: string
+  angle: string
+  facts: string[]
+  score: number
+  evidence: { source: string; metric?: string; url: string }[]
+}

@@ -14,6 +14,22 @@ const log = (line: string) => process.env.INKFRAME_FAKE_LOG && appendFileSync(pr
 export async function fakeAgent(o: AgentOpts): Promise<string> {
   await wait(300)
   const p = o.prompt
+  // Viral ideas (first: the trending items it lists can contain any words): the first three items read become the ideas.
+  if (p.includes('You find the next viral video')) {
+    const items = [...p.matchAll(/^- ([^·\n]+?)(?: · ([^·\n]+?))? · (.+) · (https?:\/\/\S+)$/gm)].slice(0, 3)
+    return JSON.stringify({
+      ideas: items.map((m, i) => ({
+        title: m[3].slice(0, 58),
+        hook: `Everyone is talking about this, and almost nobody knows why it works.`,
+        why: `Trending on ${m[1].trim()}${m[2] ? ` with ${m[2].trim()}` : ''}.`,
+        concept: 'The idea underneath the news, explained from first principles.',
+        angle: 'Start from what happened, ask the one question it raises, and answer it step by step.',
+        facts: [`${m[1].trim()}: ${m[2]?.trim() ?? 'trending'}`],
+        score: 90 - i * 7,
+        evidence: [{ source: m[1].trim(), metric: m[2]?.trim(), url: m[4] }]
+      }))
+    })
+  }
   if (p.includes('Plan it by splitting the voiceover')) {
     const dur = Number(p.match(/Voiceover length: ([\d.]+)/)?.[1] ?? 30)
     const n = Math.max(2, Math.round(dur / 9))

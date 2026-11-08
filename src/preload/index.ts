@@ -7,7 +7,9 @@ import type {
   LearnSession,
   Project,
   Status,
-  StyleDef
+  StyleDef,
+  TrendIdea,
+  TrendRequest
 } from '../shared/types'
 
 export type UpdateInfo = {
@@ -114,6 +116,8 @@ const api = {
         by: string
       }>('writer:recreate', r),
     onRecreate: (cb: (status: string) => void) => on<string>('recreate:status', cb),
+    trends: (r: TrendRequest) => invoke<{ ideas: TrendIdea[]; read: string[]; failed: string[]; by: string }>('writer:trends', r),
+    onTrends: (cb: (status: string) => void) => on<string>('trends:status', cb),
     publish: (id: string) => invoke<Project>('writer:publish', id),
     captions: (id: string, tidy: boolean) => invoke<Project>('writer:captions', id, tidy)
   },

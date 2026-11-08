@@ -11,7 +11,8 @@ import { engineOf } from './services/engines'
 import { closeStillBrowser } from './services/render'
 import { recreateVideo, type RecreateRequest } from './services/recreate'
 import { DEFAULT_VOICE, previewVoice, speak, VOICES } from './services/localVoice'
-import type { VoiceChoice } from '../shared/types'
+import type { TrendRequest, VoiceChoice } from '../shared/types'
+import { findTrendingIdeas } from './services/trends'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { scoutStyle } from './services/styleScout'
@@ -224,6 +225,7 @@ function registerIpc() {
   h('job:refinish', (id: string) => pipeline.refinish(id))
 
   h('writer:script', (r: ScriptRequest) => writeScript(r))
+  h('writer:trends', (r: TrendRequest) => findTrendingIdeas(r, (s) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('trends:status', s))))
   h('writer:recreate', (r: RecreateRequest) =>
     recreateVideo(r, (s) => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('recreate:status', s)

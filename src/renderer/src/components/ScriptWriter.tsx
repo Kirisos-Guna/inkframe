@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Copy, Download, Globe, Link2, Sparkles, X } from 'lucide-react'
+import { Copy, Download, ExternalLink, Flame, Globe, Link2, Sparkles, X } from 'lucide-react'
+import type { TrendIdea } from '@shared/types'
+import { ideaBrief } from '@shared/ideas'
 import { APP_NAME } from '@shared/brand'
 import { errorText, useApp } from '@/store/app'
 import { Chips } from './ui'
@@ -17,7 +19,10 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
  */
 export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (script: string, title: string, direction?: string) => void }) {
   const { status, settings, showToast } = useApp()
-  const [mode, setMode] = useState<'Topic' | 'Recreate'>('Topic')
+  const [mode, setMode] = useState<'Trends' | 'Topic' | 'Recreate'>('Topic')
+  const [days, setDays] = useState<'Today' | 'This week'>('This week')
+  const [focus, setFocus] = useState('')
+  const [ideas, setIdeas] = useState<{ ideas: TrendIdea[]; read: string[]; failed: string[]; by: string } | null>(null)
   const [topic, setTopic] = useState('')
   const [angle, setAngle] = useState('')
   const [minutes, setMinutes] = useState(10)
@@ -33,6 +38,28 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
   const [out, setOut] = useState<{ title: string; script: string; hooks?: string[]; sources: string[]; by: string; direction?: string; recreated?: Recreated } | null>(null)
   const writer = (settings?.writerProvider ?? 'Codex') === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
   useEffect(() => window.api.writer.onRecreate(setStage), [])
+  useEffect(() => window.api.writer.onTrends(setStage), [])
+
+  async function findIdeas() {
+    setBusy(true)
+    setStage('')
+    try {
+      setIdeas(await window.api.writer.trends({ days: days === 'Today' ? 1 : 7, focus: focus.trim() || undefined, minutes }))
+    } catch (e) {
+      showToast(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** The picked idea becomes the topic: its title, angle, facts and sources, ready to write (and still editable). */
+  function pick(i: TrendIdea) {
+    const b = ideaBrief(i)
+    setTopic(b.topic)
+    setAngle(b.angle)
+    setResearch(true)
+    setMode('Topic')
+  }
 
   async function write() {
     setBusy(true)
@@ -56,10 +83,23 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="card flex max-h-full w-full max-w-[860px] flex-col overflow-hidden">
         <div className="flex items-center gap-3 border-b border-line/70 px-6 py-4">
-          {mode === 'Topic' ? <Sparkles size={18} className="text-accent" /> : <Link2 size={18} className="text-accent" />}
+          {mode === 'Topic' ? <Sparkles size={18} className="text-accent" /> : mode === 'Trends' ? <Flame size={18} className="text-accent" /> : <Link2 size={18} className="text-accent" />}
           <div className="flex-1">
-            <div className="text-[18px] font-semibold">{mode === 'Topic' ? 'Write the script' : 'Recreate a YouTube video'}</div>
-            <div className="text-[13.5px] text-muted">Written by {writer}{writer === 'Codex' ? ' on your ChatGPT plan' : ''}. Record it, then drop the voiceover.</div>
+            <div className="text-[18px] font-semibold">{mode === 'Topic' ? 'Write the script' : mode === 'Trends' ? 'Find a viral idea' : 'Recreate a YouTube video'}</div>
+            <label className="mt-0.5 flex items-center gap-2 text-[13.5px] text-muted">
+              Written by
+              <select
+                className="rounded-md border border-line bg-[#0f0f11] px-2 py-0.5 text-[13.5px] text-ink outline-none"
+                value={writer}
+                disabled={busy}
+                onChange={async (e) => useApp.setState({ settings: await window.api.settings.set({ writerProvider: e.target.value as 'Claude Code' | 'Codex' }) })}
+              >
+                <option value="Claude Code">Claude Code</option>
+                <option value="Codex" disabled={!status?.codex}>
+                  Codex{status?.codex ? '' : ' (not installed)'}
+                </option>
+              </select>
+            </label>
           </div>
           <button onClick={onClose} disabled={busy} className="p-1 text-muted hover:text-ink">
             <X size={18} />
@@ -69,13 +109,16 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
           {!out ? (
             <div className="space-y-4">
               <div className="inline-flex rounded-lg border border-line p-0.5">
-                {(['Topic', 'Recreate'] as const).map((m) => (
+                {(['Trends', 'Topic', 'Recreate'] as const).map((m) => (
                   <button key={m} disabled={busy} onClick={() => setMode(m)} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[14px] ${mode === m ? 'bg-card2 font-semibold' : 'text-muted'}`}>
-                    {m === 'Topic' ? <Sparkles size={14} /> : <Link2 size={14} />} {m === 'Topic' ? 'From a topic' : 'Recreate a YouTube video'}
+                    {m === 'Topic' ? <Sparkles size={14} /> : m === 'Trends' ? <Flame size={14} /> : <Link2 size={14} />}{' '}
+                    {m === 'Topic' ? 'From a topic' : m === 'Trends' ? 'Find a viral idea' : 'Recreate a YouTube video'}
                   </button>
                 ))}
               </div>
-              {mode === 'Recreate' ? (
+              {mode === 'Trends' ? (
+                <Trends days={days} setDays={setDays} focus={focus} setFocus={setFocus} ideas={ideas} busy={busy} onPick={pick} />
+              ) : mode === 'Recreate' ? (
                 <>
                   <div>
                     <div className="label mb-2">YouTube link</div>
@@ -106,7 +149,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
                   </div>
                   <label className="flex cursor-pointer items-center gap-2.5 text-[15px]">
                     <input type="checkbox" className="h-4 w-4 accent-accent" checked={research} onChange={(e) => setResearch(e.target.checked)} />
-                    <Globe size={15} /> Check facts and numbers on the web {writer !== 'Codex' && <span className="text-[13px] text-dim">(Codex only)</span>}
+                    <Globe size={15} /> Check facts and numbers on the web
                   </label>
                 </>
               ) : (
@@ -135,7 +178,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
                   </div>
                   <label className="flex cursor-pointer items-center gap-2.5 text-[15px]">
                     <input type="checkbox" className="h-4 w-4 accent-accent" checked={research} onChange={(e) => setResearch(e.target.checked)} />
-                    <Globe size={15} /> Research the topic on the web first {writer !== 'Codex' && <span className="text-[13px] text-dim">(Codex only)</span>}
+                    <Globe size={15} /> Research the topic on the web first
                   </label>
                 </>
               )}
@@ -216,16 +259,101 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
           ) : (
             <>
               <div className="min-w-0 flex-1 truncate text-[13.5px] text-muted">
-                {busy ? (mode === 'Recreate' ? stage || 'Starting…' : research ? 'Researching and writing. This takes a minute or two.' : 'Writing…') : ''}
+                {busy
+                  ? mode === 'Topic'
+                    ? research
+                      ? 'Researching and writing. This takes a minute or two.'
+                      : 'Writing…'
+                    : stage || 'Starting…'
+                  : mode === 'Trends' && ideas
+                    ? `Read ${ideas.read.join(', ')}${ideas.failed.length ? ` (could not read ${ideas.failed.join(', ')})` : ''} · ranked by ${ideas.by}`
+                    : ''}
               </div>
-              <button className="btn-accent" disabled={busy || (mode === 'Topic' ? !topic.trim() : !url.trim())} onClick={write}>
-                {busy ? <span className="spinner" /> : <Sparkles size={15} />} {busy ? 'Writing…' : mode === 'Topic' ? 'Write it' : 'Analyse and write'}
-              </button>
+              {mode === 'Trends' ? (
+                <button className={ideas ? 'btn' : 'btn-accent'} disabled={busy} onClick={findIdeas}>
+                  {busy ? <span className="spinner" /> : <Flame size={15} />} {busy ? 'Searching…' : ideas ? 'Find new ideas' : 'Find 3 ideas'}
+                </button>
+              ) : (
+                <button className="btn-accent" disabled={busy || (mode === 'Topic' ? !topic.trim() : !url.trim())} onClick={write}>
+                  {busy ? <span className="spinner" /> : <Sparkles size={15} />} {busy ? 'Writing…' : mode === 'Topic' ? 'Write it' : 'Analyse and write'}
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Find a viral idea: what tech people are talking about right now, from public sources with their numbers, checked
+ * on the web and ranked into 3 video ideas. Picking one fills the topic, ready to write.
+ */
+function Trends(o: {
+  days: 'Today' | 'This week'
+  setDays: (d: 'Today' | 'This week') => void
+  focus: string
+  setFocus: (f: string) => void
+  ideas: { ideas: TrendIdea[] } | null
+  busy: boolean
+  onPick: (i: TrendIdea) => void
+}) {
+  return (
+    <>
+      <div className="text-[14px] leading-relaxed text-muted">
+        Reads what is trending in tech right now (Hacker News, Reddit, GitHub, YouTube&apos;s most viewed, Lobsters, dev.to, Techmeme and Google News),
+        with their numbers. Then the writer searches the web to check the strongest stories, and what X, Instagram and TikTok say about them, and
+        ranks the 3 best video ideas. Pick one and it becomes your topic.
+      </div>
+      <div className="grid grid-cols-[auto_1fr] items-end gap-6">
+        <div>
+          <div className="label mb-2">Trending</div>
+          <Chips options={['Today', 'This week'] as const} value={o.days} onToggle={o.setDays} size="sm" />
+        </div>
+        <div>
+          <div className="label mb-2">About · optional</div>
+          <input className="input text-[15px]" placeholder="e.g. AI, web development, Linux, phones" value={o.focus} disabled={o.busy} onChange={(e) => o.setFocus(e.target.value)} />
+        </div>
+      </div>
+      {o.ideas && (
+        <div className="space-y-3">
+          {o.ideas.ideas.map((i, k) => (
+            <div key={k} className="rounded-xl border border-line bg-[#0f0f11] px-4 py-3.5">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[14px] font-bold text-accent">{k + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[16.5px] font-semibold leading-snug">{i.title}</div>
+                  <div className="mt-1 text-[14px] leading-snug text-muted">{i.why}</div>
+                  {i.concept && (
+                    <div className="mt-1.5 text-[14px] leading-snug">
+                      <span className="text-dim">Teaches:</span> {i.concept}
+                    </div>
+                  )}
+                  {i.hook && <div className="mt-1.5 text-[14px] italic leading-snug text-ink/85">“{i.hook}”</div>}
+                  {i.evidence.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {i.evidence.slice(0, 6).map((e, n) => (
+                        <a key={n} href={e.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-md border border-line px-2 py-0.5 text-[12.5px] text-muted hover:text-ink" title={e.url}>
+                          {e.source}
+                          {e.metric ? ` · ${e.metric}` : ''} <ExternalLink size={11} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {i.score > 0 && <span className="text-[12.5px] text-dim">{Math.round(i.score)} / 100</span>}
+                  <button className="btn-accent px-3 py-1.5 text-[14px]" onClick={() => o.onPick(i)}>
+                    Write this one
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

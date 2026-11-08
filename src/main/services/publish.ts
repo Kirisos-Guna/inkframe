@@ -43,7 +43,7 @@ export async function writeScript(r: ScriptRequest) {
     ...w,
     effort: 'High',
     cwd: libDir('writing'),
-    search: r.research && w.provider === 'Codex',
+    search: r.research,
     prompt: `You write voiceover scripts for faceless explainer videos that are drawn as the voiceover plays. Your scripts are
 the reason people stay to the end: specific, surprising, and built so every sentence pulls into the next.
 
