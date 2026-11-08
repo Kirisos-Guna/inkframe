@@ -33,3 +33,16 @@ describe('pitch', () => {
     expect(up).toContain('atempo=0.79370')
   })
 })
+
+describe('silent pieces never reach the voiceover', () => {
+  it('flags NaN output and near-total silence, not normal speech', async () => {
+    const { badAudio } = await import('../src/main/services/localVoice')
+    const speech = Float32Array.from({ length: 24000 }, (_, i) => (i % 5 === 0 ? 0 : Math.sin(i / 7) * 0.5))
+    const nan = Float32Array.from({ length: 24000 }, () => NaN)
+    const silent = new Float32Array(24000)
+    expect(badAudio(speech)).toBe(false)
+    expect(badAudio(nan)).toBe(true)
+    expect(badAudio(silent)).toBe(true)
+    expect(badAudio(new Float32Array(0))).toBe(true)
+  })
+})

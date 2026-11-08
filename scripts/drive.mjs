@@ -1,6 +1,6 @@
 // Drives the built app for testing: node scripts/drive.mjs <ui|make> <outDir> [voiceover]
 // ui   = screenshot every page
-// make = drop the voiceover, write a direction, press Make my video, and watch until the video is ready
+// make = add the voiceover, write a direction, press Make my video, and watch until the video is ready
 import { _electron as electron } from 'playwright'
 import { mkdirSync } from 'fs'
 import { join, resolve } from 'path'
@@ -42,7 +42,7 @@ if (mode === 'ui') {
   await shot('home-lower')
   await page.evaluate(() => document.querySelector('main').scrollTo(0, 0))
   if (voice) {
-    await page.click('text=Choose a file')
+    await page.click('text=Use your own recording')
     await page.waitForSelector('text=Replace')
     await page.fill('textarea', 'One prompt, followed from the phone to the chip and back: the cell tower, the cable under the sea, the data center, the rows of servers, one GPU, and the answer coming home word by word. Dark board, pen drawings, one idea at a time.')
     await shot('home-voiceover')
@@ -59,7 +59,7 @@ if (mode === 'ui') {
 }
 
 if (mode === 'make') {
-  await page.click('text=Choose a file')
+  await page.click('text=Use your own recording')
   await page.waitForSelector('text=Replace')
   // DIRECTION=template uses the Explainer template; otherwise the phone-to-chip example.
   if (process.env.DIRECTION === 'template') await page.locator('button', { hasText: 'Explainer' }).first().click()
@@ -184,7 +184,6 @@ if (mode === 'publish') {
 // restore: what is typed in New video survives going to another page (and, run twice, a restart).
 if (mode === 'restore') {
   if (!(await page.locator('textarea').first().inputValue().catch(() => ''))) {
-    await page.click('text=Add your script')
     await page.locator('textarea').first().fill('A script that must not get lost.')
   }
   await page.waitForTimeout(1200)
@@ -199,14 +198,13 @@ if (mode === 'restore') {
 
 // voice: makes the voiceover from a pasted script with the local voice (a tone with FAKE=1), up to Replace.
 if (mode === 'voice') {
-  await page.click('text=Add your script')
   await page.fill('textarea', 'Your phone sends a question. It does not fly to the cloud. It takes a very long walk, through a tower, a cable under the sea and a room full of servers.')
-  await page.click('text=Make it on this PC')
-  await page.waitForSelector('text=Make the voiceover', { timeout: 120000 })
+  await page.getByRole('button', { name: 'Make the voiceover', exact: true }).click()
+  await page.waitForSelector('text=Speak the script', { timeout: 120000 })
   await page.click('button[title="Hear a sample"]')
   await page.waitForSelector('button[title="Hear a sample"]:not([disabled])', { timeout: 300000 })
   await shot('voice-picked')
-  await page.getByRole('button', { name: 'Make the voiceover', exact: true }).click()
+  await page.getByRole('button', { name: 'Speak the script', exact: true }).click()
   await page.waitForTimeout(20000)
   await shot('voice-speaking')
   await page.waitForSelector('text=Replace', { timeout: 300000 }).catch(async (e) => {

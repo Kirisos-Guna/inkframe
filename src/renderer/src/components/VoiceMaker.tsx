@@ -127,10 +127,10 @@ export function VoiceMaker({ script, onDone, onClose }: { script: string; onDone
             </span>
             <span className="flex-1" />
             <button className="btn-accent px-5 py-2.5" onClick={go} disabled={!!busy || !words}>
-              {busy === 'speak' ? 'Speaking…' : 'Make the voiceover'}
+              {busy === 'speak' ? 'Speaking…' : 'Speak the script'}
             </button>
           </div>
-          <div className="mt-2 text-[13px] text-dim">The first time, the voice model (about 160 MB) is fetched once. Speaking takes about a third as long as the voiceover.</div>
+          <div className="mt-2 text-[13px] text-dim">The first time, the voice model (about 330 MB) is fetched once. Speaking takes about a third as long as the voiceover.</div>
         </>
       )}
     </div>

@@ -1,5 +1,5 @@
 // Voiceovers made on this PC with Kokoro, a small open voice model (Apache 2.0): no account, no key, no cost. The model
-// (about 160 MB) is fetched once into the library. The script is spoken sentence by sentence, joined with short
+// (about 330 MB) is fetched once into the library. The script is spoken sentence by sentence, joined with short
 // breaths, pitched with FFmpeg, and saved as an MP3 in the save folder. English only.
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -64,31 +64,32 @@ let loading: Promise<Tts> | null = null
 const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX'
 
 /**
- * The voice model, loaded once (and fetched once, about 160 MB, with its progress). The half-precision model: on a
- * laptop CPU it speaks about 3x faster than the small 8-bit one (8.7 s of speech in 2.8 s instead of 9.2 s), and
- * sounds closer to the original. DirectML (the GPU) cannot run this model, so it stays on the CPU.
+ * The voice model, loaded once (and fetched once, about 330 MB, with its progress). The full-precision model: on a
+ * laptop CPU it speaks about 3.5x faster than the small 8-bit one (8.7 s of speech in 2.5 s instead of 9.2 s). The
+ * half-precision one (1.15) was as fast but returned NaN, heard as silence, for about one sentence group in three.
+ * DirectML (the GPU) cannot run this model, so it stays on the CPU.
  */
 function model(onStatus: (s: string) => void): Promise<Tts> {
   loading ??= (async () => {
     const dir = libDir('voice', 'models')
     const onnx = join(dir, ...REPO.split('/'), 'onnx')
-    const first = !existsSync(join(onnx, 'model_fp16.onnx'))
-    onStatus(first ? 'Getting the voice model (once, about 160 MB)' : 'Loading the voice')
+    const first = !existsSync(join(onnx, 'model.onnx'))
+    onStatus(first ? 'Getting the voice model (once, about 330 MB)' : 'Loading the voice')
     const { env } = await import('@huggingface/transformers')
     env.cacheDir = dir
     const { KokoroTTS } = await import('kokoro-js')
     let last = -1
     const tts = (await KokoroTTS.from_pretrained(REPO, {
-      dtype: 'fp16',
+      dtype: 'fp32',
       device: 'cpu',
       progress_callback: (p: { status: string; progress?: number; file?: string }) => {
         if (p.status !== 'progress' || !p.file?.endsWith('.onnx') || p.progress === undefined) return
         const pct = Math.floor(p.progress)
-        if (pct > last) onStatus(`Getting the voice model (once, about 160 MB) · ${(last = pct)}%`)
+        if (pct > last) onStatus(`Getting the voice model (once, about 330 MB) · ${(last = pct)}%`)
       }
     })) as unknown as Tts
-    // The 8-bit model older versions fetched is no longer used.
-    rmSync(join(onnx, 'model_quantized.onnx'), { force: true })
+    // The models older versions fetched are no longer used.
+    for (const f of ['model_quantized.onnx', 'model_fp16.onnx']) rmSync(join(onnx, f), { force: true })
     return tts
   })().catch((e) => {
     loading = null
@@ -126,6 +127,45 @@ export function voiceFilter(rate: number, pitch: number) {
 
 const tooTamil = (s: string) => /[஀-௿]/.test(s)
 
+/**
+ * Speech that is not really there: NaN samples (the model failed) or a piece that is almost all silence. Real speech
+ * is about 15-30% quiet samples between words.
+ */
+export function badAudio(samples: Float32Array) {
+  if (!samples.length) return true
+  let quiet = 0
+  for (const v of samples) {
+    if (Number.isNaN(v)) return true
+    if (Math.abs(v) < 0.003) quiet++
+  }
+  return quiet / samples.length > 0.85
+}
+
+/**
+ * One piece spoken, checked: a piece that comes back silent is spoken again, then sentence by sentence. It never
+ * goes into the voiceover as a gap; if it still fails, the voiceover stops with an error that names it.
+ */
+async function speakPiece(tts: Tts, text: string, choice: VoiceChoice) {
+  const say = (t: string) => tts.generate(t, { voice: choice.id, speed: choice.speed })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const a = await say(text)
+    if (!badAudio(a.audio)) return a
+  }
+  const sentences = text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)?.map((x) => x.trim()).filter(Boolean) ?? [text]
+  const got: Float32Array[] = []
+  let rate = 24000
+  for (const s of sentences) {
+    const a = await say(s)
+    if (badAudio(a.audio)) throw new Error(`The voice could not say: "${s.slice(0, 80)}". Rephrase that sentence and try again.`)
+    rate = a.sampling_rate
+    got.push(a.audio, new Float32Array(Math.round(0.12 * rate)))
+  }
+  const audio = new Float32Array(got.reduce((n, x) => n + x.length, 0))
+  let at = 0
+  for (const x of got) audio.set(x, (at += x.length) - x.length)
+  return { audio, sampling_rate: rate }
+}
+
 async function render(text: string, choice: VoiceChoice, out: string, onStatus: (s: string) => void, work: string) {
   const tts = await model(onStatus)
   const pieces = chunkScript(text)
@@ -133,7 +173,7 @@ async function render(text: string, choice: VoiceChoice, out: string, onStatus: 
   let rate = 24000
   for (const [i, p] of pieces.entries()) {
     if (pieces.length > 1) onStatus(`Speaking ${i + 1} of ${pieces.length}`)
-    const a = await tts.generate(p.text, { voice: choice.id, speed: choice.speed })
+    const a = await speakPiece(tts, p.text, choice)
     rate = a.sampling_rate
     parts.push(a.audio, new Float32Array(Math.round(p.pause * rate)))
   }
@@ -149,7 +189,8 @@ async function render(text: string, choice: VoiceChoice, out: string, onStatus: 
 /** A short sample of a voice as it would speak (cached). Returns the file. */
 export async function previewVoice(choice: VoiceChoice, onStatus: (s: string) => void) {
   const dir = libDir('voice', 'previews')
-  const out = join(dir, `${choice.id}-${choice.speed.toFixed(2)}-${choice.pitch.toFixed(1)}.mp3`)
+  // Named for the model too: samples made with an older model are never played again.
+  const out = join(dir, `${choice.id}-${choice.speed.toFixed(2)}-${choice.pitch.toFixed(1)}-fp32.mp3`)
   if (existsSync(out)) return out
   if (fakeEnabled()) {
     await ffmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=180:duration=2', '-af', 'volume=0.2', out])

@@ -15,7 +15,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
 
 /**
  * Writes a voiceover script with the writer (Codex by default): from a topic, or by recreating a YouTube video's
- * concept in new words. Record it, then drop the voiceover.
+ * concept in new words. Then make the voiceover on this PC, or record it yourself.
  */
 export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (script: string, title: string, direction?: string) => void }) {
   const { status, settings, showToast } = useApp()

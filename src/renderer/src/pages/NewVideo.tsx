@@ -287,41 +287,26 @@ export default function NewVideo() {
           )}
         </div>
         <p className="mt-1 text-[17px] text-muted">
-          Drop your voiceover, then tell Claude everything you have in mind. The more you say, the closer the first version.
+          Write the script and make the voiceover, then tell Claude everything you have in mind. The more you say, the closer the first version.
         </p>
 
-        {/* 1 · Voiceover */}
-        <section className="card mt-7 px-8 py-6">
-          <Header n={1} done={!!draft?.voiceover} title="Voiceover" right="Required" />
-          {!draft?.voiceover || adding < 100 ? (
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDrag(true)
-              }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDrag(false)
-                const f = e.dataTransfer.files[0]
-                if (f) addVoiceover(window.api.pathOf(f))
-              }}
-              className={`mt-5 flex items-center gap-5 rounded-xl border border-dashed px-8 py-6 ${
-                drag ? 'border-accent bg-accent/5' : 'border-line'
-              }`}
-            >
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-card2">
-                <Mic size={20} />
-              </div>
-              <div className="flex-1">
-                <div className="text-[17px] font-semibold">{adding ? `Adding the file · ${adding}%` : 'Drop your voiceover'}</div>
-                <div className="text-[15px] text-muted">MP3, WAV or M4A. {APP_NAME} finds the words and splits it into parts.</div>
-              </div>
-              <button className="btn" onClick={chooseVoiceover}>
-                Choose a file
-              </button>
-            </div>
-          ) : (
+        {/* 1 · Script and voiceover: written here and spoken on this PC, or your own recording */}
+        <section
+          className={`card mt-7 px-8 py-6 ${drag ? 'ring-2 ring-accent/60' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDrag(true)
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setDrag(false)
+            const f = e.dataTransfer.files[0]
+            if (f) addVoiceover(window.api.pathOf(f))
+          }}
+        >
+          <Header n={1} done={!!draft?.voiceover} title="Script and voiceover" right="Required" />
+          {draft?.voiceover && adding >= 100 ? (
             <div className="mt-5 flex items-center gap-5 rounded-xl border border-line bg-[#0f0f11] px-5 py-3.5">
               <button
                 onClick={() => {
@@ -335,55 +320,36 @@ export default function NewVideo() {
               </button>
               <div className="min-w-0">
                 <div className="truncate text-[16px] font-semibold">{draft.voiceover.name}</div>
-                <div className="text-[14px] text-muted">Adding the file · 100%</div>
+                <div className="text-[14px] text-muted">The voiceover · ready</div>
               </div>
               <Waveform peaks={peaks} height={44} className="h-11 min-w-0 flex-1" />
               <button className="px-3 text-[15px] text-muted hover:text-ink" onClick={chooseVoiceover}>
                 Replace
               </button>
             </div>
-          )}
-          <div className="mt-3 flex items-center gap-2 text-[14.5px] text-muted">
-            <Folder size={15} />
-            Saved in {app?.saveDir}
-            {!draft && (
-              <>
-                {' · '}
-                <button
-                  className="font-semibold text-accent"
-                  onClick={async () => {
-                    const d = await window.api.pick.folder()
-                    if (d) useApp.setState({ settings: await window.api.settings.set({ saveDir: d }) })
-                  }}
-                >
-                  Change
+          ) : adding > 0 ? (
+            <div className="mt-5 rounded-xl border border-line bg-[#0f0f11] px-5 py-4 text-[16px] font-semibold">Adding the voiceover · {adding}%</div>
+          ) : (
+            <>
+              <div className="mt-5 flex items-center gap-3">
+                <button className="btn-accent px-4 py-2.5" onClick={() => setWriting(true)}>
+                  <Sparkles size={15} /> Write or recreate a script with AI
                 </button>
-              </>
-            )}
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-[15px]">
-            <FileText size={15} className="text-accent" />
-            <button className="font-semibold text-accent" onClick={() => setScript(script === null ? '' : null)}>
-              Add your script (optional)
-            </button>
-            <span className="text-muted">· names and numbers come out exactly right</span>
-            <span className="flex-1" />
-            <button className="flex items-center gap-1.5 font-semibold text-accent" onClick={() => setWriting(true)}>
-              <Sparkles size={15} /> Write or recreate a script with AI
-            </button>
-          </div>
-          {!draft?.voiceover && (
-            <div className="mt-2 flex items-center gap-2 text-[15px]">
-              <AudioLines size={15} className="text-accent" />
-              <button
-                className="font-semibold text-accent disabled:text-muted"
-                disabled={!script?.trim()}
-                onClick={() => setVoicing(true)}
-              >
-                No voiceover yet? Make it on this PC
-              </button>
-              <span className="text-muted">· {script?.trim() ? 'free, a quick developer-explainer voice' : 'write or paste the script first'}</span>
-            </div>
+                <span className="text-[14.5px] text-muted">or paste your own below</span>
+              </div>
+              <textarea
+                className="input mt-3 h-36 resize-none text-[15px] leading-relaxed"
+                placeholder="The script to speak. Paste it here, or write it with AI."
+                value={script ?? ''}
+                onChange={(e) => setScript(e.target.value)}
+              />
+              <div className="mt-3 flex items-center gap-3">
+                <button className="btn-accent px-4 py-2.5" disabled={!script?.trim()} onClick={() => setVoicing(true)}>
+                  <AudioLines size={15} /> Make the voiceover
+                </button>
+                <span className="text-[14.5px] text-muted">{script?.trim() ? 'free, on this PC · English' : 'write or paste the script first'}</span>
+              </div>
+            </>
           )}
           {voicing && script?.trim() && (
             <VoiceMaker
@@ -403,17 +369,61 @@ export default function NewVideo() {
                 // A recreated video comes with a visual direction; otherwise the title is a start.
                 if (!direction.trim()) setDirection(dir?.trim() ? `${title ? `${title}. ` : ''}${dir.trim()}` : title)
                 setWriting(false)
+                // The script is ready: straight on to speaking it.
+                if (!draft?.voiceover) setVoicing(true)
               }}
             />
           )}
-          {script !== null && (
-            <textarea
-              className="input mt-3 h-32 resize-none text-[15px] leading-relaxed"
-              placeholder={`Paste the script you read. ${APP_NAME} lines it up with the words it hears.`}
-              value={script}
-              onChange={(e) => setScript(e.target.value)}
-            />
+          {draft?.voiceover && adding >= 100 && (
+            <>
+              <div className="mt-3 flex items-center gap-2 text-[15px]">
+                <FileText size={15} className="text-accent" />
+                <button className="font-semibold text-accent" onClick={() => setScript(script === null ? '' : null)}>
+                  {script === null ? 'Show the script' : 'Hide the script'}
+                </button>
+                <span className="text-muted">· names and numbers come out exactly right</span>
+              </div>
+              {script !== null && (
+                <textarea
+                  className="input mt-3 h-32 resize-none text-[15px] leading-relaxed"
+                  placeholder={`Paste the script you read. ${APP_NAME} lines it up with the words it hears.`}
+                  value={script}
+                  onChange={(e) => setScript(e.target.value)}
+                />
+              )}
+            </>
           )}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[14.5px] text-muted">
+            <Folder size={15} />
+            Saved in {app?.saveDir}
+            {!draft && (
+              <>
+                {' · '}
+                <button
+                  className="font-semibold text-accent"
+                  onClick={async () => {
+                    const d = await window.api.pick.folder()
+                    if (d) useApp.setState({ settings: await window.api.settings.set({ saveDir: d }) })
+                  }}
+                >
+                  Change
+                </button>
+              </>
+            )}
+            {!draft?.voiceover && !adding && (
+              <>
+                <span className="flex-1" />
+                <Mic size={14} />
+                <button
+                  className="font-semibold text-ink/85 hover:text-ink"
+                  onClick={chooseVoiceover}
+                  title="An MP3, WAV or M4A you recorded (or drop it on this box). The voice made on this PC speaks English only: record Tamil yourself."
+                >
+                  Use your own recording
+                </button>
+              </>
+            )}
+          </div>
         </section>
 
         {/* 2 · Direction */}

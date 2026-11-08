@@ -11,7 +11,8 @@ and run it. The installer is not code-signed yet, so Windows SmartScreen may war
 **More info → Run anyway**. Then install the Claude Code CLI and run `claude` once in a terminal to sign in.
 
 ## What it does
-You drop the audio and describe the video like you would to a director. Claude Code on your own computer splits it
+You write the script (or let the AI find an idea and write it), make the voiceover on your PC or bring your own
+recording, and describe the video like you would to a director. Claude Code on your own computer splits it
 into parts, draws each part as an animated scene, checks it, renders it and puts it together with your voice. Then
 you click any part, leave a comment, and only that part is made again.
 
