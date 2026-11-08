@@ -145,8 +145,9 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     about; whip: a fast blurred slide between shots (use it where the topic turns)
   <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip or quote
   <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? />  a page with its sentence
-    highlighted (copy w, h, marks, marks2 and focus as listed). crop: only the headline and that paragraph, big (best
-    for articles and filings); scroll: for a tall capture, moves down to the sentence; underline: a marker line instead
+    highlighted (copy w, h, marks, marks2 and focus as listed). It shows only the headline and that paragraph, big,
+    by default (never the whole page: too small to read); scroll: for a tall capture, moves down to the sentence;
+    underline: a marker line instead
   <Post name="m/…png" w h />  a real post
   <Meme name="m/…jpg" w h template="Drake Hotline Bling" texts={['…', '…']} />  a meme: copy it exactly as listed; its
     captions sit in the template's own boxes (Drake's white side, Gru's boards). Never put a Caption on a meme.
@@ -157,7 +158,8 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     an editor; tree adds the file explorer        <Shell command="npm i x" output={['added 1 package']} />
   <Split left={<Code …/>} right={<Page …/>} />  two things side by side (the code and what it does, before and after)
   <Chart name="m/…json" />  a real line chart (price, downloads)     <Stats name="m/…json" />  GitHub numbers counting up
-  <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person or logo with a white outline, popped on top of a shot
+  <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person with a white outline, popped on top of a shot; a
+    logo ("m/…-logo.png") shows on a white card. Never on top of text or another Sticker.
   <Label x y text="CEO, NVIDIA" to={[x, y]}? color? />  a tilted name tag, with an optional pointer line
   <TitleCard text="Circular financing" accent="circular" />
   Edits, wrapped around a shot: <Punch at={[at('trillion')]}> zooms in hard on the word; <Shake at={[f]}> for an impact;
@@ -166,7 +168,9 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </Diagram>   Diagram zooms whatever is
     inside it to fill the frame, so lay it out at any size; build it up box by box; packets keep moving along the
     arrow; pulse marks the busy one. <Loop items={['build', 'test', 'deploy']} /> for a cycle (inside a Diagram too).
-    At most 5 boxes in one diagram, 1 to 3 words per label.
+    At most 5 boxes in one diagram, 1 to 3 words per label. Aim arrows at box centres if you like: they are drawn
+    from edge to edge. A Sticker or Label that belongs to the diagram goes INSIDE the <Diagram> (it zooms with it);
+    never lay anything over a diagram from outside it.
   Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
 
 Timing: every frame number is a frame of the part, what at('word') returns, also inside <Cuts> (start={at('knife')}

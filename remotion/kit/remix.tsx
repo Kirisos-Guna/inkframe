@@ -20,6 +20,7 @@ import { AbsoluteFill, cancelRender, continueRender, delayRender, Easing, Freeze
 import { CutAt, useFrameFor, usePartFrame } from './index'
 import { fitText, memeLayout } from '../../src/shared/memes'
 import { flashFree } from './flash'
+import { clipToBoxes, type Rect } from './geometry'
 export { flashFree }
 
 const MEME = "'Meme', Impact, 'Arial Black', sans-serif"
@@ -150,7 +151,7 @@ export function Page({
   marks = [],
   marks2 = [],
   focus,
-  crop = false,
+  crop,
   scroll = false,
   underline = false,
   start = 0,
@@ -175,10 +176,14 @@ export function Page({
   const { f, t } = useLocal(start, 14)
   const { durationInFrames } = useVideoConfig()
   if (f < 0) return null
-  // The part of the picture shown: the tight crop, or all of it. A crop is never a thin strip: it grows taller around
-  // the highlight until it fills most of the frame (a one-line crop of a wide page was a sliver on black).
-  const [fx, fy, fw, fh] = crop && focus ? roomy(focus, [...marks, ...marks2], w, h) : [0, 0, w, h]
-  const width = crop && focus ? Math.min(1640, (fw / fh) * 860) : 1560
+  // The part of the picture shown: by default a close crop of the headline and the paragraph with the highlight (a
+  // whole page is too small to read); the whole page only for a scrolling shot or when asked (crop={false}). A crop
+  // is never a thin strip: it grows taller around the highlight until it fills most of the frame.
+  const all0 = [...marks, ...marks2]
+  const around = all0.length ? padBox(all0, w, h, focus) : focus
+  const cropped = (crop ?? !scroll) && !!around
+  const [fx, fy, fw, fh] = cropped ? roomy(around!, all0, w, h) : [0, 0, w, h]
+  const width = cropped ? Math.min(1640, (fw / fh) * 860) : 1560
   const k = width / fw
   const tallView = scroll ? 900 / k : fh
   const height = Math.min(fh, tallView) * k
@@ -188,17 +193,19 @@ export function Page({
   const scrollTo = scroll ? Math.max(0, Math.min(fh - tallView, my - tallView * 0.4)) : 0
   const sy = scroll ? interpolate(f, [6, Math.max(20, durationInFrames * 0.5)], [0, scrollTo], { ...clamp, easing: ease }) : 0
   const move = interpolate(f, [markAt, markAt + 40], [0, 1], { ...clamp, easing: ease })
-  const zoom = 1 + (crop ? 0.06 : 0.18) * move
+  const zoom = 1 + (cropped ? 0.06 : 0.18) * move
   const top = (1080 - height) / 2
-  const dy = scroll || crop ? 0 : (540 - (top + my * k)) * move
-  let used = 0
-  const bars = (list: number[][], fill: string, from0: number) =>
-    list.map(([x, y, mw, mh], i) => {
-      // Each line is swiped after the one before, like a highlighter.
+  const dy = scroll || cropped ? 0 : (540 - (top + my * k)) * move
+  const bars = (list: number[][], fill: string, from0: number) => {
+    // Each line is swiped after the one before, like a highlighter: all of them within about 0.9 s, however big the
+    // crop shows them (timed by on-screen length, a close crop never finished its last line in a short shot).
+    const total = list.reduce((n, m) => n + m[2], 0) || 1
+    let used = 0
+    return list.map(([x, y, mw, mh], i) => {
       const len = mw * k
-      const from = from0 + (used / 900) * 30
-      used += len
-      const p = interpolate(f, [from, from + Math.max(6, (len / 900) * 30)], [0, 1], { ...clamp, easing: ease })
+      const from = from0 + (used / total) * 26
+      used += mw
+      const p = interpolate(f, [from, from + Math.max(4, (mw / total) * 26)], [0, 1], { ...clamp, easing: ease })
       const bx = (x - fx) * k - 4
       const by = (y - fy - sy) * k
       return underline ? (
@@ -207,6 +214,7 @@ export function Page({
         <rect key={`${fill}${i}`} x={bx} y={by + mh * k * 0.1} width={(len + 8) * p} height={mh * k * 0.85} fill={fill} opacity={0.75} rx={3} />
       )
     })
+  }
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', overflow: 'hidden' }}>
       <div
@@ -222,7 +230,9 @@ export function Page({
           boxShadow: '0 40px 120px rgba(0,0,0,.6)',
           borderRadius: 12,
           overflow: 'hidden',
-          background: '#fff'
+          background: '#fff',
+          // Where the crop cuts through text (a headline wider than the highlight), the edge fades instead of chopping it.
+          ...(cropped && focus && fx + fw < focus[0] + focus[2] - 8 ? { WebkitMaskImage: 'linear-gradient(90deg, #000 86%, transparent)', maskImage: 'linear-gradient(90deg, #000 86%, transparent)' } : {})
         }}
       >
         <Img src={staticFile(name)} style={{ position: 'absolute', left: -fx * k, top: -(fy + sy) * k, width: w * k, height: h * k, maxWidth: 'none' }} />
@@ -233,6 +243,26 @@ export function Page({
       </div>
     </AbsoluteFill>
   )
+}
+
+/**
+ * The crop of a page: the highlighted lines with a few lines of context above and below, inside the picture. A
+ * paragraph box alone can be most of the page (a long first paragraph under a headline), which reads like the whole
+ * page again.
+ */
+export function padBox(marks: number[][], w: number, h: number, focus?: number[]): number[] {
+  const line = Math.max(...marks.map((m) => m[3]))
+  // As wide as the highlighted lines (plus a margin), at least 22 lines of text wide so it is not blown up blurry,
+  // starting at the paragraph's left edge when that is close. Never the paragraph box's full width: on many pages it
+  // runs across the whole page (Hacker News) or takes in a sidebar (Wikipedia's infobox).
+  const left = Math.min(...marks.map((m) => m[0]))
+  const right = Math.max(...marks.map((m) => m[0] + m[2]))
+  const start = focus && left - focus[0] < line * 3 ? focus[0] : left - line
+  const x0 = Math.max(0, start - line)
+  const x1 = Math.min(w, Math.max(right + line * 1.5, x0 + line * 22))
+  const y0 = Math.max(0, Math.min(...marks.map((m) => m[1])) - line * 3.5)
+  const y1 = Math.min(h, Math.max(...marks.map((m) => m[1] + m[3])) + line * 3.5)
+  return [x0, y0, x1 - x0, y1 - y0]
 }
 
 /** A crop box made at most 2.2 times as wide as it is tall, centred on the highlight, inside the picture. */
@@ -401,6 +431,8 @@ export function Caption({ text, start = 0, top = false, size = 88 }: { text: str
   if (f < 0) return null
   return (
     <AbsoluteFill style={{ opacity: t }}>
+      {/* A soft dark band behind the words, so they never fight with the text of a page under them. */}
+      <div style={{ position: 'absolute', left: 0, right: 0, height: 380, [top ? 'top' : 'bottom']: 0, background: `linear-gradient(${top ? '0deg' : '180deg'}, rgba(0,0,0,0), rgba(0,0,0,.85))` }} />
       <MemeText text={text} top={top} size={size} />
     </AbsoluteFill>
   )
@@ -528,6 +560,7 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
     b.x1 = Math.max(b.x1, x)
     b.y1 = Math.max(b.y1, y)
   }
+  const boxes: Rect[] = []
   const walk = (node: React.ReactNode) =>
     React.Children.forEach(node, (c) => {
       if (!React.isValidElement(c)) return
@@ -538,6 +571,11 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
         const h = (p.h as number) ?? 136
         add((p.x as number) - w / 2, (p.y as number) - h / 2)
         add((p.x as number) + w / 2, (p.y as number) + h / 2)
+        boxes.push({ x0: (p.x as number) - w / 2, y0: (p.y as number) - h / 2, x1: (p.x as number) + w / 2, y1: (p.y as number) + h / 2 })
+      } else if (c.type === Sticker && num(p.x) && num(p.y)) {
+        const h = (p.h as number) ?? 760
+        add((p.x as number) - h * 0.7, (p.y as number) - h * 0.6)
+        add((p.x as number) + h * 0.7, (p.y as number) + h * 0.6)
       } else if (c.type === Loop) {
         const r = (p.r as number) ?? 300
         const x = (p.x as number) ?? 960
@@ -551,6 +589,16 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
       if (p.children) walk(p.children as React.ReactNode)
     })
   walk(children)
+  // Arrows run from box edge to box edge, never through a label.
+  const snap = (node: React.ReactNode): React.ReactNode =>
+    React.Children.map(node, (c) => {
+      if (!React.isValidElement(c)) return c
+      const p = c.props as { from?: [number, number]; to?: [number, number]; children?: React.ReactNode }
+      if (c.type === Flow && Array.isArray(p.from) && Array.isArray(p.to)) return React.cloneElement(c as React.ReactElement<Record<string, unknown>>, clipToBoxes(p.from, p.to, boxes))
+      if (p.children && c.type !== Diagram) return React.cloneElement(c as React.ReactElement<Record<string, unknown>>, {}, snap(p.children))
+      return c
+    })
+  const drawn = snap(children)
   let transform: string | undefined
   if (isFinite(b.x0) && b.x1 > b.x0 && b.y1 > b.y0) {
     const k = Math.min((1920 * fill) / (b.x1 - b.x0), (1080 * fill) / (b.y1 - b.y0), 1.8)
@@ -560,7 +608,7 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
   }
   return (
     <AbsoluteFill style={{ background: bg, overflow: 'hidden' }}>
-      <AbsoluteFill style={{ transform, transformOrigin: '0 0' }}>{children}</AbsoluteFill>
+      <AbsoluteFill style={{ transform, transformOrigin: '0 0' }}>{drawn}</AbsoluteFill>
     </AbsoluteFill>
   )
 }
@@ -804,6 +852,14 @@ export function Sticker({ name, x = 960, y = 560, h = 760, rotate = -4, start = 
   const outline = [`${o}px 0`, `-${o}px 0`, `0 ${o}px`, `0 -${o}px`, `${o * 0.7}px ${o * 0.7}px`, `-${o * 0.7}px ${o * 0.7}px`, `${o * 0.7}px -${o * 0.7}px`, `-${o * 0.7}px -${o * 0.7}px`]
     .map((d) => `drop-shadow(${d} 0 #fff)`)
     .join(' ')
+  const move = `translate(-50%, -50%) scale(${0.6 + 0.4 * s}${flip ? ', 1) scaleX(-1' : ''}) rotate(${rotate * s}deg)`
+  // A logo ("-logo" file) sits on a white card, so dark lettering shows on the black frame.
+  if (/-logo\.\w+$/.test(name))
+    return (
+      <div style={{ position: 'absolute', left: x, top: y, transform: move, background: '#fff', borderRadius: h * 0.08, padding: h * 0.12, boxShadow: '0 18px 40px rgba(0,0,0,.5)' }}>
+        <Img src={staticFile(name)} style={{ display: 'block', height: h * 0.76, maxWidth: h * 2.6, objectFit: 'contain' }} />
+      </div>
+    )
   return (
     <Img
       src={staticFile(name)}

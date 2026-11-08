@@ -3,10 +3,10 @@
 // templates from Imgflip, stock clips from Pexels or Pixabay (with the user's free key), and clips the user links to.
 // Everything is fetched on this computer; no AI and no tokens are used here.
 import { BrowserWindow } from 'electron'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { memeLayout } from '../../shared/memes'
 import { interFont } from './hyperframes'
-import { dirname, join } from 'path'
+import { dirname, extname, join } from 'path'
 import type { MediaItem, Shot } from '../../shared/types'
 import { run, videoEncoder } from './media'
 import { ffmpegPath } from './tools'
@@ -39,7 +39,7 @@ const H = 860
  * Hides what covers a page in a screenshot: cookie and consent banners, sign-up walls, fixed bars. Then finds the
  * sentence to highlight, scrolls it to the upper third, and returns where its lines are, in screenshot pixels.
  */
-const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false) => `(() => {
+const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false, measureOnly = false) => `(() => {
   for (const el of document.querySelectorAll('body *')) {
     const s = getComputedStyle(el)
     if ((s.position === 'fixed' || s.position === 'sticky') && el.getBoundingClientRect().height < innerHeight * 0.9) el.style.setProperty('display', 'none', 'important')
@@ -57,14 +57,22 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false) => `(() => {
     let best = null
     for (const block of document.querySelectorAll('p,li,h1,h2,h3,h4,blockquote,td,dd,figcaption,pre')) {
       if (!block.offsetParent) continue
+      // The block's text with runs of spaces squeezed to one, and for every character of it, the text node and
+      // the offset it came from (squeezing shifts offsets, so they are kept one by one, not per node).
       const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-      const nodes = []
+      const at = []
       let text = ''
       for (let n; (n = walker.nextNode()); ) {
         if (n.parentElement.closest('script,style,noscript,sup')) continue
-        nodes.push([n, text.length])
-        text += norm(n.nodeValue)
+        const v = n.nodeValue
+        for (let i = 0; i < v.length; i++) {
+          const space = /\\s/.test(v[i])
+          if (space && (text === '' || text.endsWith(' '))) continue
+          text += space ? ' ' : v[i].toLowerCase()
+          at.push([n, i])
+        }
       }
+      const nodes = at
       let from = text.indexOf(want)
       let to = from + want.length
       let score = from >= 0 ? 1 : 0
@@ -82,13 +90,16 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false) => `(() => {
           if (hit / ws.length > score) [score, from, to] = [hit / ws.length, f, last]
         }
       }
-      if (score >= 0.6 && (!best || score > best.score)) best = { score, nodes, from, to, block }
+      // Most words found, close together: a loose match that spreads far past the sentence's length is not it.
+      if (score >= 0.7 && to - from <= want.length * 1.6 + 20 && (!best || score > best.score)) best = { score, nodes, from, to, block }
     }
     if (!best) return null
-    const find = (pos) => { for (let i = best.nodes.length - 1; i >= 0; i--) if (best.nodes[i][1] <= pos) return [best.nodes[i][0], Math.min(pos - best.nodes[i][1], best.nodes[i][0].nodeValue.length)] }
+    // Start at the first matched character and end just after the last one, in the page's own text nodes.
     const range = document.createRange()
-    range.setStart(...find(best.from))
-    range.setEnd(...find(best.to))
+    const first = best.nodes[Math.min(best.from, best.nodes.length - 1)]
+    const last = best.nodes[Math.max(0, Math.min(best.to, best.nodes.length) - 1)]
+    range.setStart(first[0], first[1])
+    range.setEnd(last[0], last[1] + 1)
     return { range, block: best.block }
   }
   // One bar per line of text, as a highlighter would draw it.
@@ -103,13 +114,17 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false) => `(() => {
         line.bottom = Math.max(line.bottom, r.bottom)
       } else lines.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
     }
-    return lines.map((l) => [Math.round(l.left), Math.round(l.top), Math.round(l.right - l.left), Math.round(l.bottom - l.top)])
+    // A highlighter runs a little past the first and last letter of each line.
+    return lines.map((l) => {
+      const pad = (l.bottom - l.top) * 0.25
+      return [Math.round(l.left - pad), Math.round(l.top), Math.round(l.right - l.left + pad * 2), Math.round(l.bottom - l.top)]
+    })
   }
   const a = locate(${JSON.stringify(mark)})
   const b = locate(${JSON.stringify(mark2)})
   // The sentence goes to the upper third (or, in a tall capture of a long document, three quarters down, so the shot
   // can scroll to it).
-  if (a) window.scrollBy(0, a.range.getBoundingClientRect().top - innerHeight * (${tall} ? 0.75 : 0.3))
+  if (a && !${measureOnly}) window.scrollBy(0, a.range.getBoundingClientRect().top - innerHeight * (${tall} ? 0.75 : 0.3))
   // A tight crop: the page's headline (when it is just above) and the paragraph with the sentence.
   let focus = null
   if (a) {
@@ -120,7 +135,7 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false) => `(() => {
     const left = Math.min(r.left, hr && top === hr.top ? hr.left : r.left)
     focus = [Math.max(0, Math.round(left - 30)), Math.max(0, Math.round(top - 30)), Math.round(Math.max(r.right, hr && top === hr.top ? hr.right : 0) - left + 60), Math.round(r.bottom - top + 60)]
   }
-  return { marks: a ? bars(a.range) : [], marks2: b ? bars(b.range) : [], focus }
+  return { marks: a ? bars(a.range) : [], marks2: b ? bars(b.range) : [], focus, dpr: devicePixelRatio }
 })()`
 
 /** The code of an example on a docs page: the <pre> block that contains `contains` (or the first one). */
@@ -168,8 +183,16 @@ async function capture(
       const code = (await win.webContents.executeJavaScript(CODE_SCRIPT(opt.code), true).catch(() => ({ code: '', lang: '' }))) as { code: string; lang: string }
       return { w: 0, h: 0, marks: [] as Rect[], marks2: [] as Rect[], focus: undefined, code }
     }
-    const found = (await win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall), true).catch(() => ({ marks: [], marks2: [], focus: null }))) as { marks: Rect[]; marks2: Rect[]; focus: Rect | null }
-    await sleep(400)
+    type Found = { marks: Rect[]; marks2: Rect[]; focus: Rect | null; dpr?: number }
+    const none: Found = { marks: [], marks2: [], focus: null }
+    let found = (await win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall), true).catch(() => none)) as Found
+    // Scrolling loads pictures that push the text down: measure again once the page has settled, just before the
+    // screenshot, so the highlight sits exactly on the words in the picture.
+    if (found.marks.length) {
+      await sleep(1200)
+      found = (await win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall, true), true).catch(() => found)) as Found
+    }
+    await sleep(300)
     // Crop to one element (a tweet card), not the whole window.
     const box = opt.crop
       ? ((await win.webContents.executeJavaScript(`(()=>{const e=document.querySelector(${JSON.stringify(opt.crop)});if(!e)return null;const r=e.getBoundingClientRect();return {x:Math.floor(r.left),y:Math.floor(r.top),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`).catch(() => null)) as Electron.Rectangle | null)
@@ -180,7 +203,9 @@ async function capture(
     if (size.width < 400 || img.toPNG().length < 15000) throw new Error('The page did not draw (blocked or empty)')
     mkdirSync(dirname(to), { recursive: true })
     writeFileSync(to, img.toPNG())
-    const k = size.width / (box?.width ?? W)
+    // Page pixels to screenshot pixels: the screen's pixel ratio (the page is narrower than the window by its
+    // scroll bar, so window width / screenshot width is about 1% off: highlights a letter short at the line ends).
+    const k = box ? size.width / box.width : found.dpr || size.width / W
     const px = (r: Rect) => r.map((v) => Math.round(v * k)) as Rect
     return { w: size.width, h: size.height, marks: found.marks.map(px), marks2: found.marks2.map(px), focus: found.focus ? px(found.focus) : undefined, code: undefined }
   } finally {
@@ -203,17 +228,42 @@ interface CommonsPage {
 }
 const strip = (s = '') => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
 
+const GENERIC = new Set(['logo', 'photo', 'picture', 'image', 'portrait', 'the', 'and', 'of', 'a', 'an', 'in', 'on', 'close', 'up', 'closeup', 'official', 'icon', 'wordmark'])
+const plain = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ')
+
+/**
+ * Whether a Commons file is really what was searched for: every name in the query is in the file's title or
+ * description (a search for "Qwen logo" must not bring a shop's logo, "Simon Willison" not a random meetup), and a
+ * logo search brings a logo.
+ */
+export function commonsFits(query: string, title: string, about = '', video = false) {
+  const text = ` ${plain(title)} ${plain(about)} `
+  const words = plain(query).split(' ').filter((w) => w.length > 1 && !GENERIC.has(w))
+  if (!words.every((w) => text.includes(` ${w}`))) return false
+  if (video) return true
+  if (/\b(logo|wordmark|icon)\b/i.test(query)) return /logo|wordmark|icon|symbol|emblem|brand/.test(plain(title))
+  return true
+}
+
+/** How many words a file's name has beyond the search (its extension, numbers and "File:" aside). */
+export function extraWords(query: string, title: string) {
+  const want = new Set(plain(query).split(' ').filter(Boolean))
+  return plain(title.replace(/^File:/, '').replace(/\.\w+$/, '')).split(' ').filter((w) => w && !want.has(w) && !/^\d+$/.test(w)).length
+}
+
 async function commons(query: string, to: string, video = false) {
   const q = `${query} ${video ? 'filetype:video' : 'filetype:bitmap|drawing'}`
   const j = await getJson<{ query?: { pages?: Record<string, CommonsPage> } }>(
-    `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=8&gsrsearch=${encodeURIComponent(q)}&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1920`
+    `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=15&gsrsearch=${encodeURIComponent(q)}&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1920`
   )
   const pages = Object.values(j.query?.pages ?? {})
-  // A clip must have every searched word in its name (a "server rack" is not a rack railway); a picture is matched
-  // by the search itself.
-  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
-  const fits = (title: string) => !video || words.every((w) => title.toLowerCase().includes(w))
-  const hit = pages.map((p) => ({ p, i: p.imageinfo?.[0] })).find(({ p, i }) => i && fits(p.title) && (video ? /video/.test(i.mime) : i.width >= 500))
+  // Only a file that is really what was searched for (see commonsFits); the search's own ranking is too loose.
+  const about = (i: CommonsPage['imageinfo']) => strip(`${i?.[0]?.extmetadata?.ObjectName?.value ?? ''} ${i?.[0]?.extmetadata?.ImageDescription?.value ?? ''}`).slice(0, 600)
+  // Of the files that fit, the one whose name is closest to the search ("Nvidia logo", not "NVIDIA PhysX Logo").
+  const hit = pages
+    .map((p) => ({ p, i: p.imageinfo?.[0] }))
+    .filter(({ p, i }) => i && commonsFits(query, p.title.replace(/^File:/, ''), about(p.imageinfo), video) && (video ? /video/.test(i.mime) : i.width >= 500))
+    .sort((a, b) => extraWords(query, a.p.title) - extraWords(query, b.p.title))[0]
   if (!hit?.i) throw new Error(`No free-licence ${video ? 'clip' : 'picture'} found for "${query}"`)
   const meta = hit.i.extmetadata ?? {}
   const licence = strip(meta.LicenseShortName?.value) || 'see Wikimedia Commons'
@@ -410,6 +460,8 @@ async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?:
     switch (s.kind) {
       case 'page': {
         const shot = await capture({ url: s.url! }, `${base}.png`, s.mark ?? '', 2500, { mark2: s.mark2, tall: s.scroll })
+        // The sentence that backs the line must really be on the page: no highlight, no shot (the planner guessed).
+        if (!shot.marks.length) throw new Error('The sentence to highlight is not on that page')
         return { kind: 'page', name: rel(`${base}.png`), w: shot.w, h: shot.h, marks: shot.marks, marks2: shot.marks2, focus: shot.focus, credit: `Screenshot of ${new URL(s.url!).host}`, note: s.why }
       }
       case 'doccode': {
@@ -426,7 +478,13 @@ async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?:
         const got = await commons(s.query!, `${base}.jpg`)
         // A sticker: the person (or the logo on white) lifted out, on this PC.
         let cut: string | undefined
-        if (s.cutout) cut = await cutOut(got.file, `${base}-cut.png`, /logo|icon|wordmark/i.test(s.query!) ? 'white' : 'person').then(rel, () => undefined)
+        // A logo is not cut out (dark lettering on a transparent cut-out vanishes on the black frame): it is kept whole
+        // as "-logo", and the Sticker shows it on a white card. People are lifted out of their background.
+        if (s.cutout && /logo|icon|wordmark/i.test(s.query!)) {
+          const logo = `${base}-logo${extname(got.file)}`
+          copyFileSync(got.file, logo)
+          cut = rel(logo)
+        } else if (s.cutout) cut = await cutOut(got.file, `${base}-cut.png`, 'person').then(rel, () => undefined)
         return { kind: 'photo', name: rel(got.file), w: got.w, h: got.h, cut, credit: got.credit, note: s.query }
       }
       case 'meme': {

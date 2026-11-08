@@ -19,6 +19,12 @@ The video teaches a real concept, so almost every shot is a REFERENCE that shows
 official docs or spec (MDN, RFCs, the language reference, the vendor's docs), the real source code or README on
 GitHub, the engineering blog post or postmortem where it happened, the real post, a real chart, a real photo of the
 thing. Prefer the most authoritative source you can open, and highlight the exact sentence that backs the line.
+Every shot must show exactly what is said at that moment of its part: the thing named, the claim with the sentence
+that proves it, the person who is speaking about. Nothing merely nearby (a building for a team, a logo for a topic,
+a stock photo for an idea): if no real source shows the line, plan no shot there and the animator draws it.
+Use MANY different sources: one page or post at most twice in the whole video (with a different sentence each time),
+never twice in one part; the same photo once. When the story rests on one source, show the others that report or
+answer it (the paper, the code, the replies, the news, the docs of what it uses).
 Reactions are seasoning, not the meal: at most ${reactionCap(parts)} memes and GIFs in the whole video together, only on
 the 2 or 3 beats that are really funny or ironic, never two in the same part.
 
@@ -39,7 +45,8 @@ with its highlighted sentence 3 s, code 4-6 s. That is about one shot per 3 seco
   example from an official docs page, shown in an editor (better than writing code when the docs have it).
 - {"kind":"tweet","url":"https://x.com/<user>/status/<id>","why":"…"}: a real post you found, from the person or company.
 - {"kind":"photo","query":"Jensen Huang","cutout":true}: a real photo of a person, product, building or logo (searched on
-  Wikimedia Commons, free licences). Use a name, not a description. "cutout": true lifts the person or logo out of
+  Wikimedia Commons, free licences). Use the exact name ("Qwen logo", "Simon Willison"), not a description: a
+  picture whose file name does not carry that name is not used. "cutout": true lifts the person or logo out of
   its background, for a sticker with a label (do this for the people the story is about, and for logos).
 - {"kind":"meme","template":"<one name from the list below>","texts":["…","…"]}: a reaction at the funny or ironic
   beat. One caption per box of the template, in the order listed (what each box means is given): Drake's two texts
@@ -99,6 +106,33 @@ export function capReactions<T extends { kind: string }>(byPart: T[][], cap: num
   })
 }
 
+/** What makes two shots "the same reference": the page or post, without its anchor; the photo searched for. */
+function sourceKey(s: { kind: string; url?: string; query?: string; template?: string }) {
+  if (s.url) return s.url.replace(/#.*$/, '').replace(/\/$/, '').toLowerCase()
+  if (s.kind === 'photo' && s.query) return `photo:${s.query.toLowerCase().trim()}`
+  return null
+}
+
+/**
+ * No reference over and over: one page or post at most `perVideo` times in the whole video and once per part, and
+ * the same photo once. Shots past that are left out, in order (the designer fills the part with diagrams).
+ */
+export function capSources<T extends { kind: string; url?: string; query?: string }>(byPart: T[][], perVideo = 2) {
+  const used = new Map<string, number>()
+  return byPart.map((shots) => {
+    const here = new Set<string>()
+    return shots.filter((s) => {
+      const k = sourceKey(s)
+      if (!k) return true
+      const n = used.get(k) ?? 0
+      if (here.has(k) || n >= (k.startsWith('photo:') ? 1 : perVideo)) return false
+      here.add(k)
+      used.set(k, n + 1)
+      return true
+    })
+  })
+}
+
 export async function gatherMedia(p: Project, signal: AbortSignal) {
   const parts = p.parts.filter((x) => !p.media?.[x.id])
   if (!parts.length) return
@@ -131,9 +165,11 @@ async function research(p: Project, parts: Part[], signal: AbortSignal) {
 async function fetchAll(p: Project, parts: Part[], plan: { parts: { part: number; shots: Shot[] }[] }, s: ReturnType<typeof getSettings>, signal: AbortSignal) {
   const jobs: { x: Part; shot: Shot; i: number }[] = []
   // Reactions stay rare: the cap holds even if the plan asked for more.
-  const planned = capReactions(
-    parts.map((x) => plan.parts?.find((y) => Number(y.part) === x.index + 1)?.shots ?? []),
-    reactionCap(p.parts.length ? p.parts : parts)
+  const planned = capSources(
+    capReactions(
+      parts.map((x) => plan.parts?.find((y) => Number(y.part) === x.index + 1)?.shots ?? []),
+      reactionCap(p.parts.length ? p.parts : parts)
+    )
   )
   parts.forEach((x, k) => {
     // Never more shots than the part has time to show readably (the designer adds diagrams and titles too).
