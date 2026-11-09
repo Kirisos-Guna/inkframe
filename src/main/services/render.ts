@@ -25,8 +25,10 @@ export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${pa
  * 5: outlined boxes sized to their label; Split halves centred; nothing timed past the part's end; Timeline, Bars.
  * 6: terminals and short code sized to fill; code in a Split drawn bigger; bigger Bars; page crops from the paragraph's
  *    left edge; Page point.
+ * 7: pages flat with no edge fade; logos shown whole on a card; chart labels sized to fit, charts centred.
+ * 8: new shapes: Dots, Compare, Stack, Pipeline, Tree, Magnify.
  */
-export const KIT_VERSION = 6
+export const KIT_VERSION = 8
 
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
 

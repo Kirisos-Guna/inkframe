@@ -104,3 +104,28 @@ export function Stats({ start = 0, every = 10 }: Any & { every?: number }) {
   ;[0, 1, 2].forEach((i) => useCue('count', start + i * every, 24, 0.5))
   return null
 }
+export function Dots({ start = 0, dur = 40 }: Any & { dur?: number }) {
+  useCue('count', start + 6, dur, 0.5)
+  return null
+}
+export function Compare({ rows = [], start = 0, every = 16 }: Any & { rows?: unknown[]; every?: number }) {
+  rows.forEach((_, i) => useCue('pop', start + 10 + i * every, undefined, 0.45))
+  return null
+}
+export function Stack({ layers = [], start = 0, every = 12 }: Any & { layers?: unknown[]; every?: number }) {
+  layers.forEach((_, k) => useCue('pop', start + k * every, undefined, 0.5))
+  return null
+}
+export function Pipeline({ steps = [], start = 0, every = 22 }: Any & { steps?: unknown[]; every?: number }) {
+  useCue('whoosh', start + 8, Math.max(1, steps.length - 1) * every, 0.4)
+  return null
+}
+export function Tree({ branches = [], start = 0, every = 14 }: Any & { branches?: unknown[]; every?: number }) {
+  useCue('pop', start, undefined, 0.6)
+  branches.forEach((_, i) => useCue('pop', start + 10 + i * every, undefined, 0.45))
+  return null
+}
+export function Magnify({ start = 0 }: Any) {
+  useCue('whoosh', start + 14, 16, 0.6)
+  return null
+}

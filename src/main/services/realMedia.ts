@@ -17,6 +17,11 @@ import { readVtt } from './vtt'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** The same highlight bars, within 3 pixels: the page did not move between measuring and the picture. */
+export function sameMarks(a: number[][], b: number[][]) {
+  return a.length === b.length && a.every((m, i) => m.every((v, j) => Math.abs(v - b[i][j]) <= 3))
+}
+
 async function getJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
   const r = await fetch(url, { headers: { 'User-Agent': 'Inkframe/1 (video maker; contact via GitHub)', ...headers }, signal: AbortSignal.timeout(20000) })
   if (!r.ok) throw new Error(`${r.status} from ${new URL(url).host}`)
@@ -46,6 +51,12 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false, measureOnly = false
     if (/cookie|consent|gdpr|newsletter|subscribe-wall|paywall/i.test((el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : ''))) el.style.setProperty('display', 'none', 'important')
   }
   document.documentElement.style.overflow = 'auto'
+  if (!document.getElementById('ink-freeze')) {
+    const st = document.createElement('style')
+    st.id = 'ink-freeze'
+    st.textContent = '*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}'
+    document.documentElement.appendChild(st)
+  }
   document.body.style.overflow = 'auto'
   const norm = (t) => t.toLowerCase().replace(/\\s+/g, ' ')
   // Finds a sentence inside one block of text (a paragraph, a list item, a heading, a cell), so a match never runs
@@ -91,7 +102,7 @@ const PAGE_SCRIPT = (mark: string, mark2 = '', tall = false, measureOnly = false
         }
       }
       // Most words found, close together: a loose match that spreads far past the sentence's length is not it.
-      if (score >= 0.7 && to - from <= want.length * 1.6 + 20 && (!best || score > best.score)) best = { score, nodes, from, to, block }
+      if (score >= 0.85 && to - from <= want.length * 1.4 + 20 && (!best || score > best.score)) best = { score, nodes, from, to, block }
     }
     if (!best) return null
     // Start at the first matched character and end just after the last one, in the page's own text nodes.
@@ -189,6 +200,14 @@ async function capture(
       const css = `@font-face{font-family:InkUI;src:url(data:font/woff2;base64,${readFileSync(interFont()).toString('base64')}) format('woff2');font-weight:100 900}*{font-family:InkUI,sans-serif!important}`
       for (const fr of win.webContents.mainFrame.framesInSubtree)
         await fr.executeJavaScript(`(()=>{const s=document.createElement('style');s.textContent=${JSON.stringify(css)};document.documentElement.appendChild(s)})()`).catch(() => {})
+      // A post whose picture X will not show in embeds has a grey "Media not displayed" card: it goes, the post's text
+      // and numbers stay.
+      for (const fr of win.webContents.mainFrame.framesInSubtree)
+        await fr
+          .executeJavaScript(
+            `(()=>{for(const el of document.querySelectorAll('div,a,section')){const t=(el.innerText||'').trim();if(/^Media not displayed/i.test(t)&&t.length<300){let c=el;while(c.parentElement&&(c.parentElement.innerText||'').trim()===t)c=c.parentElement;c.style.setProperty('display','none','important')}}})()`
+          )
+          .catch(() => {})
       await sleep(600)
     }
     // A docs page's code example, read as text (no picture needed).
@@ -201,16 +220,26 @@ async function capture(
     let found = (await win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall), true).catch(() => none)) as Found
     // Scrolling loads pictures that push the text down: measure again once the page has settled, just before the
     // screenshot, so the highlight sits exactly on the words in the picture.
-    if (found.marks.length) {
-      await sleep(1200)
-      found = (await win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall, true), true).catch(() => found)) as Found
-    }
-    await sleep(300)
     // Crop to one element (a tweet card), not the whole window.
     const box = opt.crop
       ? ((await win.webContents.executeJavaScript(`(()=>{const e=document.querySelector(${JSON.stringify(opt.crop)});if(!e)return null;const r=e.getBoundingClientRect();return {x:Math.floor(r.left),y:Math.floor(r.top),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`).catch(() => null)) as Electron.Rectangle | null)
       : null
-    const img = await win.webContents.capturePage(box && box.width > 50 && box.height > 50 ? box : undefined)
+    const shoot = () => win.webContents.capturePage(box && box.width > 50 && box.height > 50 ? box : undefined)
+    const measure = () => win.webContents.executeJavaScript(PAGE_SCRIPT(mark, opt.mark2, opt.tall, true), true).catch(() => none) as Promise<Found>
+    let img = await shoot()
+    if (found.marks.length) {
+      let settled = false
+      for (let i = 0; i < 4 && !settled; i++) {
+        await sleep(i ? 900 : 1200)
+        const before = await measure()
+        img = await shoot()
+        const after = await measure()
+        settled = before.marks.length > 0 && sameMarks(before.marks, after.marks)
+        found = after
+      }
+      // Never a highlight that may be in the wrong place: no settled picture, no highlight (the shot is dropped).
+      if (!settled) found = none
+    }
     const size = img.getSize()
     // Very small or blank results are a blocked page, not a screenshot.
     if (size.width < 400 || img.toPNG().length < 15000) throw new Error('The page did not draw (blocked or empty)')
@@ -493,11 +522,14 @@ async function fetchShotNow(s: Shot, dir: string, name: string, keys: { pexels?:
         let cut: string | undefined
         // A logo is not cut out (dark lettering on a transparent cut-out vanishes on the black frame): it is kept whole
         // as "-logo", and the Sticker shows it on a white card. People are lifted out of their background.
-        if (s.cutout && /logo|icon|wordmark/i.test(s.query!)) {
+        // Every logo is a "-logo" file, as a shot or a sticker: the kit shows it whole on a card (a logo zoomed to fill
+        // the frame was cut off, with black around it).
+        if (/logo|icon|wordmark/i.test(s.query!)) {
           const logo = `${base}-logo${extname(got.file)}`
           copyFileSync(got.file, logo)
-          cut = rel(logo)
-        } else if (s.cutout) cut = await cutOut(got.file, `${base}-cut.png`, 'person').then(rel, () => undefined)
+          return { kind: 'photo', name: rel(logo), w: got.w, h: got.h, cut: s.cutout ? rel(logo) : undefined, credit: got.credit, note: s.query }
+        }
+        if (s.cutout) cut = await cutOut(got.file, `${base}-cut.png`, 'person').then(rel, () => undefined)
         return { kind: 'photo', name: rel(got.file), w: got.w, h: got.h, cut, credit: got.credit, note: s.query }
       }
       case 'meme': {

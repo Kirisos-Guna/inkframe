@@ -123,6 +123,14 @@ export function Shot({ name, start = 0, fit = 'cover', zoom = 1.08, bg = '#000' 
   const { durationInFrames } = useVideoConfig()
   if (f < 0) return null
   const k = interpolate(f, [0, durationInFrames], [1, zoom], clamp)
+  if (/-logo\.\w+$/.test(name))
+    return (
+      <AbsoluteFill style={{ background: 'radial-gradient(circle at 50% 45%, #2a2a30, #0b0b0d 70%)', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 28, padding: '70px 110px', boxShadow: '0 40px 120px rgba(0,0,0,.6)', transform: `scale(${0.96 + (k - 1) * 0.6})` }}>
+          <Img src={staticFile(name)} style={{ display: 'block', maxWidth: 1100, maxHeight: 420, objectFit: 'contain' }} />
+        </div>
+      </AbsoluteFill>
+    )
   return (
     <AbsoluteFill style={{ background: bg, overflow: 'hidden' }}>
       <Img src={staticFile(name)} style={{ width: '100%', height: '100%', objectFit: fit, transform: `scale(${k})` }} />
@@ -161,7 +169,7 @@ export function Page({
   start = 0,
   markAt = 18,
   color = '#ff8a1f',
-  tilt = -1.5,
+  tilt = 0,
   point = false
 }: {
   name: string
@@ -238,8 +246,6 @@ export function Page({
           borderRadius: 12,
           overflow: 'hidden',
           background: '#fff',
-          // Where the crop cuts through text (a headline wider than the highlight), the edge fades instead of chopping it.
-          ...(cropped && focus && fx + fw < focus[0] + focus[2] - 8 ? { WebkitMaskImage: 'linear-gradient(90deg, #000 86%, transparent)', maskImage: 'linear-gradient(90deg, #000 86%, transparent)' } : {})
         }}
       >
         <Img src={staticFile(name)} style={{ position: 'absolute', left: -fx * k, top: -(fy + sy) * k, width: w * k, height: h * k, maxWidth: 'none' }} />
@@ -759,7 +765,12 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
   const max = Math.max(...items.map((i) => scale(i.value)), 1)
   const rowH = Math.min(230, 700 / Math.max(1, items.length))
   const top = 540 - (items.length * rowH) / 2 + (title ? 60 : 0)
-  const label = Math.round(Math.min(52, rowH * 0.3))
+  const longLabel = Math.max(6, ...items.map((i) => i.label.length))
+  const longText = Math.max(0, ...items.map((i) => (i.text ?? '').length))
+  const label = Math.round(Math.min(52, rowH * 0.3, 530 / (longLabel * 0.64), 360 / Math.max(1, longText * 0.6)))
+  // Label column, bar and value, as one block in the middle of the frame.
+  const labelW = Math.min(600, longLabel * label * 0.64 + 64)
+  const left = Math.max(40, (1920 - (labelW + 900 + longText * label * 0.6 + 40)) / 2)
   return (
     <AbsoluteFill style={{ background: '#121214' }}>
       {title && <div style={{ position: 'absolute', top: top - 150, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 68, color: '#fafafa' }}>{title}</div>}
@@ -769,8 +780,8 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
         const len = Math.max(14, (scale(it.value) / max) * 900) * p
         const c = it.hot ? '#ff6b4a' : color
         return (
-          <div key={i} style={{ position: 'absolute', top: top + i * rowH, left: 0, right: 0, height: rowH, display: 'flex', alignItems: 'center', opacity: Math.min(1, p * 3) }}>
-            <div style={{ width: 560, paddingRight: 36, textAlign: 'right', fontFamily: CODE, fontSize: label, color: '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
+          <div key={i} style={{ position: 'absolute', top: top + i * rowH, left, right: 0, height: rowH, display: 'flex', alignItems: 'center', opacity: Math.min(1, p * 3) }}>
+            <div style={{ width: labelW, paddingRight: 36, boxSizing: 'border-box', textAlign: 'right', fontFamily: CODE, fontSize: label, color: '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
             <div style={{ width: len, height: Math.min(96, rowH * 0.55), background: `color-mix(in srgb, ${c} 35%, transparent)`, border: `4px solid ${c}`, borderRadius: 8 }} />
             {it.text && <div style={{ marginLeft: 28, fontFamily: CODE, fontWeight: 700, fontSize: label, color: c, opacity: p >= 1 ? 1 : 0, whiteSpace: 'nowrap' }}>{it.text}</div>}
           </div>
@@ -1058,6 +1069,313 @@ export function TitleCard({ text, accent, start = 0, color = '#ff8a1f' }: { text
           </span>
         ))}
       </div>
+    </AbsoluteFill>
+  )
+}
+
+// ---------- more ways to teach an idea (each a different shape, so no visual repeats) ----------
+
+const PANEL = '#121214'
+const AMBER = '#f5b74e'
+const HOT = '#ff6b4a'
+const DIM = '#3f3f46'
+
+/** A title over a teaching visual, the same everywhere. */
+function VisualTitle({ text }: { text?: string }) {
+  if (!text) return null
+  return <div style={{ position: 'absolute', top: 90, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 64, color: '#fafafa' }}>{text}</div>
+}
+
+/**
+ * A share of a whole as a grid of squares (40 of every 100 wafers, 1 in 3 users): `lit` of `total` light up in turn,
+ * the number written big beside it.
+ */
+export function Dots({ total = 100, lit, title, label, start = 0, color = AMBER, dur = 40 }: { total?: number; lit: number; title?: string; label?: string; start?: number; color?: string; dur?: number }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  // A square-ish grid (10 x 10 for a hundred), as big as the left two thirds allow.
+  const cols = total <= 24 ? Math.min(total, 8) : total <= 100 ? 10 : 20
+  const rows = Math.ceil(total / cols)
+  const size = Math.min(72, 900 / cols - 8, (title ? 760 : 860) / rows - 8)
+  const on = Math.round(interpolate(f, [6, 6 + dur], [0, lit], { ...clamp, easing: ease }))
+  const share = Math.round((lit / total) * 100)
+  return (
+    <AbsoluteFill style={{ background: PANEL }}>
+      <VisualTitle text={title} />
+      <div style={{ position: 'absolute', left: 180, top: 540 - (rows * (size + 8)) / 2 + (title ? 70 : 0), display: 'grid', gridTemplateColumns: `repeat(${cols}, ${size}px)`, gap: 8 }}>
+        {Array.from({ length: total }, (_, i) => (
+          <div key={i} style={{ width: size, height: size, borderRadius: size * 0.2, background: i < on ? color : 'transparent', border: `3px solid ${i < on ? color : DIM}`, boxSizing: 'border-box' }} />
+        ))}
+      </div>
+      <div style={{ position: 'absolute', right: 160, top: 540 + (title ? 40 : 0), transform: 'translateY(-50%)', textAlign: 'right' }}>
+        <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 200, lineHeight: 1, color }}>{Math.round((on / Math.max(1, lit)) * share)}%</div>
+        {label && <div style={{ fontFamily: UI, fontSize: 46, color: '#d4d4d8', marginTop: 16, maxWidth: 640 }}>{label}</div>}
+      </div>
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Two things side by side, row by row (a table that builds): headers `a` and `b`, each row a label and a value for
+ * each. "yes"/"no" (or ✓/✗) show as green ticks and red crosses. `win` marks the column that comes out ahead.
+ */
+export function Compare({ a, b, rows, title, start = 0, every = 16, win }: { a: string; b: string; rows: { label: string; a: string; b: string }[]; title?: string; start?: number; every?: number; win?: 'a' | 'b' }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  const cell = (v: string) => {
+    const yes = /^(yes|✓|true)$/i.test(v.trim())
+    const no = /^(no|✗|×|false)$/i.test(v.trim())
+    return <span style={{ color: yes ? '#3ddc84' : no ? HOT : '#f4f4f5', fontSize: yes || no ? 64 : 44, fontWeight: 700 }}>{yes ? '✓' : no ? '✗' : v}</span>
+  }
+  const rowH = Math.min(130, 620 / Math.max(1, rows.length))
+  const top = 540 - ((rows.length + 1) * rowH) / 2 + (title ? 50 : 0)
+  const col = (side: 'a' | 'b') => ({ width: 520, textAlign: 'center' as const, borderRadius: 14, background: win === side ? 'color-mix(in srgb, #3ddc84 10%, transparent)' : undefined })
+  return (
+    <AbsoluteFill style={{ background: PANEL }}>
+      <VisualTitle text={title} />
+      <div style={{ position: 'absolute', left: 140, right: 140, top, fontFamily: UI }}>
+        <div style={{ display: 'flex', height: rowH, alignItems: 'center', fontWeight: 800, fontSize: 52, color: '#fafafa' }}>
+          <div style={{ flex: 1 }} />
+          <div style={{ ...col('a'), color: win === 'a' ? '#3ddc84' : '#fafafa' }}>{a}</div>
+          <div style={{ ...col('b'), color: win === 'b' ? '#3ddc84' : '#fafafa' }}>{b}</div>
+        </div>
+        {rows.map((r, i) => {
+          const p = interpolate(f, [10 + i * every, 18 + i * every], [0, 1], { ...clamp, easing: ease })
+          return (
+            <div key={i} style={{ display: 'flex', height: rowH, alignItems: 'center', borderTop: `2px solid ${DIM}`, opacity: p, transform: `translateY(${(1 - p) * 20}px)` }}>
+              <div style={{ flex: 1, fontSize: 42, color: '#a1a1aa', fontFamily: CODE }}>{r.label}</div>
+              <div style={col('a')}>{cell(r.a)}</div>
+              <div style={col('b')}>{cell(r.b)}</div>
+            </div>
+          )
+        })}
+      </div>
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Layers stacked like slabs (a system, the memory hierarchy, a network stack), built from the bottom up; `hot` lights
+ * the one that matters and `sub` says something small on it.
+ */
+export function Stack({ layers, title, start = 0, every = 12 }: { layers: { label: string; sub?: string; hot?: boolean; color?: string }[]; title?: string; start?: number; every?: number }) {
+  const { f, t } = useLocal(start, 10)
+  if (f < 0) return null
+  const n = layers.length
+  const h = Math.min(130, 640 / Math.max(1, n) - 18)
+  const top = 540 - (n * (h + 18)) / 2 + (title ? 50 : 0)
+  return (
+    <AbsoluteFill style={{ background: PANEL }}>
+      <VisualTitle text={title} />
+      {layers.map((l, i) => {
+        // Built from the bottom: the last layer first.
+        const k = n - 1 - i
+        const p = interpolate(f, [k * every, k * every + 12], [0, 1], { ...clamp, easing: ease })
+        if (p <= 0) return null
+        const c = l.color ?? (l.hot ? HOT : AMBER)
+        const w = 1100 - i * 40
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: 960 - w / 2,
+              top: top + i * (h + 18) - (1 - p) * 60,
+              width: w,
+              height: h,
+              opacity: p,
+              borderRadius: 14,
+              border: `3px solid ${l.hot ? c : DIM}`,
+              background: l.hot ? `color-mix(in srgb, ${c} 22%, #121214)` : '#1c1c21',
+              boxShadow: l.hot ? `0 0 60px color-mix(in srgb, ${c} 30%, transparent)` : '0 14px 0 #0b0b0d',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 48px',
+              boxSizing: 'border-box',
+              transform: `scale(${l.hot ? 1 + 0.03 * t : 1})`
+            }}
+          >
+            <span style={{ fontFamily: UI, fontWeight: 800, fontSize: Math.min(54, h * 0.42), color: l.hot ? '#fff' : '#e4e4e7' }}>{l.label}</span>
+            {l.sub && <span style={{ fontFamily: CODE, fontSize: Math.min(38, h * 0.3), color: l.hot ? c : '#a1a1aa' }}>{l.sub}</span>}
+          </div>
+        )
+      })}
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Steps in a row with a packet travelling through them (a request, a build, how a token is made): each step lights as
+ * the packet reaches it. `hot` (a step number, from 0) marks the slow or broken one.
+ */
+export function Pipeline({ steps, title, start = 0, every = 22, hot, packet }: { steps: string[]; title?: string; start?: number; every?: number; hot?: number; packet?: string }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  const n = steps.length
+  const gap = 1640 / Math.max(1, n)
+  const w = Math.min(320, gap - 70)
+  const y = 560 + (title ? 30 : 0)
+  const pos = interpolate(f, [8, 8 + (n - 1) * every], [0, n - 1], { ...clamp, easing: Easing.inOut(Easing.cubic) })
+  const x = (i: number) => 140 + gap * i + gap / 2
+  return (
+    <AbsoluteFill style={{ background: PANEL }}>
+      <VisualTitle text={title} />
+      <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
+        <line x1={x(0)} y1={y} x2={x(n - 1)} y2={y} stroke={DIM} strokeWidth={6} />
+        <line x1={x(0)} y1={y} x2={x(0) + (x(n - 1) - x(0)) * (pos / Math.max(1, n - 1))} y2={y} stroke={AMBER} strokeWidth={6} />
+      </svg>
+      {steps.map((s, i) => {
+        const reached = pos >= i - 0.05
+        const c = i === hot ? HOT : AMBER
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: x(i) - w / 2,
+              top: y - 70,
+              width: w,
+              height: 140,
+              borderRadius: 18,
+              border: `3px solid ${reached ? c : DIM}`,
+              background: reached ? `color-mix(in srgb, ${c} 16%, #121214)` : '#18181b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: 14,
+              boxSizing: 'border-box',
+              fontFamily: UI,
+              fontWeight: 700,
+              fontSize: Math.min(40, (w - 28) / Math.max(4, Math.min(s.length, 14) * 0.55)),
+              color: reached ? '#fff' : '#a1a1aa'
+            }}
+          >
+            {s}
+          </div>
+        )
+      })}
+      {packet ? (
+        <div style={{ position: 'absolute', left: x(0) + (x(n - 1) - x(0)) * (pos / Math.max(1, n - 1)) - 34, top: y - 150, fontSize: 56, filter: 'drop-shadow(0 0 16px rgba(245,183,78,.8))' }}>{packet}</div>
+      ) : (
+        <div style={{ position: 'absolute', left: x(0) + (x(n - 1) - x(0)) * (pos / Math.max(1, n - 1)) - 18, top: y - 118, width: 36, height: 36, borderRadius: 18, background: AMBER, boxShadow: `0 0 30px ${AMBER}` }} />
+      )}
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * A hierarchy, top down (one thing splits into kinds, a company into parts): the root, then each branch, then its
+ * leaves, drawn in turn with lines.
+ */
+export function Tree({ root, branches, title, start = 0, every = 14 }: { root: string; branches: { label: string; leaves?: string[]; hot?: boolean }[]; title?: string; start?: number; every?: number }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  const n = branches.length
+  const top = title ? 230 : 160
+  const bx = (i: number) => 960 + (i - (n - 1) / 2) * Math.min(460, 1700 / Math.max(1, n))
+  const node = (x: number, y: number, label: string, p: number, kind: 'root' | 'branch' | 'leaf', hot?: boolean) => {
+    const c = hot ? HOT : AMBER
+    const size = kind === 'root' ? 52 : kind === 'branch' ? 42 : 32
+    return (
+      <div
+        key={`${kind}${label}${x}`}
+        style={{
+          position: 'absolute',
+          left: x,
+          top: y,
+          transform: `translate(-50%, -50%) scale(${0.8 + 0.2 * p})`,
+          opacity: p,
+          padding: kind === 'leaf' ? '10px 22px' : '18px 34px',
+          borderRadius: 14,
+          border: `3px solid ${kind === 'leaf' ? DIM : c}`,
+          background: kind === 'root' ? `color-mix(in srgb, ${c} 20%, #121214)` : '#18181b',
+          fontFamily: kind === 'leaf' ? CODE : UI,
+          fontWeight: kind === 'leaf' ? 500 : 800,
+          fontSize: size,
+          color: '#f4f4f5',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {label}
+      </div>
+    )
+  }
+  const lines: React.ReactNode[] = []
+  const nodes: React.ReactNode[] = [node(960, top, root, interpolate(f, [0, 10], [0, 1], clamp), 'root')]
+  branches.forEach((b, i) => {
+    const pb = interpolate(f, [10 + i * every, 20 + i * every], [0, 1], { ...clamp, easing: ease })
+    const x = bx(i)
+    lines.push(<line key={`b${i}`} x1={960} y1={top + 40} x2={960 + (x - 960) * pb} y2={top + 40 + (top + 230 - (top + 40)) * pb} stroke={DIM} strokeWidth={4} />)
+    nodes.push(node(x, top + 260, b.label, pb, 'branch', b.hot))
+    ;(b.leaves ?? []).forEach((l, j) => {
+      const pl = interpolate(f, [20 + i * every + j * 6, 28 + i * every + j * 6], [0, 1], { ...clamp, easing: ease })
+      const y = top + 400 + j * 90
+      lines.push(<line key={`l${i}${j}`} x1={x} y1={top + 300 + (j ? (j - 1) * 90 + 110 : 0)} x2={x} y2={y - 30} stroke={DIM} strokeWidth={3} opacity={pl} />)
+      nodes.push(node(x, y, l, pl, 'leaf'))
+    })
+  })
+  return (
+    <AbsoluteFill style={{ background: PANEL }}>
+      <VisualTitle text={title} />
+      <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
+        {lines}
+      </svg>
+      {nodes}
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * A real picture with a magnifying lens on one detail of it (a chip's marking, a line of a chart, a face in a crowd):
+ * the picture first, then the lens grows over `at` ([x, y, w, h] in the picture's own pixels) with a label.
+ */
+export function Magnify({ name, w, h, at, label, start = 0, zoom = 2.6 }: { name: string; w: number; h: number; at: [number, number, number, number]; label?: string; start?: number; zoom?: number }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  const k = Math.min(1920 / w, 1080 / h)
+  const iw = w * k
+  const ih = h * k
+  const ox = (1920 - iw) / 2
+  const oy = (1080 - ih) / 2
+  const cx = ox + (at[0] + at[2] / 2) * k
+  const cy = oy + (at[1] + at[3] / 2) * k
+  const p = interpolate(f, [14, 30], [0, 1], { ...clamp, easing: ease })
+  const r = 230
+  // The lens sits beside the detail, on the side with more room, joined to it by a line.
+  const lx = cx < 960 ? Math.min(1920 - r - 60, cx + 480) : Math.max(r + 60, cx - 480)
+  const ly = Math.max(r + 60, Math.min(1080 - r - 60, cy))
+  const z = zoom * k
+  return (
+    <AbsoluteFill style={{ background: '#000', overflow: 'hidden' }}>
+      <Img src={staticFile(name)} style={{ position: 'absolute', left: ox, top: oy, width: iw, height: ih, filter: `brightness(${1 - 0.45 * p})` }} />
+      <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0, opacity: p }}>
+        <rect x={cx - (at[2] * k) / 2} y={cy - (at[3] * k) / 2} width={at[2] * k} height={at[3] * k} fill="none" stroke={AMBER} strokeWidth={5} rx={8} />
+        <line x1={cx} y1={cy} x2={lx} y2={ly} stroke={AMBER} strokeWidth={5} />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          left: lx - r,
+          top: ly - r,
+          width: r * 2,
+          height: r * 2,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          border: `8px solid ${AMBER}`,
+          boxShadow: '0 30px 80px rgba(0,0,0,.7)',
+          transform: `scale(${p})`,
+          background: '#000'
+        }}
+      >
+        <Img src={staticFile(name)} style={{ position: 'absolute', width: w * z, height: h * z, maxWidth: 'none', left: r - (at[0] + at[2] / 2) * z, top: r - (at[1] + at[3] / 2) * z }} />
+      </div>
+      {label && (
+        <div style={{ position: 'absolute', left: lx - 300, width: 600, top: ly + r + 24, textAlign: 'center', fontFamily: MEME, fontSize: 64, color: '#fff', textTransform: 'uppercase', WebkitTextStroke: '4px #000', paintOrder: 'stroke fill', opacity: p }}>
+          {label}
+        </div>
+      )}
     </AbsoluteFill>
   )
 }

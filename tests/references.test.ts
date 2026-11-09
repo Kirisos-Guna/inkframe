@@ -136,3 +136,33 @@ describe('no chart or diagram over and over', () => {
     expect(r.get('i')?.join()).toContain('Another Bars chart')
   })
 })
+
+describe('a highlight only when the page held still', () => {
+  it('compares the bars measured before and after the picture', async () => {
+    const { sameMarks } = await import('../src/main/services/realMedia')
+    expect(sameMarks([[10, 100, 300, 40]], [[11, 102, 300, 40]])).toBe(true)
+    // A sticky menu shifted the text a line down between measuring and the picture.
+    expect(sameMarks([[10, 100, 300, 40]], [[10, 160, 300, 40]])).toBe(false)
+    expect(sameMarks([[10, 100, 300, 40]], [])).toBe(false)
+  })
+})
+
+describe('many shapes, none twice in a row', () => {
+  it('flags the same teaching shape in two parts in a row, and too often', async () => {
+    const { lintScenes } = await import('../src/main/services/job/checkRules')
+    const r = lintScenes([
+      { id: 'a', index: 0, code: '<Dots total={100} lit={40} />' },
+      { id: 'b', index: 1, code: '<Dots total={100} lit={30} />' },
+      { id: 'c', index: 2, code: '<Compare a="x" b="y" rows={[]} />' },
+      { id: 'd', index: 3, code: '<Stack layers={[]} />' },
+      { id: 'e', index: 4, code: '<Dots total={10} lit={3} />' },
+      { id: 'f', index: 5, code: '<Pipeline steps={[]} />' }
+    ])
+    expect(r.get('a')).toBeUndefined()
+    expect(r.get('b')?.join()).toContain('Dots again right after')
+    expect(r.get('c')).toBeUndefined()
+    expect(r.get('d')).toBeUndefined()
+    expect(r.get('e')?.join()).toContain('Too many Dots')
+    expect(r.get('f')).toBeUndefined()
+  })
+})

@@ -61,6 +61,8 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
   }
   // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
   if (p.includes('You are the researcher for a fast, Fireship-style')) {
+    // INKFRAME_FAKE_PLAN=file: this plan instead (to test fetching particular pages).
+    if (process.env.INKFRAME_FAKE_PLAN) return readFileSync(process.env.INKFRAME_FAKE_PLAN, 'utf8')
     const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
     const kinds = [
       [{ kind: 'page', url: 'https://en.wikipedia.org/wiki/Nvidia', mark: 'Nvidia Corporation is an American multinational technology company headquartered in Santa Clara' }, { kind: 'photo', query: 'Jensen Huang', cutout: true }, { kind: 'chart', source: 'price', symbol: 'NVDA', range: '1y', label: 'Nvidia stock' }],

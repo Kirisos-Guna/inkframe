@@ -139,7 +139,8 @@ Look
     guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, charts, code and clips listed
 for each part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
   import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Gif, Caption, Code, Shell, Diagram, Box,
-    Flow, Loop, Chart, Stats, Bars, Timeline, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
+    Flow, Loop, Chart, Stats, Bars, Timeline, Dots, Compare, Stack, Pipeline, Tree, Magnify, Hand, Circle, Sticker, Label,
+    TitleCard } from '@kit/remix'
   import { AbsoluteFill } from '@kit'
   <Cuts at={[0, at('word'), …]} whip?> one child per shot </Cuts>   each child fills the frame; cut on the word it is
     about; whip: a fast blurred slide between shots (use it where the topic turns)
@@ -165,6 +166,18 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     in its page, a Caption over a photo, Stats)
   <Timeline items={[{ date: '2026 · November 5', text: 'Apiiro publishes the research' }, …]} at?={[f, …]} />  how a story
     unfolded, dated paper cards stacking up (news, incidents, a disclosure)
+  More ways to TEACH an idea, each a different shape. Pick the one that fits the idea:
+  <Dots total={100} lit={40} title? label="could go to one project" />  a share of a whole (40%, 1 in 3)
+  <Compare a="DDR5" b="HBM3E" win?="b" title? rows={[{ label: 'speed', a: '64 GB/s', b: '1.2 TB/s' },
+    { label: 'upgradeable', a: 'yes', b: 'no' }]} />  two things side by side, a row per difference (yes/no as ✓/✗)
+  <Stack title? layers={[{ label: 'Cache', sub: '~5 ns' }, { label: 'HBM', sub: 'the bottleneck', hot: true }, …]} />
+    layers of a system, top to bottom (memory hierarchy, a network stack, what sits on what)
+  <Pipeline title? steps={['prompt', 'load weights', 'read 140 GB', 'one token']} hot?={2} packet?="📦" />  how
+    something flows step by step, a packet travelling through; hot marks the slow or broken step
+  <Tree root="DRAM wafers" title? branches={[{ label: 'HBM', leaves: ['H100', 'B200'], hot: true }, …]} />  one thing
+    splitting into kinds or parts
+  <Magnify name="m/…png" w h at={[x, y, w, h]} label? />  a lens on one detail of a real picture or page (a chip's
+    marking, one line of a chart), [x, y, w, h] in the picture's pixels (a page's marks give them)
   <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person with a white outline, popped on top of a shot; a
     logo ("m/…-logo.png") shows on a white card. Never on top of text or another Sticker.
   <Label x y text="CEO, NVIDIA" to={[x, y]}? color? />  a tilted name tag, with an optional pointer line
@@ -216,9 +229,11 @@ What Fireship and CodeHead do that a weak video does not
   it, a Hand pointing at the line. One picture with three layers beats three bare cards.
 - Numbers go ON a visual: a Punch on the number inside its highlighted sentence, Bars to compare, Stats or a Chart.
   TitleCard is for chapter cards only ("FLAW #2", the last line): at most 2 in the whole video, never two in a row.
-- Teach with a few clean diagrams (CodeHead): dark, outlined boxes, one accent on the thing that matters, built step
-  by step while it is explained, held long enough to follow. At most one box-and-arrow Diagram per 25 seconds, and
-  the next teaching visual is a different shape (Bars, a Timeline, a before/after Split, code, a Loop).
+- Teach with a few clean visuals (CodeHead): dark, one accent on the thing that matters, built step by step while it
+  is explained, held long enough to follow. Choose the SHAPE from the idea: a share → Dots; this vs that → Compare;
+  layers → Stack; a process → Pipeline; kinds of something → Tree; a cycle → Loop; how money or data flows between
+  players → Diagram; numbers side by side → Bars; events over time → Timeline; a detail in a picture → Magnify.
+  Never the same shape in two parts in a row, and no shape more than once per 4 parts: a video uses many of them.
 - Every listed picture is used once: never the same meme, page or photo twice, and never flicking back and forth
   between two shots.
 - Every part shows something NEW. Never draw again an idea an earlier part already drew (the same GPU-and-memory

@@ -46,6 +46,7 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
   let lastBarsPart = -10
   let bars = 0
   const diagrams = new Map<string, number>()
+  const shapes = new Map<string, { count: number; last: number }>()
   const parts = scenes.length
   for (const s of [...scenes].sort((a, b) => a.index - b.index)) {
     // Pictures by file name (m/…), once each in the whole video. A Sticker or Label of the same file is a layer, not a
@@ -77,6 +78,16 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
         add(s.id, `It repeats the diagram from part ${(diagrams.get(sig) ?? 0) + 1} (${labels.join(', ')}): show something new here (a real picture, code, the page, Bars, a Timeline)`)
       if (labels.length > 1 && !diagrams.has(sig)) diagrams.set(sig, s.index)
     }
+    // The other teaching shapes: the same one in two parts in a row, or more than once per 4 parts, is a video that
+    // looks the same all the way through.
+    for (const kind of SHAPES) {
+      const k = (s.code.match(new RegExp(`<${kind}\\b`, 'g')) ?? []).length
+      if (!k) continue
+      const seenShape = shapes.get(kind) ?? { count: 0, last: -10 }
+      if (s.index - seenShape.last === 1) add(s.id, `A ${kind} again right after the one in the previous part: show this idea with a different shape (${otherShapes(kind)})`)
+      else if (seenShape.count + k > Math.max(2, Math.ceil(parts / 4))) add(s.id, `Too many ${kind} visuals in this video already: show this idea with a different shape (${otherShapes(kind)})`)
+      shapes.set(kind, { count: seenShape.count + k, last: s.index })
+    }
     // Bars: one chart look over and over. At most one per 4 parts, never in two parts in a row.
     const b = (s.code.match(/<Bars\b/g) ?? []).length
     if (b) {
@@ -96,3 +107,11 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
   }
   return notes
 }
+
+/** The teaching shapes besides Diagram and Bars (checked on their own above), each for a different kind of idea. */
+const SHAPES = ['Dots', 'Compare', 'Stack', 'Pipeline', 'Tree', 'Timeline', 'Magnify', 'Loop']
+const otherShapes = (kind: string) =>
+  ['Dots', 'Compare', 'Stack', 'Pipeline', 'Tree', 'Timeline', 'Bars', 'Diagram', 'Magnify', 'a real picture']
+    .filter((k) => k !== kind)
+    .slice(0, 6)
+    .join(', ')
