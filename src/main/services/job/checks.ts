@@ -66,8 +66,8 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
   }
   for (const group of chunk(items, CHECK_BATCH)) {
     try {
-      const reply = await runAgent({ ...agentOpts(p, signal), model: checkModel(p), effort: 'Low', prompt: checkBatchPrompt(group, p.settings.checks) })
-      const r = extractJson<{ parts: { part: number; ok: boolean; notes?: string[] }[] }>(reply)
+      const reply = await runAgent({ ...agentOpts(p, signal), model: checkModel(p), effort: 'Low', prompt: checkBatchPrompt(group, p.settings.checks, realMedia) })
+      const r = extractJson<{ parts: { part: number; ok?: boolean; notes?: string[]; fix?: string[]; minor?: string[] }[] }>(reply)
       for (const { part: x } of group) {
         const got = r.parts?.find((y) => Number(y.part) === x.index + 1)
         if (!got) {
@@ -79,9 +79,12 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
         const prev = part(p, x.id)
         const afterFix = !!prev && checkValid(prev) && !!prev.checks!.afterFix
         const seen = measured.get(x.id) ?? []
-        const notes = [...seen, ...(Array.isArray(got.notes) ? got.notes : []).map(String).filter(Boolean)].slice(0, 6)
-        // "ok: false" with no notes says nothing to fix: take it as fine rather than fixing blind.
-        const checks = { ok: !seen.length && (got.ok !== false || !notes.length), notes, at: Date.now(), ...(afterFix ? { afterFix } : {}) }
+        const list = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(Boolean) : [])
+        // What is broken blocks the tick and is what the automatic fix works on; what could be better is shown only.
+        // (An older-style answer, "notes" without "fix", counts as broken, as before.)
+        const notes = [...seen, ...list(got.fix ?? got.notes)].slice(0, 6)
+        const minor = list(got.minor).slice(0, 4)
+        const checks = { ok: !notes.length, notes, ...(minor.length ? { minor } : {}), at: Date.now(), ...(afterFix ? { afterFix } : {}) }
         results.set(x.id, checks)
         setPart(p, x.id, { checks })
       }

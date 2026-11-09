@@ -250,7 +250,9 @@ export function Page({
         {point && marks[0] && (() => {
           // In the left margin of the first highlighted line, pointing at it, after the highlighter has run: it never
           // covers words.
-          const [mx, my0, , mh] = marks[0]
+          // At the line that starts furthest left (a highlight that starts mid-line goes on into the next line, which
+          // starts at the margin): there the hand is in empty margin, never on words.
+          const [mx, my0, , mh] = marks.reduce((a, m) => (m[0] < a[0] - 4 ? m : a), marks[0])
           const room = (mx - fx) * k
           const size = Math.max(44, Math.min(120, mh * k * 1.5, room * 0.85))
           const p = interpolate(f, [markAt + 28, markAt + 38], [0, 1], { ...clamp, easing: ease })
@@ -277,7 +279,7 @@ export function padBox(marks: number[][], w: number, h: number, focus?: number[]
   // runs across the whole page (Hacker News) or takes in a sidebar (Wikipedia's infobox).
   const left = Math.min(...marks.map((m) => m[0]))
   const right = Math.max(...marks.map((m) => m[0] + m[2]))
-  const start = focus && left - focus[0] < line * 3 ? focus[0] : left - line
+  const start = focus && focus[0] <= left && left - focus[0] < line * 40 ? focus[0] : left - line
   // Two and a half lines of room on the left: the margin a pointing hand sits in.
   const x0 = Math.max(0, start - line * 2.5)
   const x1 = Math.min(w, Math.max(right + line * 1.5, x0 + line * 22))
@@ -297,12 +299,17 @@ export function roomy([x, y, fw, fh]: number[], marks: number[][], w: number, h:
 }
 
 /** Two things side by side (code and what it does, before and after), each half the frame. */
+/** Set inside a Split: code and terminals draw their text bigger, since the half is shown at half size. */
+const InSplit = React.createContext(false)
+
 export function Split({ left, right, start = 0 }: { left: React.ReactNode; right: React.ReactNode; start?: number }) {
   const { f, t } = useLocal(start, 10)
   if (f < 0) return null
   const half = (node: React.ReactNode, side: 0 | 1) => (
     <div style={{ position: 'absolute', top: 0, bottom: 0, left: side ? 960 : 0, width: 960, overflow: 'hidden', transform: `translateX(${(1 - t) * (side ? 120 : -120)}px)` }}>
-      <div style={{ position: 'absolute', left: -480, top: 0, width: 1920, height: 1080, transform: 'scale(.52)', transformOrigin: '50% 50%' }}>{node}</div>
+      <div style={{ position: 'absolute', left: -480, top: 0, width: 1920, height: 1080, transform: 'scale(.52)', transformOrigin: '50% 50%' }}>
+        <InSplit.Provider value={true}>{node}</InSplit.Provider>
+      </div>
     </div>
   )
   return (
@@ -487,7 +494,10 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   const rows = code.split('\n')
   // As big as the editor allows: a short snippet is read from across the room, a long one still fits.
   const longest = Math.max(12, ...rows.map((r) => r.replace(/\t/g, '  ').length))
-  const font = Math.round(Math.max(24, Math.min(54, (1560 - 140 - (tree ? 300 : 0)) / (longest * 0.6), 860 / (rows.length * 1.5))))
+  const half = React.useContext(InSplit)
+  // The longest line and its line-number column (3.9 characters' worth) must fit the editor: a line ran off the edge.
+  const fits = (1560 - 40 - (tree ? 300 : 0)) / (longest * 0.6 + 3.9)
+  const font = Math.round(Math.max(half ? 34 : 22, Math.min(half ? 84 : rows.length <= 3 ? 66 : 54, fits, 860 / (rows.length * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 1560, borderRadius: 14, overflow: 'hidden', background: '#1e1e1e', boxShadow: '0 40px 120px rgba(0,0,0,.6)', opacity: t, transform: `translateY(${(1 - t) * 40}px)` }}>
@@ -551,9 +561,14 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   const typedChars = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, command.length / 0.6)))
   const doneAt = 8 + (command.length / cps) * fps
   const outN = Math.max(0, Math.floor((f - doneAt - 6) / 5))
+  // As big as the window allows for all its lines (the final output, so the size never jumps while it types).
+  const half = React.useContext(InSplit)
+  const longest = Math.max(16, command.length + 4, ...output.map((l) => l.length))
+  const lines = 1 + output.length
+  const font = Math.round(Math.max(half ? 40 : 28, Math.min(half ? 84 : 60, 1380 / (longest * 0.6), 820 / (lines * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 1500, minHeight: 560, borderRadius: 14, background: '#0d1117', boxShadow: '0 40px 120px rgba(0,0,0,.6)', padding: '30px 40px', fontFamily: CODE, fontSize: 30, lineHeight: '46px', color: '#c9d1d9', opacity: t }}>
+      <div style={{ width: 1500, borderRadius: 14, background: '#0d1117', boxShadow: '0 40px 120px rgba(0,0,0,.6)', padding: `${font}px ${font * 1.2}px`, fontFamily: CODE, fontSize: font, lineHeight: `${Math.round(font * 1.5)}px`, color: '#c9d1d9', opacity: t, whiteSpace: 'pre', overflow: 'hidden' }}>
         <div>
           <span style={{ color: '#3fb950' }}>~ $ </span>
           {command.slice(0, typedChars)}
@@ -742,21 +757,22 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
   if (f < 0) return null
   const scale = (v: number) => (log ? Math.log10(Math.max(1, v)) : v)
   const max = Math.max(...items.map((i) => scale(i.value)), 1)
-  const rowH = Math.min(150, 640 / Math.max(1, items.length))
-  const top = 540 - (items.length * rowH) / 2 + (title ? 40 : 0)
+  const rowH = Math.min(230, 700 / Math.max(1, items.length))
+  const top = 540 - (items.length * rowH) / 2 + (title ? 60 : 0)
+  const label = Math.round(Math.min(52, rowH * 0.3))
   return (
     <AbsoluteFill style={{ background: '#121214' }}>
-      {title && <div style={{ position: 'absolute', top: top - 120, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 700, fontSize: 52, color: '#fafafa' }}>{title}</div>}
+      {title && <div style={{ position: 'absolute', top: top - 150, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 68, color: '#fafafa' }}>{title}</div>}
       {items.map((it, i) => {
         const p = interpolate(f, [i * every, i * every + 22], [0, 1], { ...clamp, easing: ease })
         if (p <= 0) return null
-        const len = Math.max(8, (scale(it.value) / max) * 900) * p
+        const len = Math.max(14, (scale(it.value) / max) * 900) * p
         const c = it.hot ? '#ff6b4a' : color
         return (
           <div key={i} style={{ position: 'absolute', top: top + i * rowH, left: 0, right: 0, height: rowH, display: 'flex', alignItems: 'center', opacity: Math.min(1, p * 3) }}>
-            <div style={{ width: 560, paddingRight: 36, textAlign: 'right', fontFamily: CODE, fontSize: 34, color: '#d4d4d8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
-            <div style={{ width: len, height: Math.min(64, rowH * 0.5), background: `color-mix(in srgb, ${c} 30%, transparent)`, border: `3px solid ${c}`, borderRadius: 6 }} />
-            {it.text && <div style={{ marginLeft: 24, fontFamily: CODE, fontSize: 32, color: c, opacity: p >= 1 ? 1 : 0, whiteSpace: 'nowrap' }}>{it.text}</div>}
+            <div style={{ width: 560, paddingRight: 36, textAlign: 'right', fontFamily: CODE, fontSize: label, color: '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
+            <div style={{ width: len, height: Math.min(96, rowH * 0.55), background: `color-mix(in srgb, ${c} 35%, transparent)`, border: `4px solid ${c}`, borderRadius: 8 }} />
+            {it.text && <div style={{ marginLeft: 28, fontFamily: CODE, fontWeight: 700, fontSize: label, color: c, opacity: p >= 1 ? 1 : 0, whiteSpace: 'nowrap' }}>{it.text}</div>}
           </div>
         )
       })}

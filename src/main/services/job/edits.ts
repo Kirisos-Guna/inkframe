@@ -158,7 +158,7 @@ export async function refinish(id: string) {
     await finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps })
     p.output = out
     p.outputAt = Date.now()
-    if (p.settings.checks !== 'Off') p.finalCheck = await checkFinalVideo(p, out, undefined, getStyle(p.settings.styleId).realMedia ? 4 : undefined)
+    if (p.settings.checks !== 'Off') p.finalCheck = await checkFinalVideo(p, out, undefined, getStyle(p.settings.styleId).realMedia ? 6 : undefined)
     emit(p, true)
     return p
   })

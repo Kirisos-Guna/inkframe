@@ -98,3 +98,26 @@ describe('checking one rendered part', () => {
     expect(note).toContain('every cut')
   })
 })
+
+describe('the finished video fixes its own black pictures', () => {
+  it('finds the parts a black picture is in, once each', async () => {
+    const { blackParts } = await import('../src/main/services/job/finalCheck')
+    expect(
+      blackParts(['Black picture for 0.8 s at 3:37 (part 28)', 'Black picture for 0.6 s at 4:23 (part 32)', 'Black picture for 0.4 s at 4:25 (part 32)', 'A shot lasts 5.2 s on average'])
+    ).toEqual([
+      { part: 28, note: 'Black picture for 0.8 s' },
+      { part: 32, note: 'Black picture for 0.6 s' }
+    ])
+  })
+})
+
+describe('what the checker is asked', () => {
+  it('splits what is broken from what could be better, and knows real media is cropped on purpose', async () => {
+    const { checkBatchPrompt } = await import('../src/main/services/prompts')
+    const p = checkBatchPrompt([], 'High', true)
+    expect(p).toContain('"fix"')
+    expect(p).toContain('"minor"')
+    expect(p).toContain('cropped close')
+    expect(checkBatchPrompt([], 'High', false)).not.toContain('cropped close')
+  })
+})

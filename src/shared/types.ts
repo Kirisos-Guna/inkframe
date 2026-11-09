@@ -45,7 +45,8 @@ export interface Part {
   kit?: number
   history: PartVersion[]
   /** The last check of this part. It is valid while newer than renderedAt. afterFix: already fixed once for its notes. */
-  checks?: { ok: boolean; notes: string[]; at: number; afterFix?: boolean }
+  /** notes: what is broken (blocks the green tick, the automatic fix works on it); minor: could be better, shown only */
+  checks?: { ok: boolean; notes: string[]; minor?: string[]; at: number; afterFix?: boolean }
   /** Which renderer draws this part. Unset = the video's default. */
   engine?: Engine
 }

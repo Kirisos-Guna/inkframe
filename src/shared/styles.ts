@@ -160,8 +160,9 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     each side is shown at half size, so give each one big thing (short code, a close page), never a long file
   <Chart name="m/…json" />  a real line chart (price, downloads)     <Stats name="m/…json" />  GitHub numbers counting up
   <Bars title="Time to crack (log scale)" log items={[{ label: 'Password123', value: 1, text: 'seconds' },
-    { label: 'river lamp cactus ocean', value: 3e5, text: 'about 4 days', hot: true }]} />  a comparison, bar by bar (the
-    way to show numbers side by side: sizes, times, counts, before and after)
+    { label: 'river lamp cactus ocean', value: 3e5, text: 'about 4 days', hot: true }]} />  a comparison, bar by bar, for
+    THE key comparison of the video (at most one per 4 parts): every other number goes on a picture (a Punch on it
+    in its page, a Caption over a photo, Stats)
   <Timeline items={[{ date: '2026 · November 5', text: 'Apiiro publishes the research' }, …]} at?={[f, …]} />  how a story
     unfolded, dated paper cards stacking up (news, incidents, a disclosure)
   <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person with a white outline, popped on top of a shot; a
@@ -219,7 +220,13 @@ What Fireship and CodeHead do that a weak video does not
   by step while it is explained, held long enough to follow. At most one box-and-arrow Diagram per 25 seconds, and
   the next teaching visual is a different shape (Bars, a Timeline, a before/after Split, code, a Loop).
 - Every listed picture is used once: never the same meme, page or photo twice, and never flicking back and forth
-  between two shots.`
+  between two shots.
+- Every part shows something NEW. Never draw again an idea an earlier part already drew (the same GPU-and-memory
+  diagram with other labels is the same diagram): the second time, show the real thing instead (the paper's figure,
+  the code, a photo of the hardware) or move the story on.
+- Nothing small on black: no terminal or code of one or two lines as a whole shot (put the command in the code of a
+  fuller shot, or say it with a Caption), no Diagram of a single box, no chart with one bar. If a shot would be mostly
+  empty, it is the wrong shot.`
   }),
   s({
     id: 'watercolour', name: 'Watercolour', tags: ['Paint', 'Soft'], dim: '2D',

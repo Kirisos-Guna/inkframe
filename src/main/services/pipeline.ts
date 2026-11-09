@@ -19,7 +19,7 @@ import { checkParts } from './job/checks'
 import { fitToScript, snapToPauses } from './wordTimes'
 import { pausesOf } from './media'
 import { finish, finishDetail } from './job/finish'
-import { checkFinalVideo } from './job/finalCheck'
+import { blackParts, checkFinalVideo } from './job/finalCheck'
 import { gatherMedia } from './job/mediaPlan'
 
 // The rest of the app uses these through this file.
@@ -270,8 +270,45 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   emit(p, true)
   if (p.settings.checks !== 'Off') {
     step(p, 'Checking the finished video', { title: 'Checking the finished video', detail: 'Black frames, frozen pictures, the sound and the length (no AI).' })
-    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 4 : undefined))
+    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 6 : undefined))
     emit(p, true)
+    // A black picture in the finished video is a broken part: fixed by itself (once per run), rendered, and the video
+    // put together and checked again, instead of a note the user cannot act on.
+    const black = blackParts(p.finalCheck.notes)
+      .map((n) => ({ x: p.parts[n.part - 1], note: n.note }))
+      .filter((b) => b.x && !b.x.locked)
+    if (p.settings.checks === 'High' && black.length) {
+      step(p, `Fixing ${black.length} part${black.length > 1 ? 's' : ''} with a black picture`, { title: 'Fixing the finished video', detail: black.map((b) => `Part ${b.x.index + 1}: ${b.note}`).join(' · ') })
+      const fixed: Part[] = []
+      for (const { x, note } of black) {
+        const c: Comment = {
+          id: '',
+          partIds: [x.id],
+          text: `The finished video shows ${note.toLowerCase()} in this part: every moment must show something for what is being said (no shot that waits for its start, no empty Diagram or black frame before its first box). Keep everything else as it is.`,
+          mode: 'Fix just this',
+          attachments: [],
+          at: Date.now(),
+          state: 'Working'
+        }
+        try {
+          await guarded(p, signal, (s) => agentScene(p, x, fixPrompt(p, x, c, [], target(p, x)), AUTO_FIX, s))
+          fixed.push(x)
+        } catch (e) {
+          if (signal.aborted || e instanceof LimitError) throw e
+          step(p, `Could not fix part ${x.index + 1}: ${(e as Error).message.split('\n')[0].slice(0, 120)}`)
+        }
+      }
+      if (fixed.length) {
+        await pool(fixed, RENDERS, (x) => renderOne(x, signal, true))
+        for (const x of fixed) setPart(p, x.id, { status: 'Up to date', video: clipFile(p, x) })
+        clearRenderBundles(p)
+        step(p, 'Putting it together again', { title: 'Putting the video together', detail: finishDetail(p) })
+        await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
+        p.outputAt = Date.now()
+        p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 6 : undefined))
+        emit(p, true)
+      }
+    }
   }
   return notFixed
 

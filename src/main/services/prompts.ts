@@ -212,7 +212,7 @@ When all ${parts.length} are written, reply with one short sentence.`
  * Checks for several parts at once. Each picture is a strip of three moments (early, middle, end) of one part, so one
  * small image per part instead of three.
  */
-export function checkBatchPrompt(items: { part: Part; sheet: string; said: string[] }[], level: string) {
+export function checkBatchPrompt(items: { part: Part; sheet: string; said: string[] }[], level: string, realMedia = false) {
   return `You are checking parts of an explainer video before it ships. Each picture is one part: three moments side by side
 (early, middle, end). Read each picture. Under each part: what the voice is saying at each of the three moments.
 
@@ -220,14 +220,26 @@ ${items
   .map(({ part, sheet, said }) => `Part ${part.index + 1} "${part.title}": ${sheet}\n  early: "${said[0] || '…'}"  middle: "${said[1] || '…'}"  end: "${said[2] || '…'}"`)
   .join('\n')}
 
-For each part, check:
-- Timing: each moment shows what is being said then. Flag things drawn well before they are said, or a moment that
-  shows nothing for what is being said.
-- The frame: text cut off or running off the frame, drawings that leave it, overlapping text, text too small to read
-  on a phone, an empty or unbalanced frame; and the end frame clearly shows what the part is about.
-${level === 'Low' ? 'Only flag problems that are obvious at first glance.' : level === 'High' ? 'Be strict.' : ''}
+Sort what you see into two lists.
 
-Reply with JSON only: {"parts": [{"part": <number>, "ok": true or false, "notes": ["short note", ...]}]}  (notes empty when ok)`
+"fix": only what a viewer would see as BROKEN. Each one must be something a designer can change:
+- the video's own text or drawing cut off by the edge of the frame (a label, a box, a title running off screen)
+- text on top of other text so that one cannot be read; text too small to read on a phone
+- a frame that is black or empty for what is being said
+- a picture about a different subject than the words (not merely a loose or indirect match)
+"minor": anything else that could be better (a weaker picture choice, a position, balance, a nicer layout). It never
+goes in "fix".
+${
+  realMedia
+    ? `This video is cut from REAL screenshots, posts, photos and memes: a page screenshot cropped close, so its own
+text runs past the crop or fades out at the edge, is on purpose (not "cut off"); text in a real photo or post (any
+language) is part of the picture; a real page or post that is about the topic counts as matching the words.
+`
+    : ''
+}${level === 'Low' ? 'Only put in "fix" what is obvious at first glance.' : level === 'High' ? 'Look carefully, but "fix" is only for what is really broken.' : ''}
+
+Reply with JSON only: {"parts": [{"part": <number>, "fix": ["short note", ...], "minor": ["short note", ...]}]}  (empty lists
+when there is nothing)`
 }
 
 export function designPrompt(p: Project, part: Part, target: SceneTarget) {

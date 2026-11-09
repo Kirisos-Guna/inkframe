@@ -57,7 +57,7 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     // INKFRAME_FAKE_SKIP=1: the checker forgets that part in its first answer.
     const skip = Number(process.env.INKFRAME_FAKE_SKIP ?? 0)
     const answer = nums.filter((n) => !(n === skip && !skipped && (skipped = true)))
-    return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, ok: false, notes: ['Text is too small'] } : { part: n, ok: true, notes: [] })) })
+    return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, fix: ['Text is too small'], minor: [] } : { part: n, fix: [], minor: ['A closer crop would read better'] })) })
   }
   // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
   if (p.includes('You are the researcher for a fast, Fireship-style')) {

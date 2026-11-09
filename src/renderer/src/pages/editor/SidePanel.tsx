@@ -390,7 +390,7 @@ function Checks({ p }: { p: Project }) {
         <div className="text-[16px] font-semibold">Checks · {p.settings.checks}</div>
         <div className="mt-1 text-[14px] text-muted">
           After each part is drawn, Claude looks at it again: text cut off, things off screen, words and pictures out of sync.
-          {p.settings.checks === 'High' && ' Parts that fail are made again once by themselves.'}
+          {p.settings.checks === 'High' && ' Parts with something broken are fixed by themselves, in up to two rounds.'}
         </div>
         <div className="mt-3 flex gap-2">
           {(['Off', 'Low', 'Medium', 'High'] as const).map((l) => (
@@ -416,7 +416,7 @@ function Checks({ p }: { p: Project }) {
         </div>
       )}
       <div className="text-[14.5px] text-muted">
-        {checked.length} of {p.parts.length} parts checked · {bad.length} with notes
+        {checked.length} of {p.parts.length} parts checked · {bad.length ? `${bad.length} to fix` : 'nothing to fix'}
       </div>
       {p.settings.checks !== 'Off' && rendered && (
         <div className="rounded-xl border border-line bg-[#121214] px-5 py-4">
@@ -437,7 +437,7 @@ function Checks({ p }: { p: Project }) {
             {p.job.running
               ? 'Wait until the current work is done.'
               : `Only parts without a check (or changed since) are checked; parts already checked are not checked again.${
-                  p.settings.checks === 'High' ? ' Parts with notes are fixed once, rendered and checked again; if a fix fails, that part keeps its last good version.' : ''
+                  p.settings.checks === 'High' ? ' Parts with something to fix are fixed, rendered and checked again (up to two rounds); if a fix fails, that part keeps its last good version.' : ''
                 }`}
           </div>
         </div>
@@ -456,6 +456,7 @@ function Checks({ p }: { p: Project }) {
               Part {x.index + 1} · {x.title}
             </div>
             <div className="text-[13.5px] text-muted">{ran(x) ? (x.checks!.notes.length ? x.checks!.notes.join(' · ') : 'Looks good') : 'Not checked yet'}</div>
+            {ran(x) && !!x.checks!.minor?.length && <div className="mt-1 text-[13px] text-dim">Could be better: {x.checks!.minor.join(' · ')}</div>}
           </div>
         </div>
       ))}

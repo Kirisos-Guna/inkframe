@@ -46,6 +46,16 @@ export function readFinalLog(log: string, p: Project, pace?: number) {
   return notes
 }
 
+/** The parts the finished video shows black in, from its notes ("Black picture for 0.8 s at 3:37 (part 28)"). */
+export function blackParts(notes: string[]) {
+  const out: { part: number; note: string }[] = []
+  for (const n of notes) {
+    const m = n.match(/^(Black picture for [\d.]+ s) at [\d:]+ \(part (\d+)\)/)
+    if (m && !out.some((o) => o.part === +m[2])) out.push({ part: +m[2], note: m[1] })
+  }
+  return out
+}
+
 /** Checks the finished video file. Takes about as long as playing it back fast; costs no tokens. */
 export async function checkFinalVideo(p: Project, file: string, signal?: AbortSignal, pace?: number) {
   // Freezes shorter than 8 s are normal holds; black shorter than half a second is a cut.

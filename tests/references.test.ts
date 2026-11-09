@@ -111,3 +111,28 @@ describe('pointing hands', () => {
     expect(r.get('c')).toBeUndefined()
   })
 })
+
+describe('no chart or diagram over and over', () => {
+  it('flags Bars too often, a repeated diagram and a one-box diagram', async () => {
+    const { lintScenes } = await import('../src/main/services/job/checkRules')
+    const diag = (a: string, b: string) => `<Diagram><Box x={1} y={1} label="${a}" /><Box x={2} y={2} label="${b}" /></Diagram>`
+    const r = lintScenes([
+      { id: 'a', index: 0, code: `<Bars items={[]} />${diag('GPU', 'memory')}` },
+      { id: 'b', index: 1, code: '<Bars items={[]} />' },
+      { id: 'c', index: 2, code: '<Diagram><Box x={1} y={1} label="NEW GPU" /></Diagram>' },
+      { id: 'd', index: 3, code: diag('memory', 'GPU') },
+      { id: 'e', index: 4, code: '<Bars items={[]} /><Bars items={[]} />' },
+      { id: 'f', index: 5, code: '<Code code="x" />' },
+      { id: 'g', index: 6, code: '<Code code="y" />' },
+      { id: 'h', index: 7, code: '<Code code="z" />' },
+      { id: 'i', index: 8, code: '<Bars items={[]} />' }
+    ])
+    expect(r.get('a')).toBeUndefined()
+    expect(r.get('b')?.join()).toContain('Another Bars chart')
+    expect(r.get('c')?.join()).toContain('single box')
+    expect(r.get('d')?.join()).toContain('repeats the diagram from part 1')
+    expect(r.get('e')?.join()).toContain('more than one Bars')
+    // Far from the last one, but the video already has more Bars than one per 4 parts.
+    expect(r.get('i')?.join()).toContain('Another Bars chart')
+  })
+})

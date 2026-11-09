@@ -43,6 +43,10 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
   let cards = 0
   let lastCardPart = -2
   let lastDiagramPart = -2
+  let lastBarsPart = -10
+  let bars = 0
+  const diagrams = new Map<string, number>()
+  const parts = scenes.length
   for (const s of [...scenes].sort((a, b) => a.index - b.index)) {
     // Pictures by file name (m/…), once each in the whole video. A Sticker or Label of the same file is a layer, not a
     // second shot, so only full-frame shots count.
@@ -64,6 +68,24 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
     if (d > 1) add(s.id, 'It has more than one box-and-arrow Diagram: keep the one that teaches the idea and show the rest with a different visual (Bars, a Timeline, code, the page, a picture)')
     else if (d && lastDiagramPart === s.index - 1) add(s.id, 'Another box-and-arrow Diagram right after the one in the previous part: show this with a different visual (Bars to compare, a Timeline, code, the highlighted page, a picture)')
     if (d) lastDiagramPart = s.index
+    // The same diagram again (the same boxes, anywhere in the video), or a "diagram" of one box.
+    for (const block of s.code.match(/<Diagram\b[\s\S]*?<\/Diagram>/g) ?? []) {
+      const labels = [...block.matchAll(/<Box\b[^>]*?\blabel=["'{`]+([^"'`}]+)/g)].map((m) => m[1].trim().toLowerCase()).sort()
+      if (labels.length === 1) add(s.id, `A Diagram with a single box ("${labels[0]}") is a lone label on black: show it on a real picture, in Bars, or as part of a fuller diagram`)
+      const sig = labels.join('|')
+      if (labels.length > 1 && diagrams.has(sig) && diagrams.get(sig) !== s.index)
+        add(s.id, `It repeats the diagram from part ${(diagrams.get(sig) ?? 0) + 1} (${labels.join(', ')}): show something new here (a real picture, code, the page, Bars, a Timeline)`)
+      if (labels.length > 1 && !diagrams.has(sig)) diagrams.set(sig, s.index)
+    }
+    // Bars: one chart look over and over. At most one per 4 parts, never in two parts in a row.
+    const b = (s.code.match(/<Bars\b/g) ?? []).length
+    if (b) {
+      if (b > 1) add(s.id, 'It has more than one Bars chart: keep the comparison that matters most and show the rest another way')
+      else if (s.index - lastBarsPart < 4 || bars + 1 > Math.max(2, Math.ceil(parts / 4)))
+        add(s.id, 'Another Bars chart so soon after the last one: say this number with a different visual (a Punch on it in the page, a real picture with a Caption, Stats)')
+      bars += b
+      lastBarsPart = s.index
+    }
     const n = (s.code.match(/<TitleCard\b/g) ?? []).length
     if (n) {
       if (cards + n > 2) add(s.id, `Too many word cards: the video already has ${cards}. Show this line on a visual instead of a TitleCard: a Punch on the number in its highlighted page, Bars, Stats, or a Caption over a picture`)

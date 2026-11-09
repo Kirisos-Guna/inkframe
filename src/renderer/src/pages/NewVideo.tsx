@@ -214,11 +214,13 @@ export default function NewVideo() {
         : await window.api.projects.create({ draft: true, voiceover: { file, name, duration }, title: name.replace(/\.[^.]+$/, '') })
       setDraft(p)
       audio.src = window.api.media.url(file)
+      setAdding(100)
     } catch (e) {
-      showToast(`Could not read that file: ${(e as Error).message}`)
+      // Back to the start, with the reason: never stuck on "Adding · 100%".
+      setAdding(0)
+      useApp.getState().showError(new Error(`Could not add that voiceover: ${errorText(e)}`))
     } finally {
       clearInterval(t)
-      setAdding(100)
     }
   }
 
