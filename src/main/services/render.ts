@@ -22,8 +22,9 @@ export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${pa
  * 2: times inside <Cuts> shots are frames of the part; roomy page crops; code typed in under a second.
  * 3: meme captions in the template's own boxes; code sized to fill the editor; no flashes under 0.8 s.
  * 4: diagram arrows from box edge to box edge; logos on a white card; a dark band behind captions.
+ * 5: outlined boxes sized to their label; Split halves centred; nothing timed past the part's end; Timeline, Bars.
  */
-export const KIT_VERSION = 4
+export const KIT_VERSION = 5
 
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
 

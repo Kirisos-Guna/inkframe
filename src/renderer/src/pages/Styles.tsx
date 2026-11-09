@@ -25,7 +25,7 @@ export default function Styles({ initialTab }: { initialTab?: Tab }) {
       useApp.setState({ styles: await window.api.styles.list() })
       showToast(`Deleted “${s.name}”`)
     } catch (e) {
-      showToast(errorText(e))
+      useApp.getState().showError(e)
     }
   }
 

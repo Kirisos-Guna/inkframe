@@ -31,7 +31,8 @@ const SAMPLE = "You'd sit in a meeting where someone says, just put a cache in f
 
 /**
  * The script in pieces the model speaks well: whole sentences, up to `max` characters each, never across a paragraph.
- * `pause` is the breath after the piece: longer at the end of a paragraph.
+ * `pause` is the breath after the piece (the model's own silence is trimmed off): a sentence break, longer at the
+ * end of a paragraph.
  */
 export function chunkScript(script: string, max = 320): { text: string; pause: number }[] {
   const out: { text: string; pause: number }[] = []
@@ -40,7 +41,7 @@ export function chunkScript(script: string, max = 320): { text: string; pause: n
     const sentences = para.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [para]
     let cur = ''
     const push = () => {
-      if (cur) out.push({ text: cur, pause: 0.12 })
+      if (cur) out.push({ text: cur, pause: 0.22 })
       cur = ''
     }
     for (const s of sentences) {
@@ -52,7 +53,7 @@ export function chunkScript(script: string, max = 320): { text: string; pause: n
       }
     }
     push()
-    if (out.length) out[out.length - 1].pause = 0.38
+    if (out.length) out[out.length - 1].pause = 0.42
   }
   if (out.length) out[out.length - 1].pause = 0.25
   return out
@@ -128,6 +129,19 @@ export function voiceFilter(rate: number, pitch: number) {
 const tooTamil = (s: string) => /[஀-௿]/.test(s)
 
 /**
+ * A piece without the silence the model puts before and after the words: from 30 ms before the first sound to
+ * 60 ms after the last (so a soft first or last letter is kept).
+ */
+export function trimSilence(samples: Float32Array, rate: number, threshold = 0.012) {
+  let a = 0
+  let b = samples.length - 1
+  while (a < samples.length && Math.abs(samples[a]) < threshold) a++
+  while (b > a && Math.abs(samples[b]) < threshold) b--
+  if (a >= b) return samples
+  return samples.subarray(Math.max(0, a - Math.round(0.03 * rate)), Math.min(samples.length, b + Math.round(0.06 * rate)))
+}
+
+/**
  * Speech that is not really there: NaN samples (the model failed) or a piece that is almost all silence. Real speech
  * is about 15-30% quiet samples between words.
  */
@@ -158,7 +172,7 @@ async function speakPiece(tts: Tts, text: string, choice: VoiceChoice) {
     const a = await say(s)
     if (badAudio(a.audio)) throw new Error(`The voice could not say: "${s.slice(0, 80)}". Rephrase that sentence and try again.`)
     rate = a.sampling_rate
-    got.push(a.audio, new Float32Array(Math.round(0.12 * rate)))
+    got.push(trimSilence(a.audio, rate), new Float32Array(Math.round(0.12 * rate)))
   }
   const audio = new Float32Array(got.reduce((n, x) => n + x.length, 0))
   let at = 0
@@ -175,7 +189,9 @@ async function render(text: string, choice: VoiceChoice, out: string, onStatus: 
     if (pieces.length > 1) onStatus(`Speaking ${i + 1} of ${pieces.length}`)
     const a = await speakPiece(tts, p.text, choice)
     rate = a.sampling_rate
-    parts.push(a.audio, new Float32Array(Math.round(p.pause * rate)))
+    // The model pads every piece with its own silence (up to half a second each side); trimmed off, so the pause
+    // between pieces is only the one chosen here, not a dead gap of over a second at every join.
+    parts.push(trimSilence(a.audio, rate), new Float32Array(Math.round(p.pause * rate)))
   }
   const all = new Float32Array(parts.reduce((n, a) => n + a.length, 0))
   let at = 0

@@ -43,6 +43,14 @@ export const Shot = () => null
 export const Clip = () => null
 export const Post = pop(0.7)
 export const Meme = pop(0.9)
+export function Timeline({ items = [], start = 0, every = 24, at }: Any & { items?: unknown[]; every?: number; at?: number[] }) {
+  items.forEach((_, i) => useCue('pop', at?.[i] ?? start + i * every, undefined, 0.6))
+  return null
+}
+export function Bars({ items = [], start = 0, every = 26 }: Any & { items?: unknown[]; every?: number }) {
+  items.forEach((_, i) => useCue('whoosh', start + i * every, 22, 0.35))
+  return null
+}
 export const Gif = pop(0.9)
 export function Diagram({ children }: Kids) {
   return <>{children}</>

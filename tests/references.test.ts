@@ -72,3 +72,42 @@ describe('pages are cropped to the highlight', () => {
     expect(h2).toBeLessThan(450)
   })
 })
+
+describe('mistakes counted in the scenes', () => {
+  it('flags a picture used twice, too many word cards, and box diagrams back to back', async () => {
+    const { lintScenes } = await import('../src/main/services/job/checkRules')
+    const tc = (n: number) => Array.from({ length: n }, () => '<TitleCard text="x" />').join('\n')
+    const r = lintScenes([
+      { id: 'a', index: 0, code: `${tc(1)}<Meme name="m/p1.jpg" />` },
+      { id: 'b', index: 1, code: `${tc(1)}<Diagram></Diagram>` },
+      { id: 'c', index: 2, code: `<Meme name="m/p1.jpg" /><Diagram></Diagram>` },
+      { id: 'd', index: 3, code: `${tc(1)}<Page name="m/p4.png" /><Page name="m/p4.png" />` }
+    ])
+    expect(r.get('a')).toBeUndefined()
+    expect(r.get('b')?.join()).toContain('right after another')
+    expect(r.get('c')?.join()).toContain('already used in part 1')
+    expect(r.get('c')?.join()).toContain('Diagram right after')
+    expect(r.get('d')?.join()).toContain('Too many word cards')
+    expect(r.get('d')?.join()).toContain('twice in this part')
+  })
+  it('a box is always wide enough for its label', async () => {
+    const { boxSize } = await import('../remotion/kit/remix')
+    const s = boxSize('SETTINGS.LOCAL.JSON')
+    expect(s.w).toBeGreaterThanOrEqual('SETTINGS.LOCAL.JSON'.length * s.font * 0.6 + 40)
+    expect(boxSize('a very long label that would never fit in any box at all, really').w).toBeLessThanOrEqual(760)
+  })
+})
+
+describe('pointing hands', () => {
+  it('flags a hand left outside the shots, or guessed over a page', async () => {
+    const { lintScenes } = await import('../src/main/services/job/checkRules')
+    const r = lintScenes([
+      { id: 'a', index: 0, code: '<Cuts at={[0]}><Page name="m/a.png" point /></Cuts><Hand x={1500} y={300} />' },
+      { id: 'b', index: 1, code: '<Cuts at={[0]}><AbsoluteFill><Page name="m/b.png" /><Hand x={900} y={400} /></AbsoluteFill></Cuts>' },
+      { id: 'c', index: 2, code: '<Cuts at={[0]}><Page name="m/c.png" point /></Cuts>' }
+    ])
+    expect(r.get('a')?.join()).toContain('outside the shots')
+    expect(r.get('b')?.join()).toContain('give the Page point')
+    expect(r.get('c')).toBeUndefined()
+  })
+})

@@ -493,7 +493,7 @@ function History({ p, selected }: { p: Project; selected: Part[] }) {
                       className="flex items-center gap-1 font-medium text-accent disabled:opacity-40"
                       disabled={p.job.running}
                       title={p.job.running ? 'Wait until the work is done' : undefined}
-                      onClick={() => window.api.parts.restore(p.id, x.id, h.file).catch((e) => showToast(errorText(e)))}
+                      onClick={() => window.api.parts.restore(p.id, x.id, h.file).catch((e) => useApp.getState().showError(e))}
                     >
                       <RotateCcw size={13} /> Go back
                     </button>
@@ -564,7 +564,7 @@ function RenderTab({ p }: { p: Project }) {
                   window.api.shell.reveal(out)
                 }
               } catch (e) {
-                showToast(errorText(e))
+                useApp.getState().showError(e)
               } finally {
                 setBusy(false)
               }

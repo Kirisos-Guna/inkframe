@@ -73,7 +73,7 @@ export default function Editor({ id }: { id: string }) {
       await fn()
       return true
     } catch (e) {
-      showToast(errorText(e))
+      useApp.getState().showError(e)
       return false
     }
   }

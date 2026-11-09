@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { app } from 'electron'
 import { basename, join } from 'path'
 import type { Effort, Provider } from '../../shared/types'
-import { claudePath, codexPath } from './tools'
+import { claudePath, codexPath, setClaudeSignedOut } from './tools'
 import { fakeAgent, fakeEnabled } from './fakeAgent'
 import { isLimitText, resetFromText } from './limits'
 
@@ -34,6 +34,12 @@ export class LimitError extends Error {
 }
 
 /** A usage-limit message from either CLI, as a LimitError; null for any other error. */
+/** Claude Code's own words when its sign-in is missing, expired or refused. */
+export const isSignInError = (text: string) =>
+  /not logged in|please run \/login|\/login|failed to authenticate|oauth (session|token)|session expired|could not be refreshed|invalid api key|authentication_error|401 unauthorized/i.test(text)
+export const SIGN_IN_HELP =
+  "Claude Code's sign-in has expired. Open a terminal, run claude, type /login and sign in in your browser. Then try again."
+
 export function asLimit(text: string): LimitError | null {
   if (!isLimitText(text)) return null
   // The reset time from the message itself, otherwise from the last reported 5-hour window.
@@ -128,7 +134,14 @@ export function killAllAgents() {
 /** Runs one headless agent turn and returns its final text. */
 export async function runAgent(o: AgentOpts): Promise<string> {
   // The stand-in's errors go through the same limit check as the real CLIs'.
-  if (fakeEnabled()) return fakeAgent(o).catch((e: Error) => Promise.reject(asLimit(e.message) ?? e))
+  if (fakeEnabled())
+    return fakeAgent(o).catch((e: Error) => {
+      if (isSignInError(e.message)) {
+        setClaudeSignedOut(true)
+        return Promise.reject(new Error(SIGN_IN_HELP))
+      }
+      return Promise.reject(asLimit(e.message) ?? e)
+    })
   return o.provider === 'Codex' ? runCodex(o) : runClaude(o)
 }
 
@@ -188,9 +201,14 @@ async function runClaude(o: AgentOpts): Promise<string> {
       o.signal?.removeEventListener('abort', onAbort)
       if (o.signal?.aborted) return
       const limit = result === null ? asLimit(`${error ?? ''} ${stderr}`) : null
-      if (result !== null) resolve(result)
-      else if (limit) reject(limit)
-      else if (/not logged in|\/login/i.test(error ?? '')) reject(new Error('Claude Code is not signed in. Open a terminal, run claude, and sign in once. Then press Try again.'))
+      if (result !== null) {
+        setClaudeSignedOut(false)
+        resolve(result)
+      } else if (limit) reject(limit)
+      else if (isSignInError(`${error ?? ''} ${stderr}`)) {
+        setClaudeSignedOut(true)
+        reject(new Error(SIGN_IN_HELP))
+      }
       else reject(new Error(error ?? (stderr.trim().split('\n').slice(-3).join(' ') || `Claude Code exited with code ${code}`)))
     })
     p.stdin.end(o.prompt)

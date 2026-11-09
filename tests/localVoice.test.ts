@@ -46,3 +46,17 @@ describe('silent pieces never reach the voiceover', () => {
     expect(badAudio(new Float32Array(0))).toBe(true)
   })
 })
+
+describe('no dead air between pieces', () => {
+  it("trims the model's own silence before and after the words, keeping a soft edge", async () => {
+    const { trimSilence } = await import('../src/main/services/localVoice')
+    const rate = 24000
+    // Half a second of silence, one second of sound, 0.6 s of silence: what the model gives back.
+    const x = new Float32Array(Math.round(rate * 2.1))
+    for (let i = rate * 0.5; i < rate * 1.5; i++) x[i] = Math.sin(i / 5) * 0.4
+    const t = trimSilence(x, rate)
+    expect(t.length / rate).toBeGreaterThan(1)
+    expect(t.length / rate).toBeLessThan(1.12)
+    expect(trimSilence(new Float32Array(100), rate).length).toBe(100)
+  })
+})

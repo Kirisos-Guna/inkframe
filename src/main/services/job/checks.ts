@@ -1,5 +1,5 @@
 // Checking parts: three moments of each part in one picture, several parts per call, on a quick model.
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getStyle } from '../store'
 import { checkPartVideo, type PartFault } from './finalCheck'
@@ -11,7 +11,8 @@ import { checkBatchPrompt } from '../prompts'
 import { setPart, step } from './events'
 import { part } from './parts'
 import { chunk } from './util'
-import { checkValid } from './checkRules'
+import { checkValid, lintScenes } from './checkRules'
+import { sceneFile } from '../render'
 import { agentOpts } from './scenes'
 import { CHECK_BATCH } from './control'
 
@@ -28,7 +29,12 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
   const items: { part: Part; sheet: string; said: string[] }[] = []
   // What FFmpeg finds in each rendered part (black stretches, shots held too long in the fast styles): no AI.
   const measured = new Map<string, string[]>()
-  const longest = getStyle(p.settings.styleId).realMedia ? 7 : undefined
+  const realMedia = !!getStyle(p.settings.styleId).realMedia
+  const longest = realMedia ? 7 : undefined
+  // Counted in the scenes' code (no AI): a picture shown twice, too many word cards. Remix styles only.
+  const linted = realMedia
+    ? lintScenes(p.parts.map((x) => ({ id: x.id, index: x.index, code: existsSync(sceneFile(p, x)) ? readFileSync(sceneFile(p, x), 'utf8') : '' })))
+    : new Map<string, string[]>()
   for (const x of parts) {
     const done = part(p, x.id)?.checks
     if (since && done && done.at >= since) {
@@ -47,6 +53,7 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
         const faults = await checkPartVideo(x.video, x.end - x.start, longest, signal).catch(() => [])
         if (faults.length) measured.set(x.id, faults.map((q) => faultNote(p, x, q)))
       }
+      if (linted.has(x.id)) measured.set(x.id, [...(measured.get(x.id) ?? []), ...linted.get(x.id)!])
       const sheet = join(p.dir, 'work', `check-${x.index + 1}.jpg`)
       await stripImage(frames, sheet)
       items.push({ part: x, sheet: `work/check-${x.index + 1}.jpg`, said: MOMENTS.map((at) => saidAround(p, x.start + at * (x.end - x.start))) })

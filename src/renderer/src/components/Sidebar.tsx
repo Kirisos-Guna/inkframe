@@ -12,7 +12,9 @@ const NAV: { label: string; icon: typeof Home; route: Route }[] = [
 
 export function Sidebar() {
   const { route, go, projects, status } = useApp()
-  const ready = (status?.claude && status.claudeSignedIn) || status?.codex
+  // Videos are drawn by Claude Code: when it is there but signed out, say so even if Codex (a writer) is ready.
+  const signedOut = !!status?.claude && !status.claudeSignedIn
+  const ready = !signedOut && ((status?.claude && status.claudeSignedIn) || status?.codex)
   const label = ready ? 'Ready' : !status ? 'Checking…' : status.claude ? 'Sign in to Claude Code' : 'Claude Code not found'
   return (
     <aside className="flex w-[248px] shrink-0 flex-col border-r border-line/70 bg-panel 2xl:w-[300px]">

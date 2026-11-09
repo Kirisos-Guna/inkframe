@@ -22,6 +22,9 @@ thing. Prefer the most authoritative source you can open, and highlight the exac
 Every shot must show exactly what is said at that moment of its part: the thing named, the claim with the sentence
 that proves it, the person who is speaking about. Nothing merely nearby (a building for a team, a logo for a topic,
 a stock photo for an idea): if no real source shows the line, plan no shot there and the animator draws it.
+Part 1 opens the video: give it the strongest real visual of the story, the news headline (a page whose mark is the
+headline itself) or the post that started it, plus a photo or logo of who it is about. When the story has dates
+(a disclosure, an incident, a launch), find them: the animator shows them as a timeline.
 Use MANY different sources: one page or post at most twice in the whole video (with a different sentence each time),
 never twice in one part; the same photo once. When the story rests on one source, show the others that report or
 answer it (the paper, the code, the replies, the news, the docs of what it uses).

@@ -36,7 +36,7 @@ export function UpdateBanner() {
         </div>
       )}
       {u.state === 'ready' && (
-        <button className="btn-accent mt-2 w-full py-1.5 text-[13.5px]" onClick={() => window.api.update.install().catch((e) => useApp.getState().showToast(errorText(e)))}>
+        <button className="btn-accent mt-2 w-full py-1.5 text-[13.5px]" onClick={() => window.api.update.install().catch((e) => useApp.getState().showError(e))}>
           <RotateCw size={14} /> Restart to update
         </button>
       )}
@@ -72,7 +72,7 @@ export function UpdateSettings() {
           </button>
         )}
         {u.state === 'ready' && (
-          <button className="btn-accent" onClick={() => window.api.update.install().catch((e) => useApp.getState().showToast(errorText(e)))}>
+          <button className="btn-accent" onClick={() => window.api.update.install().catch((e) => useApp.getState().showError(e))}>
             <RotateCw size={15} /> Restart to update
           </button>
         )}

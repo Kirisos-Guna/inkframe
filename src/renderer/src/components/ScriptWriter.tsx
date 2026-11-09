@@ -46,7 +46,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
     try {
       setIdeas(await window.api.writer.trends({ days: days === 'Today' ? 1 : 7, focus: focus.trim() || undefined, minutes }))
     } catch (e) {
-      showToast(errorText(e))
+      useApp.getState().showError(e)
     } finally {
       setBusy(false)
     }
@@ -71,7 +71,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
         setOut({ title: r.title, script: r.script, hooks: r.hooks, sources: [r.source.url], by: r.by, direction: r.direction, recreated: r })
       }
     } catch (e) {
-      showToast(errorText(e))
+      useApp.getState().showError(e)
     } finally {
       setBusy(false)
     }

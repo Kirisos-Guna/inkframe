@@ -34,6 +34,10 @@ const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
  * shot that begins later than `start`, it counts from the shot's first frame.
  */
 function useLocal(start = 0, dur = 12) {
+  // Something timed to come in after its part ends would never be seen (an arrow pointing at nothing): it comes in
+  // at the latest two thirds of a second before the end.
+  const { durationInFrames } = useVideoConfig()
+  start = Math.min(start, Math.max(0, durationInFrames - 20))
   const f = useFrameFor(start) - start
   return { f, t: interpolate(f, [0, Math.max(1, dur)], [0, 1], { ...clamp, easing: ease }) }
 }
@@ -157,7 +161,8 @@ export function Page({
   start = 0,
   markAt = 18,
   color = '#ff8a1f',
-  tilt = -1.5
+  tilt = -1.5,
+  point = false
 }: {
   name: string
   w: number
@@ -172,6 +177,8 @@ export function Page({
   markAt?: number
   color?: string
   tilt?: number
+  /** A hand pointing at the highlighted sentence, once it is highlighted (it moves with the page, so it is always on it). */
+  point?: boolean
 }) {
   const { f, t } = useLocal(start, 14)
   const { durationInFrames } = useVideoConfig()
@@ -240,6 +247,19 @@ export function Page({
           {bars(marks, color, markAt)}
           {bars(marks2, '#ffe14d', markAt + 24)}
         </svg>
+        {point && marks[0] && (() => {
+          // In the left margin of the first highlighted line, pointing at it, after the highlighter has run: it never
+          // covers words.
+          const [mx, my0, , mh] = marks[0]
+          const room = (mx - fx) * k
+          const size = Math.max(44, Math.min(120, mh * k * 1.5, room * 0.85))
+          const p = interpolate(f, [markAt + 28, markAt + 38], [0, 1], { ...clamp, easing: ease })
+          if (p <= 0) return null
+          const nudge = Math.sin((f - markAt) / 4) * size * 0.08
+          return (
+            <div style={{ position: 'absolute', left: room - size * 1.02 + nudge - (1 - p) * 60, top: (my0 - fy - sy) * k + (mh * k - size) / 2, fontSize: size, lineHeight: 1, opacity: p, filter: 'drop-shadow(0 6px 10px rgba(0,0,0,.45))' }}>👉</div>
+          )
+        })()}
       </div>
     </AbsoluteFill>
   )
@@ -258,7 +278,8 @@ export function padBox(marks: number[][], w: number, h: number, focus?: number[]
   const left = Math.min(...marks.map((m) => m[0]))
   const right = Math.max(...marks.map((m) => m[0] + m[2]))
   const start = focus && left - focus[0] < line * 3 ? focus[0] : left - line
-  const x0 = Math.max(0, start - line)
+  // Two and a half lines of room on the left: the margin a pointing hand sits in.
+  const x0 = Math.max(0, start - line * 2.5)
   const x1 = Math.min(w, Math.max(right + line * 1.5, x0 + line * 22))
   const y0 = Math.max(0, Math.min(...marks.map((m) => m[1])) - line * 3.5)
   const y1 = Math.min(h, Math.max(...marks.map((m) => m[1] + m[3])) + line * 3.5)
@@ -281,7 +302,7 @@ export function Split({ left, right, start = 0 }: { left: React.ReactNode; right
   if (f < 0) return null
   const half = (node: React.ReactNode, side: 0 | 1) => (
     <div style={{ position: 'absolute', top: 0, bottom: 0, left: side ? 960 : 0, width: 960, overflow: 'hidden', transform: `translateX(${(1 - t) * (side ? 120 : -120)}px)` }}>
-      <div style={{ position: 'absolute', inset: 0, transform: 'scale(.5)', transformOrigin: '0 50%', width: 1920, height: 1080, top: 0 }}>{node}</div>
+      <div style={{ position: 'absolute', left: -480, top: 0, width: 1920, height: 1080, transform: 'scale(.52)', transformOrigin: '50% 50%' }}>{node}</div>
     </div>
   )
   return (
@@ -567,8 +588,7 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
       const p = c.props as Record<string, unknown>
       const num = (v: unknown) => typeof v === 'number' && isFinite(v)
       if (c.type === Box && num(p.x) && num(p.y)) {
-        const w = (p.w as number) ?? 340
-        const h = (p.h as number) ?? 136
+        const { w, h } = boxSize(String(p.label ?? ''), p.w as number | undefined, p.h as number | undefined)
         add((p.x as number) - w / 2, (p.y as number) - h / 2)
         add((p.x as number) + w / 2, (p.y as number) + h / 2)
         boxes.push({ x0: (p.x as number) - w / 2, y0: (p.y as number) - h / 2, x1: (p.x as number) + w / 2, y1: (p.y as number) + h / 2 })
@@ -614,18 +634,133 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
 }
 
 /** A flat diagram box (like Fireship's company boxes): a solid colour, the name in dark capitals. */
-export function Box({ x, y, w = 340, h = 136, label, color = '#76b900', start = 0, sub, icon, pulse = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean }) {
+/** A box's size and type size for its label: wide enough that the label is never cut off (shrinking type past 760). */
+export function boxSize(label: string, w = 340, h = 136) {
+  const font = Math.min(34, 690 / Math.max(1, label.length * 0.6))
+  return { w: Math.max(w, Math.min(760, label.length * font * 0.6 + 80)), h, font }
+}
+
+export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, sub, icon, pulse = false, solid = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean; solid?: boolean }) {
   const { f, t } = useLocal(start, 8)
   if (f < 0) return null
+  const { w, h, font } = boxSize(label, w0, h0)
   // A pulse: a ring that grows out of the box and fades, once a second.
   const beat = pulse ? (f % 30) / 30 : 0
   return (
-    <div style={{ position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, background: color, borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`, opacity: t, fontFamily: CODE, fontWeight: 700, color: '#0b0b0d', fontSize: 36, letterSpacing: 1 }}>
+    <div
+      style={{
+        position: 'absolute',
+        left: x - w / 2,
+        top: y - h / 2,
+        width: w,
+        height: h,
+        background: solid ? color : `color-mix(in srgb, ${color} 14%, #121214)`,
+        border: `3px solid ${color}`,
+        borderRadius: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`,
+        opacity: t,
+        fontFamily: CODE,
+        fontWeight: 700,
+        color: solid ? '#0b0b0d' : '#f4f4f5',
+        fontSize: font,
+        whiteSpace: 'nowrap',
+        boxShadow: solid ? undefined : `0 0 40px color-mix(in srgb, ${color} 18%, transparent)`
+      }}
+    >
       {pulse && <div style={{ position: 'absolute', inset: -6 - beat * 40, border: `4px solid ${color}`, borderRadius: 12 + beat * 20, opacity: 1 - beat }} />}
-      {icon && <span style={{ fontSize: 44, lineHeight: 1, marginBottom: 6 }}>{icon}</span>}
-      {label.toUpperCase()}
-      {sub && <span style={{ fontSize: 23, fontWeight: 500, marginTop: 6 }}>{sub}</span>}
+      {icon && <span style={{ fontSize: 40, lineHeight: 1, marginBottom: 6 }}>{icon}</span>}
+      {label}
+      {sub && <span style={{ fontSize: Math.round(font * 0.66), fontWeight: 500, marginTop: 6, color: solid ? '#0b0b0d' : '#a1a1aa' }}>{sub}</span>}
     </div>
+  )
+}
+
+/**
+ * A dated timeline (how a story unfolded): paper cards stacked one under another, each popping in on its turn
+ * (`every` frames, or `at` frames per item), the list moving up so the newest stays in view.
+ */
+export function Timeline({ items, start = 0, every = 24, at }: { items: { date: string; text: string }[]; start?: number; every?: number; at?: number[] }) {
+  const { f } = useLocal(start, 10)
+  const { fps } = useVideoConfig()
+  if (f < 0) return null
+  const when = (i: number) => (at?.[i] !== undefined ? at[i] - start : i * every)
+  const shown = items.filter((_, i) => f >= when(i)).length
+  const gap = 26
+  // About 52 characters fit on a line of a card; each card is as tall as its lines.
+  const heights = items.map((it) => 96 + Math.max(1, Math.ceil(it.text.length / 52)) * 48)
+  const tops = heights.map((_, i) => heights.slice(0, i).reduce((n, h) => n + h + gap, 0))
+  const visible = 5
+  const first = Math.max(0, shown - visible)
+  const shift = tops[first] ?? 0
+  const lift = interpolate(f, [when(Math.max(0, shown - 1)), when(Math.max(0, shown - 1)) + 10], [0, 1], { ...clamp, easing: ease })
+  const span = shown ? tops[shown - 1] + heights[shown - 1] - shift : 0
+  const top = 540 - span / 2
+  return (
+    <AbsoluteFill style={{ background: '#0b0b0d' }}>
+      {items.map((it, i) => {
+        if (f < when(i)) return null
+        const s = spring({ frame: f - when(i), fps, config: { damping: 14, mass: 0.6 } })
+        const y = top + tops[i] - shift + (i === shown - 1 ? (1 - lift) * 40 : 0)
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: 960 - 560,
+              top: y,
+              width: 1120,
+              height: heights[i],
+              background: '#f6f1e7',
+              borderRadius: 10,
+              padding: '22px 36px',
+              boxSizing: 'border-box',
+              boxShadow: '0 20px 50px rgba(0,0,0,.45)',
+              transform: `scale(${0.85 + 0.15 * s}) rotate(${(i % 2 ? 0.8 : -0.8) * s}deg)`,
+              opacity: s,
+              borderLeft: '8px solid #c0392b'
+            }}
+          >
+            <div style={{ fontFamily: CODE, fontSize: 26, color: '#c0392b', letterSpacing: 1 }}>{it.date}</div>
+            <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 38, color: '#1a1a1a', marginTop: 8, lineHeight: 1.25 }}>{it.text}</div>
+          </div>
+        )
+      })}
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * A comparison chart (CodeHead's "time to crack"): one bar per item growing in turn, its value written after it.
+ * `log` for values that span many orders of magnitude (seconds against trillions of years).
+ */
+export function Bars({ items, title, log = false, start = 0, every = 26, color = '#f5b74e' }: { items: { label: string; value: number; text?: string; hot?: boolean }[]; title?: string; log?: boolean; start?: number; every?: number; color?: string }) {
+  const { f } = useLocal(start, 10)
+  if (f < 0) return null
+  const scale = (v: number) => (log ? Math.log10(Math.max(1, v)) : v)
+  const max = Math.max(...items.map((i) => scale(i.value)), 1)
+  const rowH = Math.min(150, 640 / Math.max(1, items.length))
+  const top = 540 - (items.length * rowH) / 2 + (title ? 40 : 0)
+  return (
+    <AbsoluteFill style={{ background: '#121214' }}>
+      {title && <div style={{ position: 'absolute', top: top - 120, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 700, fontSize: 52, color: '#fafafa' }}>{title}</div>}
+      {items.map((it, i) => {
+        const p = interpolate(f, [i * every, i * every + 22], [0, 1], { ...clamp, easing: ease })
+        if (p <= 0) return null
+        const len = Math.max(8, (scale(it.value) / max) * 900) * p
+        const c = it.hot ? '#ff6b4a' : color
+        return (
+          <div key={i} style={{ position: 'absolute', top: top + i * rowH, left: 0, right: 0, height: rowH, display: 'flex', alignItems: 'center', opacity: Math.min(1, p * 3) }}>
+            <div style={{ width: 560, paddingRight: 36, textAlign: 'right', fontFamily: CODE, fontSize: 34, color: '#d4d4d8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
+            <div style={{ width: len, height: Math.min(64, rowH * 0.5), background: `color-mix(in srgb, ${c} 30%, transparent)`, border: `3px solid ${c}`, borderRadius: 6 }} />
+            {it.text && <div style={{ marginLeft: 24, fontFamily: CODE, fontSize: 32, color: c, opacity: p >= 1 ? 1 : 0, whiteSpace: 'nowrap' }}>{it.text}</div>}
+          </div>
+        )
+      })}
+    </AbsoluteFill>
   )
 }
 
@@ -666,7 +801,7 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
         })}
       {label && t > 0.5 && (
         // Beside the arrow, on its upper side, so the line never runs through the word.
-        <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={32} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
+        <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={Math.max(20, Math.min(32, (len * 0.95) / Math.max(1, (label?.length ?? 1) * 0.62)))} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
           {label.toUpperCase()}
         </text>
       )}

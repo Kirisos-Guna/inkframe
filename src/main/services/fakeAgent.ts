@@ -14,6 +14,8 @@ const log = (line: string) => process.env.INKFRAME_FAKE_LOG && appendFileSync(pr
 export async function fakeAgent(o: AgentOpts): Promise<string> {
   await wait(300)
   const p = o.prompt
+  // INKFRAME_FAKE_SIGNIN=1: Claude Code's sign-in has expired (its own words).
+  if (process.env.INKFRAME_FAKE_SIGNIN === '1') throw new Error('Failed to authenticate: OAuth session expired and could not be refreshed')
   // Viral ideas (first: the trending items it lists can contain any words): the first three items read become the ideas.
   if (p.includes('You find the next viral video')) {
     const items = [...p.matchAll(/^- ([^·\n]+?)(?: · ([^·\n]+?))? · (.+) · (https?:\/\/\S+)$/gm)].slice(0, 3)
@@ -189,7 +191,7 @@ export default function Scene() {
       for (const m of sec.matchAll(/^\d+\. (?:meme|gif) "[^"]+"[^:]*: (<(?:Meme|Gif) .*? \/>)/gm)) shots.push(m[1])
       for (const m of sec.matchAll(/^\d+\. (page|photo|meme|tweet|clip|chart) "([^"]+)"(?: (\d+)x(\d+))?(?:: top ("(?:[^"\\]|\\.)*"), bottom ("(?:[^"\\]|\\.)*"))?(?:, highlight marks=(\[\[[\d,[\]]*\]\]))?(?: marks2=\S+)?(?: focus=(\[[\d,]+\]))?(?:, cut-out "([^"]+)")?(.*)$/gm)) {
         const [, kind, name, w, h, top, bottom, marks, focus, cut, rest] = m
-        if (kind === 'page') shots.push(`<Punch at={[40]}><Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}}${focus ? ` focus={${focus}} crop` : ''} /></Punch>`)
+        if (kind === 'page') shots.push(`<Punch at={[40]}><Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}}${focus ? ` focus={${focus}} crop` : ''} point /></Punch>`)
         else if (kind === 'chart') shots.push(/Data: GitHub/.test(rest) ? `<Stats name="${name}" />` : `<Chart name="${name}" />`)
         else if (cut) shots.push(`<AbsoluteFill><Shot name="${name}" zoom={1.15} /><Sticker name="${cut}" x={1300} h={820} /><Label x={560} y={300} text="THIS GUY" to={[1100, 420]} start={14} /></AbsoluteFill>`)
         else if (kind === 'tweet') shots.push(`<Post name="${name}" w={${w}} h={${h}} />`)
@@ -205,7 +207,7 @@ export default function Scene() {
       o.onStep?.(`Drawing ${file}`)
       writeFileSync(
         join(o.cwd, 'scenes', `${file}.tsx`),
-        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Gif, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts whip at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n      <Hand x={1500} y={300} start={Math.round(dur * 0.1)} />\n    </AbsoluteFill>\n  )\n}\n`
+        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Gif, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts whip at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n    </AbsoluteFill>\n  )\n}\n`
       )
       drawn++
     }

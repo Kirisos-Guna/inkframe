@@ -100,11 +100,18 @@ export function resetToolCache() {
   for (const k of Object.keys(resolved)) delete resolved[k]
 }
 
+/**
+ * Set when Claude Code answered that its sign-in is missing or expired (the credentials file can still be there), and
+ * cleared when it works again: until then the app shows Claude Code as signed out.
+ */
+let signedOut = false
+export const setClaudeSignedOut = (v: boolean) => (signedOut = v)
+
 export async function getStatus(): Promise<Status> {
   const w = whisperPaths()
   return {
     claude: !!(await claudePath()),
-    claudeSignedIn: existsSync(join(app.getPath('home'), '.claude', '.credentials.json')) || !!process.env.ANTHROPIC_API_KEY,
+    claudeSignedIn: !signedOut && (existsSync(join(app.getPath('home'), '.claude', '.credentials.json')) || !!process.env.ANTHROPIC_API_KEY),
     codex: !!(await codexPath()),
     ffmpeg: existsSync(ffmpegPath()),
     whisper: !!(w.exe && w.model),

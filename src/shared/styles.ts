@@ -139,15 +139,15 @@ Look
     guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, charts, code and clips listed
 for each part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
   import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Gif, Caption, Code, Shell, Diagram, Box,
-    Flow, Loop, Chart, Stats, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
+    Flow, Loop, Chart, Stats, Bars, Timeline, Hand, Circle, Sticker, Label, TitleCard } from '@kit/remix'
   import { AbsoluteFill } from '@kit'
   <Cuts at={[0, at('word'), …]} whip?> one child per shot </Cuts>   each child fills the frame; cut on the word it is
     about; whip: a fast blurred slide between shots (use it where the topic turns)
   <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip or quote
-  <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? />  a page with its sentence
+  <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? point? />  a page with its sentence
     highlighted (copy w, h, marks, marks2 and focus as listed). It shows only the headline and that paragraph, big,
     by default (never the whole page: too small to read); scroll: for a tall capture, moves down to the sentence;
-    underline: a marker line instead
+    underline: a marker line instead; point: a hand points at the highlighted sentence (it moves with the page)
   <Post name="m/…png" w h />  a real post
   <Meme name="m/…jpg" w h template="Drake Hotline Bling" texts={['…', '…']} />  a meme: copy it exactly as listed; its
     captions sit in the template's own boxes (Drake's white side, Gru's boards). Never put a Caption on a meme.
@@ -156,22 +156,31 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     at most 6 words, never on a meme, a GIF or code
   <Code code={…} lang="ts" file="index.ts" lines={[3]} tree={['src/', '  index.ts', '  db.ts', 'package.json']} />
     an editor; tree adds the file explorer        <Shell command="npm i x" output={['added 1 package']} />
-  <Split left={<Code …/>} right={<Page …/>} />  two things side by side (the code and what it does, before and after)
+  <Split left={<Code …/>} right={<Page …/>} />  two things side by side (the code and what it does, before and after);
+    each side is shown at half size, so give each one big thing (short code, a close page), never a long file
   <Chart name="m/…json" />  a real line chart (price, downloads)     <Stats name="m/…json" />  GitHub numbers counting up
+  <Bars title="Time to crack (log scale)" log items={[{ label: 'Password123', value: 1, text: 'seconds' },
+    { label: 'river lamp cactus ocean', value: 3e5, text: 'about 4 days', hot: true }]} />  a comparison, bar by bar (the
+    way to show numbers side by side: sizes, times, counts, before and after)
+  <Timeline items={[{ date: '2026 · November 5', text: 'Apiiro publishes the research' }, …]} at?={[f, …]} />  how a story
+    unfolded, dated paper cards stacking up (news, incidents, a disclosure)
   <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person with a white outline, popped on top of a shot; a
     logo ("m/…-logo.png") shows on a white card. Never on top of text or another Sticker.
   <Label x y text="CEO, NVIDIA" to={[x, y]}? color? />  a tilted name tag, with an optional pointer line
   <TitleCard text="Circular financing" accent="circular" />
   Edits, wrapped around a shot: <Punch at={[at('trillion')]}> zooms in hard on the word; <Shake at={[f]}> for an impact;
     <FreezeFrame at={f} label="THIS GUY"> stops the picture with a record scratch, for the beat before a punchline.
-  Diagrams: <Diagram> <Box x y label="NVIDIA" icon="🖥️" pulse? color="#76b900" />
+  Diagrams: <Diagram> <Box x y label="NVIDIA" icon="🖥️" pulse? solid? color="#76b900" />
     <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </Diagram>   Diagram zooms whatever is
     inside it to fill the frame, so lay it out at any size; build it up box by box; packets keep moving along the
     arrow; pulse marks the busy one. <Loop items={['build', 'test', 'deploy']} /> for a cycle (inside a Diagram too).
     At most 5 boxes in one diagram, 1 to 3 words per label. Aim arrows at box centres if you like: they are drawn
     from edge to edge. A Sticker or Label that belongs to the diagram goes INSIDE the <Diagram> (it zooms with it);
-    never lay anything over a diagram from outside it.
-  Pointers on top of any shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
+    never lay anything over a diagram from outside it. Boxes are outlined in their colour and size themselves to the
+    label; solid fills one, for the single thing that matters.
+  Pointers: on a page, use point (never a Hand placed over a Page: the page is cropped and zoomed, so coordinates you
+    guess miss the words). A Hand or Circle only on a picture or code whose positions you know, aimed at a specific
+    thing in it, at most one per shot: <Hand x y dir="left" start /> <Circle x y rx ry start />
 
 Timing: every frame number is a frame of the part, what at('word') returns, also inside <Cuts> (start={at('knife')}
   inside the shot that begins at 'knife' comes in on that word). Something with no start comes in when its shot does.
@@ -197,7 +206,20 @@ Pace and humour
   it works.
 - Diagram colours: one flat colour per company or thing (NVIDIA green #76b900, AI companies purple #8b5cf6, banks
   teal #22b8cf, others orange #ff8a1f), arrows labelled in small capitals.
-- If a part has no media listed, use a TitleCard, a diagram or code, never an empty frame.`
+- If a part has no media listed, use a diagram, Bars, a Timeline or code, never an empty frame.
+
+What Fireship and CodeHead do that a weak video does not
+- Open on the real thing: the post, the headline (a Page whose highlight is the headline, big), a photo of the person
+  or product with a Caption. Never a word card, a logo alone or a giant word cropped by the frame.
+- Layer real media: a Sticker of the company's logo or the person on top of the page or clip about them, a Label on
+  it, a Hand pointing at the line. One picture with three layers beats three bare cards.
+- Numbers go ON a visual: a Punch on the number inside its highlighted sentence, Bars to compare, Stats or a Chart.
+  TitleCard is for chapter cards only ("FLAW #2", the last line): at most 2 in the whole video, never two in a row.
+- Teach with a few clean diagrams (CodeHead): dark, outlined boxes, one accent on the thing that matters, built step
+  by step while it is explained, held long enough to follow. At most one box-and-arrow Diagram per 25 seconds, and
+  the next teaching visual is a different shape (Bars, a Timeline, a before/after Split, code, a Loop).
+- Every listed picture is used once: never the same meme, page or photo twice, and never flicking back and forth
+  between two shots.`
   }),
   s({
     id: 'watercolour', name: 'Watercolour', tags: ['Paint', 'Soft'], dim: '2D',

@@ -166,6 +166,19 @@ async function capture(
   try {
     win.webContents.setUserAgent(UA)
     win.webContents.setAudioMuted(true)
+    // Pages in their light theme: a dark-mode docs page came out as grey text on grey, hard to read in a video.
+    // (Tweets ask for their own dark theme in their embed, so they stay dark.)
+    // (The window needs a page before the setting can be sent: a blank one first. With a dark Windows theme every site
+    // that follows it came out dark.)
+    if (target.url) {
+      try {
+        await win.loadURL('about:blank')
+        win.webContents.debugger.attach('1.3')
+        await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] })
+      } catch {
+        /* the page still loads, in whatever theme it picks */
+      }
+    }
     if (opt.tall) win.setContentSize(W, height)
     const load = target.url ? win.loadURL(target.url) : win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(target.html!))
     // A redirect or a slow resource can fail the first load while the page itself shows fine: what it draws decides.

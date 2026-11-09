@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, CircleAlert, X } from 'lucide-react'
 import { APP_NAME, APP_NAME_SPLIT } from '@shared/brand'
 import { useApp } from '@/store/app'
 import iconUrl from '../../../../build/icon.svg'
@@ -136,9 +136,18 @@ export function Toast() {
   const toast = useApp((s) => s.toast)
   if (!toast) return null
   return (
-    <div className="toast fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-line bg-[#1a1a1d] px-5 py-3 text-[15px] font-medium shadow-2xl">
-      <Check size={16} className="text-ok" />
-      {toast.text}
+    <div
+      className={`toast fixed bottom-6 left-1/2 z-50 flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-xl border px-5 py-3 text-[15px] font-medium shadow-2xl ${
+        toast.error ? 'border-[#7a2a2a] bg-[#2a1416]' : 'border-line bg-[#1a1a1d]'
+      }`}
+    >
+      {toast.error ? <CircleAlert size={18} className="shrink-0 text-[#ff6b6b]" /> : <Check size={16} className="shrink-0 text-ok" />}
+      <span className="leading-snug">{toast.text}</span>
+      {toast.error && (
+        <button className="ml-1 shrink-0 text-muted hover:text-ink" onClick={() => useApp.setState({ toast: undefined })} title="Close">
+          <X size={15} />
+        </button>
+      )}
     </div>
   )
 }

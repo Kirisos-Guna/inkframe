@@ -259,7 +259,7 @@ export default function NewVideo() {
       showToast(`${APP_NAME} is making your video`)
       go({ name: 'editor', id: p.id })
     } catch (e) {
-      showToast(errorText(e))
+      useApp.getState().showError(e)
     } finally {
       setBusy(false)
     }
@@ -845,7 +845,7 @@ function FindStyle({ draft, onFound }: { draft: Project | null; onFound: (styleI
             session.current = (await window.api.scout.start(draft!.id)).id
           } catch (e) {
             setStatus(null)
-            showToast(errorText(e))
+            useApp.getState().showError(e)
           }
         }}
       >

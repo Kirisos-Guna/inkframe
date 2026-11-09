@@ -14,8 +14,10 @@ interface AppState {
   styles: StyleDef[]
   settings?: AppSettings
   status?: Status
-  toast?: { text: string; at: number }
+  toast?: { text: string; at: number; error?: boolean }
   showToast: (text: string) => void
+  /** An error, in plain words, shown as an error and long enough to read; the status is checked again (sign-in). */
+  showError: (e: unknown) => void
   refresh: () => Promise<void>
   upsertProject: (p: Project) => void
 }
@@ -29,6 +31,13 @@ export const useApp = create<AppState>((set, get) => ({
     const at = Date.now()
     set({ toast: { text, at } })
     setTimeout(() => get().toast?.at === at && set({ toast: undefined }), 3200)
+  },
+  showError: (e) => {
+    const at = Date.now()
+    const text = errorText(e)
+    set({ toast: { text, at, error: true } })
+    setTimeout(() => get().toast?.at === at && set({ toast: undefined }), Math.max(6000, text.length * 70))
+    window.api.status().then((status) => set({ status }), () => {})
   },
   refresh: async () => {
     const [projects, styles, settings, status] = await Promise.all([
