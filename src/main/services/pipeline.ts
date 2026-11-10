@@ -213,12 +213,14 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
     // picture of the part and all its notes, and fixes them all at once. The fixed parts are rendered and checked
     // again; what is still wrong gets a second, bolder fix (FIX_ROUNDS in all). Never again for the same notes
     // (afterFix): whatever is left after that, the user can comment on.
-    let bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && !x.checks!.ok && fixPending(x)) : []
+    // A part with only "could be better" suggestions is improved too, in the first round; those never hold back the
+    // tick, so what is still only a suggestion after it is left alone (no endless polishing).
+    let bad = p.settings.checks === 'High' ? p.parts.filter((x) => !x.locked && checkValid(x) && (!x.checks!.ok || !!x.checks!.minor?.length) && fixPending(x)) : []
     for (let round = 1; round <= FIX_ROUNDS && bad.length; round++) {
       const again = round > 1
       step(p, `${again ? 'Fixing again' : 'Fixing'} ${bad.length} part${bad.length > 1 ? 's' : ''} after the check${again ? ` (round ${round} of ${FIX_ROUNDS})` : ''}`, {
         title: again ? 'Fixing what is still wrong' : 'Fixing after the check',
-        detail: clip(bad.map((x) => `Part ${x.index + 1}: ${reviewNotes(x).join('; ')}`).join(' · '), 400)
+        detail: clip(bad.map((x) => `Part ${x.index + 1}: ${[...reviewNotes(x), ...(x.checks?.minor ?? [])].join('; ')}`).join(' · '), 400)
       })
       const fixed: Part[] = []
       await pool(bad, p.settings.helpers ? HELPERS : 1, async (x) => {

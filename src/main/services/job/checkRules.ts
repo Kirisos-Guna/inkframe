@@ -27,7 +27,13 @@ export const FIX_ROUNDS = 2
  */
 export function autoFixNote(p: Project, x: Part, again: boolean) {
   const notes = reviewNotes(x)
-  return `${again ? 'A first fix did not solve these, so this time rework the layout of the shots that fail (sizes, positions, what is in each shot), do not nudge: ' : 'A reviewer found: '}${notes.map((n, i) => `(${i + 1}) ${n}`).join(' ')}
+  const minor = x.checks?.minor ?? []
+  // Problems first; the reviewer's "could be better" suggestions are made too, without breaking what already works.
+  const found = notes.length
+    ? `${again ? 'A first fix did not solve these, so this time rework the layout of the shots that fail (sizes, positions, what is in each shot), do not nudge: ' : 'A reviewer found: '}${notes.map((n, i) => `(${i + 1}) ${n}`).join(' ')}`
+    : 'The part works; the reviewer suggests improvements.'
+  const better = minor.length ? ` Also make it better: ${minor.map((n, i) => `(${notes.length + i + 1}) ${n}`).join(' ')} (for a weak picture choice, use a listed picture or a visual that shows the exact idea being said).` : ''
+  return `${found}${better}
 The reviewer's picture of this part, at its early, middle and end moments side by side: work/check-${x.index + 1}.jpg (Read it to see exactly what is wrong). Fix every note in this one go: everything inside the 1920 x 1080 frame and big enough to read, nothing cut off or overlapping, each moment showing what is said then. Check your new layout against every note before you finish.`
 }
 

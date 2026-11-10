@@ -166,3 +166,13 @@ describe('many shapes, none twice in a row', () => {
     expect(r.get('f')).toBeUndefined()
   })
 })
+
+describe('suggestions are fixed too', () => {
+  it('a part with only "could be better" notes is sent to the fix with them', async () => {
+    const { autoFixNote } = await import('../src/main/services/job/checkRules')
+    const part = { index: 2, checks: { ok: true, notes: [], minor: ['The caption sits over the cable, generic for "nobody can listen in"'], at: 1 } } as never
+    const note = autoFixNote({} as never, part, false)
+    expect(note).toContain('nobody can listen in')
+    expect(note).toContain('suggests improvements')
+  })
+})
