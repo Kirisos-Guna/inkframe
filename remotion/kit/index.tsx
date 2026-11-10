@@ -45,6 +45,15 @@ export function useFrameFor(start = 0) {
   return start >= cut ? rel + cut : rel + start
 }
 export const SceneProvider = Ctx.Provider
+/**
+ * The whole part's length in frames. Inside a <Cuts> shot (a Sequence) useVideoConfig() gives the shot's length, so
+ * something timed late in the part was pulled to the shot's start.
+ */
+export function usePartFrames() {
+  const p = useContext(Ctx)
+  const { durationInFrames } = useVideoConfig()
+  return p?.frames ?? durationInFrames
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '')
 

@@ -209,7 +209,7 @@ export default function Scene() {
       o.onStep?.(`Drawing ${file}`)
       writeFileSync(
         join(o.cwd, 'scenes', `${file}.tsx`),
-        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Gif, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts whip at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n    </AbsoluteFill>\n  )\n}\n`
+        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Gif, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts fx={['whip', 'glitch']} at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n    </AbsoluteFill>\n  )\n}\n`
       )
       drawn++
     }

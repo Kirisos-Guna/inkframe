@@ -28,7 +28,7 @@ export const thumbFile = (p: Project, part: Part) => join(p.dir, 'thumbs', `${pa
  * 7: pages flat with no edge fade; logos shown whole on a card; chart labels sized to fit, charts centred.
  * 8: new shapes: Dots, Compare, Stack, Pipeline, Tree, Magnify.
  */
-export const KIT_VERSION = 8
+export const KIT_VERSION = 9
 
 export const clipFile = (p: Project, part: Part) => join(p.dir, 'renders', `${part.id}.mp4`)
 

@@ -15,9 +15,9 @@ import 'prismjs/components/prism-go'
 import 'prismjs/components/prism-rust'
 import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-sql'
-import { AbsoluteFill, cancelRender, continueRender, delayRender, Easing, Freeze, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
+import { AbsoluteFill, cancelRender, continueRender, delayRender, Easing, Freeze, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 
-import { CutAt, useFrameFor, usePartFrame } from './index'
+import { CutAt, useFrameFor, usePartFrame, usePartFrames } from './index'
 import { fitText, memeLayout } from '../../src/shared/memes'
 import { flashFree } from './flash'
 import { clipToBoxes, type Rect } from './geometry'
@@ -26,72 +26,148 @@ export { flashFree }
 const MEME = "'Meme', Impact, 'Arial Black', sans-serif"
 const CODE = "'Code', 'Cascadia Mono', Consolas, monospace"
 const UI = "'Inter', 'Tamil', 'Segoe UI', sans-serif"
-const ease = Easing.bezier(0.2, 0.8, 0.2, 1)
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
 
 /**
- * Frames since `start` (a frame of the part, like at('word')), and a 0 → 1 ease over `dur` frames. Inside a <Cuts>
+ * Frames since `start` (a frame of the part, like at('word')), and t: 0 before it, 1 from it on. Inside a <Cuts>
  * shot that begins later than `start`, it counts from the shot's first frame.
  */
-function useLocal(start = 0, dur = 12) {
+function useLocal(start = 0, _dur = 12) {
   // Something timed to come in after its part ends would never be seen (an arrow pointing at nothing): it comes in
   // at the latest two thirds of a second before the end.
-  const { durationInFrames } = useVideoConfig()
+  const durationInFrames = usePartFrames()
   start = Math.min(start, Math.max(0, durationInFrames - 20))
   const f = useFrameFor(start) - start
-  return { f, t: interpolate(f, [0, Math.max(1, dur)], [0, 1], { ...clamp, easing: ease }) }
+  // Fireship's motion: things are simply there on their frame, no fade, spring or slide (a cut, not a tween).
+  return { f, t: f >= 0 ? 1 : 0 }
 }
 
-/** Shows its children one after another: the first from at[0], the next from at[1]… until the part ends. */
-export function Cuts({ at, children, whip = false }: { at: number[]; children: React.ReactNode; whip?: boolean }) {
+/** 1 from frame `at` on, 0 before: a thing that appears on its beat, Fireship style. */
+const on = (f: number, at: number) => (f >= at ? 1 : 0)
+
+/** How one shot of a <Cuts> comes in: a hard cut (the default), a blur-streak whip pan, or a glitch. */
+export type Transition = 'cut' | 'whip' | 'glitch'
+/** Frames a whip or glitch takes. */
+const TRANS = { whip: 6, glitch: 5 }
+
+/**
+ * Shows its children one after another: the first from at[0], the next from at[1]… until the part ends. Hard cuts,
+ * like Fireship; `whip` makes every change a blur-streak whip pan, and `fx` picks one per change ('cut', 'whip',
+ * 'glitch'; fx[0] is the change into the second shot).
+ */
+export function Cuts({ at, children, whip = false, fx }: { at: number[]; children: React.ReactNode; whip?: boolean; fx?: Transition[] }) {
   const { durationInFrames, fps } = useVideoConfig()
   // Inside another shot, Remotion counts from that shot's start; the times given here are frames of the part.
   const outer = React.useContext(CutAt)
   const shots = flashFree(React.Children.toArray(children), at, durationInFrames, Math.round(fps * 0.8))
+  const into = (i: number): Transition => (i === 0 ? 'cut' : fx?.[i - 1] ?? (whip ? 'whip' : 'cut'))
   return (
     <>
-      {shots.map(({ c, from, to }, i) => (
-        <Sequence key={i} from={from - outer} durationInFrames={Math.max(1, to - from)} layout="none">
-          <CutAt.Provider value={from}>{whip && i > 0 ? <WhipIn>{c}</WhipIn> : c}</CutAt.Provider>
-        </Sequence>
-      ))}
+      {shots.map(({ c, from, to }, i) => {
+        // The shot before a whip stays on for the whip's frames, streaking out under the new one.
+        const next = i + 1 < shots.length ? into(i + 1) : 'cut'
+        const tail = next === 'whip' ? TRANS.whip : 0
+        const how = into(i)
+        return (
+          <Sequence key={i} from={from - outer} durationInFrames={Math.max(1, to - from + tail)} layout="none">
+            <CutAt.Provider value={from}>
+              <TransitionIn how={how}>
+                <WhipOut frames={tail} at={to - from}>
+                  {c}
+                </WhipOut>
+              </TransitionIn>
+            </CutAt.Provider>
+          </Sequence>
+        )
+      })}
     </>
   )
 }
 
-
-/** The next shot slams in from the right with a motion blur (a whip pan), over 6 frames. */
-function WhipIn({ children }: { children: React.ReactNode }) {
-  const f = useCurrentFrame()
-  const t = interpolate(f, [0, 6], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) })
-  if (t >= 1) return <>{children}</>
-  return <AbsoluteFill style={{ transform: `translateX(${(1 - t) * 420}px)`, filter: `blur(${(1 - t) * 18}px)` }}>{children}</AbsoluteFill>
+/** A horizontal-only blur (a motion streak), as an SVG filter: CSS blur() smears both ways. */
+function Streak({ id, amount }: { id: string; amount: number }) {
+  return (
+    <svg width={0} height={0} style={{ position: 'absolute' }}>
+      <filter id={id} x="-20%" y="0" width="140%" height="100%" colorInterpolationFilters="sRGB">
+        <feGaussianBlur stdDeviation={`${amount} 0`} />
+      </filter>
+    </svg>
+  )
 }
 
 /**
- * Snap zooms: at each frame in `at` the picture jumps closer (by `amount`), on the word that matters, and stays there;
- * a later punch goes closer again. `x`, `y` is what it zooms toward (default the centre).
+ * Fireship's whip pan: the new shot tears in from the right as horizontal streaks and snaps sharp (6 frames); a glitch
+ * shears it into sliding horizontal bands with the colour channels split (5 frames).
+ */
+function TransitionIn({ how, children }: { how: Transition; children: React.ReactNode }) {
+  const f = useCurrentFrame()
+  const id = React.useId().replace(/:/g, '')
+  if (how === 'whip' && f < TRANS.whip) {
+    const t = interpolate(f, [0, TRANS.whip], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) })
+    return (
+      <AbsoluteFill style={{ transform: `translateX(${(1 - t) * 1100}px)`, filter: `url(#w${id})` }}>
+        <Streak id={`w${id}`} amount={(1 - t) * 90} />
+        {children}
+      </AbsoluteFill>
+    )
+  }
+  if (how === 'glitch' && f < TRANS.glitch) {
+    const k = 1 - f / TRANS.glitch
+    return (
+      <AbsoluteFill style={{ filter: `url(#g${id})` }}>
+        <svg width={0} height={0} style={{ position: 'absolute' }}>
+          <filter id={`g${id}`} x="-10%" y="0" width="120%" height="100%" colorInterpolationFilters="sRGB">
+            {/* Noise that changes only from top to bottom: bands, each pushed sideways by its own amount. */}
+            <feTurbulence type="fractalNoise" baseFrequency="0 0.035" numOctaves={1} seed={f * 7 + 3} result="n" />
+            <feDisplacementMap in="SourceGraphic" in2="n" scale={260 * k} xChannelSelector="R" yChannelSelector="A" result="d" />
+            <feColorMatrix in="d" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r" />
+            <feOffset in="r" dx={26 * k} result="rs" />
+            <feColorMatrix in="d" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="gb" />
+            <feBlend in="rs" in2="gb" mode="screen" />
+          </filter>
+        </svg>
+        {children}
+      </AbsoluteFill>
+    )
+  }
+  return <>{children}</>
+}
+
+/** The outgoing shot under a whip: from frame `at` it streaks off to the left for `frames` frames. */
+function WhipOut({ frames, at, children }: { frames: number; at: number; children: React.ReactNode }) {
+  const f = useCurrentFrame()
+  const id = React.useId().replace(/:/g, '')
+  if (!frames || f < at) return <>{children}</>
+  const t = interpolate(f, [at, at + frames], [0, 1], { ...clamp, easing: Easing.in(Easing.cubic) })
+  return (
+    <AbsoluteFill style={{ transform: `translateX(${-t * 700}px)`, filter: `url(#o${id})` }}>
+      <Streak id={`o${id}`} amount={t * 90} />
+      {children}
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Snap zooms: at each frame in `at` the picture jumps closer (by `amount`), on the word that matters, and stays there
+ * (a hard zoom cut); a later punch goes closer again. `x`, `y` is what it zooms toward (default the centre).
  */
 export function Punch({ at, amount = 0.14, x = 960, y = 540, children }: { at: number[]; amount?: number; x?: number; y?: number; children: React.ReactNode }) {
   const f = usePartFrame()
   let k = 1
-  for (const a of at) k += amount * interpolate(f, [a, a + 3], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) })
+  for (const a of at) k += amount * on(f, a)
   return <AbsoluteFill style={{ transform: `scale(${k})`, transformOrigin: `${x}px ${y}px` }}>{children}</AbsoluteFill>
 }
 
-/** A short camera shake at each frame in `at` (a punchline, an impact), dying away over 10 frames. */
-export function Shake({ at, power = 16, children }: { at: number[]; power?: number; children: React.ReactNode }) {
-  const f = usePartFrame()
-  let dx = 0
-  let dy = 0
-  for (const a of at) {
-    const t = f - a
-    if (t < 0 || t > 10) continue
-    const fade = 1 - t / 10
-    dx += Math.sin(t * 2.7 + a) * power * fade
-    dy += Math.cos(t * 3.3 + a * 1.7) * power * 0.7 * fade
-  }
-  return <AbsoluteFill style={{ transform: `translate(${dx}px, ${dy}px)` }}>{children}</AbsoluteFill>
+/**
+ * Kept so older scenes still render: Fireship never shakes the camera, so on an impact the picture just takes a hard
+ * Punch in.
+ */
+export function Shake({ at, children }: { at: number[]; power?: number; children: React.ReactNode }) {
+  return (
+    <Punch at={at} amount={0.08}>
+      {children}
+    </Punch>
+  )
 }
 
 /**
@@ -102,7 +178,7 @@ export function FreezeFrame({ at, label, children }: { at: number; label?: strin
   const f = usePartFrame()
   const cut = React.useContext(CutAt)
   if (f < at) return <>{children}</>
-  const t = interpolate(f, [at, at + 6], [0, 1], { ...clamp, easing: ease })
+  const t = 1
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${1 + 0.06 * t})`, filter: `saturate(${1 - 0.6 * t}) contrast(${1 + 0.15 * t})` }}>
@@ -117,16 +193,21 @@ export function FreezeFrame({ at, label, children }: { at: number; label?: strin
   )
 }
 
-/** A picture filling the frame (a photo, a logo, B-roll), with a slow push in. `fit="contain"` keeps all of it. */
-export function Shot({ name, start = 0, fit = 'cover', zoom = 1.08, bg = '#000' }: { name: string; start?: number; fit?: 'cover' | 'contain'; zoom?: number; bg?: string }) {
+/**
+ * The wallpaper Fireship puts screenshots and logos on: a deep blue gradient, so a white page or card stands out
+ * crisply instead of floating in black.
+ */
+export const WALL = 'radial-gradient(ellipse at 30% 20%, #3b5bdb 0%, #1e3a8a 38%, #0f1b4d 72%, #0a1033 100%)'
+
+/** A picture filling the frame (a photo, a logo, B-roll), held still. `fit="contain"` keeps all of it; `zoom` crops in. */
+export function Shot({ name, start = 0, fit = 'cover', zoom = 1, bg = '#000' }: { name: string; start?: number; fit?: 'cover' | 'contain'; zoom?: number; bg?: string }) {
   const { f } = useLocal(start)
-  const { durationInFrames } = useVideoConfig()
   if (f < 0) return null
-  const k = interpolate(f, [0, durationInFrames], [1, zoom], clamp)
+  const k = zoom
   if (/-logo\.\w+$/.test(name))
     return (
-      <AbsoluteFill style={{ background: 'radial-gradient(circle at 50% 45%, #2a2a30, #0b0b0d 70%)', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: '#fff', borderRadius: 28, padding: '70px 110px', boxShadow: '0 40px 120px rgba(0,0,0,.6)', transform: `scale(${0.96 + (k - 1) * 0.6})` }}>
+      <AbsoluteFill style={{ background: WALL, alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 28, padding: '70px 110px', boxShadow: '0 40px 120px rgba(0,0,0,.5)' }}>
           <Img src={staticFile(name)} style={{ display: 'block', maxWidth: 1100, maxHeight: 420, objectFit: 'contain' }} />
         </div>
       </AbsoluteFill>
@@ -188,8 +269,7 @@ export function Page({
   /** A hand pointing at the highlighted sentence, once it is highlighted (it moves with the page, so it is always on it). */
   point?: boolean
 }) {
-  const { f, t } = useLocal(start, 14)
-  const { durationInFrames } = useVideoConfig()
+  const { f } = useLocal(start, 14)
   if (f < 0) return null
   // The part of the picture shown: by default a close crop of the headline and the paragraph with the highlight (a
   // whole page is too small to read); the whole page only for a scrolling shot or when asked (crop={false}). A crop
@@ -206,21 +286,20 @@ export function Page({
   const my = all.length ? (Math.min(...all.map((m) => m[1])) + Math.max(...all.map((m) => m[1] + m[3]))) / 2 - fy : fh / 2
   // A tall capture scrolls down to the sentence over the first part of the shot.
   const scrollTo = scroll ? Math.max(0, Math.min(fh - tallView, my - tallView * 0.4)) : 0
-  const sy = scroll ? interpolate(f, [6, Math.max(20, durationInFrames * 0.5)], [0, scrollTo], { ...clamp, easing: ease }) : 0
-  const move = interpolate(f, [markAt, markAt + 40], [0, 1], { ...clamp, easing: ease })
-  const zoom = 1 + (cropped ? 0.06 : 0.18) * move
+  // Held still, Fireship style: a tall capture is shown already at its sentence; a whole page is centred on it.
+  const sy = scrollTo
   const top = (1080 - height) / 2
-  const dy = scroll || cropped ? 0 : (540 - (top + my * k)) * move
+  const dy = scroll || cropped || height <= 1080 ? 0 : Math.max(1080 - (top + height), Math.min(-top, 540 - (top + my * k)))
   const bars = (list: number[][], fill: string, from0: number) => {
-    // Each line is swiped after the one before, like a highlighter: all of them within about 0.9 s, however big the
-    // crop shows them (timed by on-screen length, a close crop never finished its last line in a short shot).
+    // Each line is swiped after the one before, like a quick highlighter stroke: all of them within about 0.4 s,
+    // however big the crop shows them (the one move on a held page, as in Fireship).
     const total = list.reduce((n, m) => n + m[2], 0) || 1
     let used = 0
     return list.map(([x, y, mw, mh], i) => {
       const len = mw * k
-      const from = from0 + (used / total) * 26
+      const from = from0 + (used / total) * 12
       used += mw
-      const p = interpolate(f, [from, from + Math.max(4, (mw / total) * 26)], [0, 1], { ...clamp, easing: ease })
+      const p = interpolate(f, [from, from + Math.max(3, (mw / total) * 12)], [0, 1], clamp)
       const bx = (x - fx) * k - 4
       const by = (y - fy - sy) * k
       return underline ? (
@@ -231,7 +310,7 @@ export function Page({
     })
   }
   return (
-    <AbsoluteFill style={{ background: '#0b0b0d', overflow: 'hidden' }}>
+    <AbsoluteFill style={{ background: WALL, overflow: 'hidden' }}>
       <div
         style={{
           position: 'absolute',
@@ -239,10 +318,8 @@ export function Page({
           top,
           width,
           height,
-          transform: `translateY(${dy + (1 - t) * 60}px) scale(${zoom}) rotate(${tilt * (1 - move * 0.6)}deg)`,
-          transformOrigin: `50% ${my * k}px`,
-          opacity: t,
-          boxShadow: '0 40px 120px rgba(0,0,0,.6)',
+          transform: `translateY(${dy}px) rotate(${tilt}deg)`,
+          boxShadow: '0 30px 90px rgba(0,0,0,.45)',
           borderRadius: 12,
           overflow: 'hidden',
           background: '#fff',
@@ -261,11 +338,9 @@ export function Page({
           const [mx, my0, , mh] = marks.reduce((a, m) => (m[0] < a[0] - 4 ? m : a), marks[0])
           const room = (mx - fx) * k
           const size = Math.max(44, Math.min(120, mh * k * 1.5, room * 0.85))
-          const p = interpolate(f, [markAt + 28, markAt + 38], [0, 1], { ...clamp, easing: ease })
-          if (p <= 0) return null
-          const nudge = Math.sin((f - markAt) / 4) * size * 0.08
+          if (!on(f, markAt + 14)) return null
           return (
-            <div style={{ position: 'absolute', left: room - size * 1.02 + nudge - (1 - p) * 60, top: (my0 - fy - sy) * k + (mh * k - size) / 2, fontSize: size, lineHeight: 1, opacity: p, filter: 'drop-shadow(0 6px 10px rgba(0,0,0,.45))' }}>👉</div>
+            <div style={{ position: 'absolute', left: room - size * 1.02, top: (my0 - fy - sy) * k + (mh * k - size) / 2, fontSize: size, lineHeight: 1, filter: 'drop-shadow(0 6px 10px rgba(0,0,0,.45))' }}>👉</div>
           )
         })()}
       </div>
@@ -309,10 +384,10 @@ export function roomy([x, y, fw, fh]: number[], marks: number[][], w: number, h:
 const InSplit = React.createContext(false)
 
 export function Split({ left, right, start = 0 }: { left: React.ReactNode; right: React.ReactNode; start?: number }) {
-  const { f, t } = useLocal(start, 10)
+  const { f } = useLocal(start, 10)
   if (f < 0) return null
   const half = (node: React.ReactNode, side: 0 | 1) => (
-    <div style={{ position: 'absolute', top: 0, bottom: 0, left: side ? 960 : 0, width: 960, overflow: 'hidden', transform: `translateX(${(1 - t) * (side ? 120 : -120)}px)` }}>
+    <div style={{ position: 'absolute', top: 0, bottom: 0, left: side ? 960 : 0, width: 960, overflow: 'hidden' }}>
       <div style={{ position: 'absolute', left: -480, top: 0, width: 1920, height: 1080, transform: 'scale(.52)', transformOrigin: '50% 50%' }}>
         <InSplit.Provider value={true}>{node}</InSplit.Provider>
       </div>
@@ -327,16 +402,14 @@ export function Split({ left, right, start = 0 }: { left: React.ReactNode; right
   )
 }
 
-/** A real post (the captured embed), centred, popping in. */
+/** A real post (the captured embed), big and centred on the wallpaper. */
 export function Post({ name, w, h, start = 0 }: { name: string; w: number; h: number; start?: number }) {
   const { f } = useLocal(start)
-  const { fps } = useVideoConfig()
   if (f < 0) return null
-  const s = spring({ frame: f, fps, config: { damping: 14, mass: 0.7 } })
   const k = Math.min(1300 / w, 900 / h)
   return (
-    <AbsoluteFill style={{ background: '#000', alignItems: 'center', justifyContent: 'center' }}>
-      <Img src={staticFile(name)} style={{ width: w * k, height: h * k, transform: `scale(${0.85 + 0.15 * s}) rotate(${(1 - s) * -3}deg)`, borderRadius: 18 }} />
+    <AbsoluteFill style={{ background: WALL, alignItems: 'center', justifyContent: 'center' }}>
+      <Img src={staticFile(name)} style={{ width: w * k, height: h * k, borderRadius: 18, boxShadow: '0 30px 90px rgba(0,0,0,.45)' }} />
     </AbsoluteFill>
   )
 }
@@ -415,7 +488,7 @@ function MemeBoxText({ text, box, kind }: { text: string; box: { x: number; y: n
  * template, `top` and `bottom` go at the top and bottom of the picture itself.
  */
 export function Meme({ name, w, h, template, texts, top = '', bottom = '', start = 0 }: { name: string; w?: number; h?: number; template?: string; texts?: string[]; top?: string; bottom?: string; start?: number }) {
-  const { f, t } = useLocal(start, 6)
+  const { f } = useLocal(start, 6)
   if (f < 0) return null
   const r = w && h ? fitted(w, h) : { x: 0, y: 0, w: 1920, h: 1080 }
   const layout = memeLayout(template)
@@ -424,11 +497,10 @@ export function Meme({ name, w, h, template, texts, top = '', bottom = '', start
     { at: [0.02, 0.79, 0.96, 0.2] as const, kind: 'label' as const }
   ]
   const words = layout && texts?.length ? texts : [top, bottom]
-  const s = 1.03 - 0.03 * t
   return (
     <AbsoluteFill style={{ background: '#000', overflow: 'hidden' }}>
       {w && h && <Img src={staticFile(name)} style={{ position: 'absolute', inset: -60, width: 2040, height: 1200, objectFit: 'cover', filter: 'blur(40px) brightness(0.45)' }} />}
-      <AbsoluteFill style={{ transform: `scale(${s})` }}>
+      <AbsoluteFill>
         <Img src={staticFile(name)} style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, objectFit: 'contain' }} />
         {boxes.map((b, i) => (
           <MemeBoxText key={i} text={words[i] ?? ''} kind={b.kind} box={{ x: r.x + b.at[0] * r.w, y: r.y + b.at[1] * r.h, w: b.at[2] * r.w, h: b.at[3] * r.h }} />
@@ -461,10 +533,10 @@ export function Gif({ name, w = 480, h = 270, text = '', start = 0 }: { name: st
 
 /** A Fireship-style caption over a shot: a short sarcastic line in meme capitals, at the bottom (or top). */
 export function Caption({ text, start = 0, top = false, size = 88 }: { text: string; start?: number; top?: boolean; size?: number }) {
-  const { f, t } = useLocal(start, 5)
+  const { f } = useLocal(start, 5)
   if (f < 0) return null
   return (
-    <AbsoluteFill style={{ opacity: t }}>
+    <AbsoluteFill>
       {/* A soft dark band behind the words, so they never fight with the text of a page under them. */}
       <div style={{ position: 'absolute', left: 0, right: 0, height: 380, [top ? 'top' : 'bottom']: 0, background: `linear-gradient(${top ? '0deg' : '180deg'}, rgba(0,0,0,0), rgba(0,0,0,.85))` }} />
       <MemeText text={text} top={top} size={size} />
@@ -486,17 +558,16 @@ function pieces(tokens: (string | Prism.Token)[], color = '#d4d4d4'): Piece[] {
 }
 
 /**
- * A code editor like VS Code: title bar, a tab with the file name, line numbers, real syntax colours, typed as it is
- * said (`cps` characters a second). `lines` highlights line numbers (1-based) after typing.
+ * A code editor like VS Code: title bar, a tab with the file name, line numbers, real syntax colours, all there from
+ * the first frame (Fireship shows code whole and points at it). `lines` highlights line numbers (1-based).
  */
 export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45, lines = [], tree }: { code: string; lang?: string; file?: string; start?: number; cps?: number; lines?: number[]; tree?: string[] }) {
-  const { f, t } = useLocal(start, 10)
-  const { fps } = useVideoConfig()
+  const { f } = useLocal(start, 10)
   if (f < 0) return null
+  void cps
   const grammar = Prism.languages[lang] ?? Prism.languages[{ js: 'javascript', sh: 'bash', shell: 'bash', py: 'python', yml: 'yaml' }[lang] ?? 'javascript']
-  // Typed in at most about 1.2 s, so the rest of the shot is for reading it.
-  let left = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, code.length / 1.2)))
-  const typed = left >= code.length
+  let left = code.length
+  const typed = true
   const rows = code.split('\n')
   // As big as the editor allows: a short snippet is read from across the room, a long one still fits.
   const longest = Math.max(12, ...rows.map((r) => r.replace(/\t/g, '  ').length))
@@ -506,7 +577,7 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   const font = Math.round(Math.max(half ? 34 : 22, Math.min(half ? 84 : rows.length <= 3 ? 66 : 54, fits, 860 / (rows.length * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 1560, borderRadius: 14, overflow: 'hidden', background: '#1e1e1e', boxShadow: '0 40px 120px rgba(0,0,0,.6)', opacity: t, transform: `translateY(${(1 - t) * 40}px)` }}>
+      <div style={{ width: 1560, borderRadius: 14, overflow: 'hidden', background: '#1e1e1e', boxShadow: '0 40px 120px rgba(0,0,0,.6)' }}>
         <div style={{ height: 46, background: '#2d2d2d', display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px' }}>
           {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
             <span key={c} style={{ width: 14, height: 14, borderRadius: 7, background: c }} />
@@ -559,14 +630,13 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   )
 }
 
-/** A terminal: the command typed, then its output appearing line by line. */
+/** A terminal: the command and its output, all there from the first frame. */
 export function Shell({ command, output = [], start = 0, cps = 30 }: { command: string; output?: string[]; start?: number; cps?: number }) {
-  const { f, t } = useLocal(start, 10)
-  const { fps } = useVideoConfig()
+  const { f } = useLocal(start, 10)
   if (f < 0) return null
-  const typedChars = Math.max(0, Math.floor(((f - 4) / fps) * Math.max(cps, command.length / 0.6)))
-  const doneAt = 8 + (command.length / cps) * fps
-  const outN = Math.max(0, Math.floor((f - doneAt - 6) / 5))
+  void cps
+  const typedChars = command.length
+  const outN = output.length
   // As big as the window allows for all its lines (the final output, so the size never jumps while it types).
   const half = React.useContext(InSplit)
   const longest = Math.max(16, command.length + 4, ...output.map((l) => l.length))
@@ -574,7 +644,7 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   const font = Math.round(Math.max(half ? 40 : 28, Math.min(half ? 84 : 60, 1380 / (longest * 0.6), 820 / (lines * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 1500, borderRadius: 14, background: '#0d1117', boxShadow: '0 40px 120px rgba(0,0,0,.6)', padding: `${font}px ${font * 1.2}px`, fontFamily: CODE, fontSize: font, lineHeight: `${Math.round(font * 1.5)}px`, color: '#c9d1d9', opacity: t, whiteSpace: 'pre', overflow: 'hidden' }}>
+      <div style={{ width: 1500, borderRadius: 14, background: '#0d1117', boxShadow: '0 40px 120px rgba(0,0,0,.6)', padding: `${font}px ${font * 1.2}px`, fontFamily: CODE, fontSize: font, lineHeight: `${Math.round(font * 1.5)}px`, color: '#c9d1d9', whiteSpace: 'pre', overflow: 'hidden' }}>
         <div>
           <span style={{ color: '#3fb950' }}>~ $ </span>
           {command.slice(0, typedChars)}
@@ -662,11 +732,9 @@ export function boxSize(label: string, w = 340, h = 136) {
 }
 
 export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, sub, icon, pulse = false, solid = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean; solid?: boolean }) {
-  const { f, t } = useLocal(start, 8)
+  const { f } = useLocal(start, 8)
   if (f < 0) return null
   const { w, h, font } = boxSize(label, w0, h0)
-  // A pulse: a ring that grows out of the box and fades, once a second.
-  const beat = pulse ? (f % 30) / 30 : 0
   return (
     <div
       style={{
@@ -682,8 +750,6 @@ export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, s
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        transform: `scale(${0.8 + 0.2 * t + (pulse ? 0.03 * Math.sin(beat * Math.PI) : 0)})`,
-        opacity: t,
         fontFamily: CODE,
         fontWeight: 700,
         color: solid ? '#0b0b0d' : '#f4f4f5',
@@ -692,7 +758,8 @@ export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, s
         boxShadow: solid ? undefined : `0 0 40px color-mix(in srgb, ${color} 18%, transparent)`
       }}
     >
-      {pulse && <div style={{ position: 'absolute', inset: -6 - beat * 40, border: `4px solid ${color}`, borderRadius: 12 + beat * 20, opacity: 1 - beat }} />}
+      {/* The busy one: a second ring around it, held still. */}
+      {pulse && <div style={{ position: 'absolute', inset: -16, border: `4px solid ${color}`, borderRadius: 18, opacity: 0.55 }} />}
       {icon && <span style={{ fontSize: 40, lineHeight: 1, marginBottom: 6 }}>{icon}</span>}
       {label}
       {sub && <span style={{ fontSize: Math.round(font * 0.66), fontWeight: 500, marginTop: 6, color: solid ? '#0b0b0d' : '#a1a1aa' }}>{sub}</span>}
@@ -706,7 +773,6 @@ export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, s
  */
 export function Timeline({ items, start = 0, every = 24, at }: { items: { date: string; text: string }[]; start?: number; every?: number; at?: number[] }) {
   const { f } = useLocal(start, 10)
-  const { fps } = useVideoConfig()
   if (f < 0) return null
   const when = (i: number) => (at?.[i] !== undefined ? at[i] - start : i * every)
   const shown = items.filter((_, i) => f >= when(i)).length
@@ -717,15 +783,13 @@ export function Timeline({ items, start = 0, every = 24, at }: { items: { date: 
   const visible = 5
   const first = Math.max(0, shown - visible)
   const shift = tops[first] ?? 0
-  const lift = interpolate(f, [when(Math.max(0, shown - 1)), when(Math.max(0, shown - 1)) + 10], [0, 1], { ...clamp, easing: ease })
   const span = shown ? tops[shown - 1] + heights[shown - 1] - shift : 0
   const top = 540 - span / 2
   return (
     <AbsoluteFill style={{ background: '#0b0b0d' }}>
       {items.map((it, i) => {
         if (f < when(i)) return null
-        const s = spring({ frame: f - when(i), fps, config: { damping: 14, mass: 0.6 } })
-        const y = top + tops[i] - shift + (i === shown - 1 ? (1 - lift) * 40 : 0)
+        const y = top + tops[i] - shift
         return (
           <div
             key={i}
@@ -740,8 +804,7 @@ export function Timeline({ items, start = 0, every = 24, at }: { items: { date: 
               padding: '22px 36px',
               boxSizing: 'border-box',
               boxShadow: '0 20px 50px rgba(0,0,0,.45)',
-              transform: `scale(${0.85 + 0.15 * s}) rotate(${(i % 2 ? 0.8 : -0.8) * s}deg)`,
-              opacity: s,
+              transform: `rotate(${i % 2 ? 0.8 : -0.8}deg)`,
               borderLeft: '8px solid #c0392b'
             }}
           >
@@ -775,15 +838,15 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
     <AbsoluteFill style={{ background: '#121214' }}>
       {title && <div style={{ position: 'absolute', top: top - 150, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 68, color: '#fafafa' }}>{title}</div>}
       {items.map((it, i) => {
-        const p = interpolate(f, [i * every, i * every + 22], [0, 1], { ...clamp, easing: ease })
+        const p = on(f, i * every)
         if (p <= 0) return null
-        const len = Math.max(14, (scale(it.value) / max) * 900) * p
+        const len = Math.max(14, (scale(it.value) / max) * 900)
         const c = it.hot ? '#ff6b4a' : color
         return (
-          <div key={i} style={{ position: 'absolute', top: top + i * rowH, left, right: 0, height: rowH, display: 'flex', alignItems: 'center', opacity: Math.min(1, p * 3) }}>
+          <div key={i} style={{ position: 'absolute', top: top + i * rowH, left, right: 0, height: rowH, display: 'flex', alignItems: 'center' }}>
             <div style={{ width: labelW, paddingRight: 36, boxSizing: 'border-box', textAlign: 'right', fontFamily: CODE, fontSize: label, color: '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
             <div style={{ width: len, height: Math.min(96, rowH * 0.55), background: `color-mix(in srgb, ${c} 35%, transparent)`, border: `4px solid ${c}`, borderRadius: 8 }} />
-            {it.text && <div style={{ marginLeft: 28, fontFamily: CODE, fontWeight: 700, fontSize: label, color: c, opacity: p >= 1 ? 1 : 0, whiteSpace: 'nowrap' }}>{it.text}</div>}
+            {it.text && <div style={{ marginLeft: 28, fontFamily: CODE, fontWeight: 700, fontSize: label, color: c, whiteSpace: 'nowrap' }}>{it.text}</div>}
           </div>
         )
       })}
@@ -791,10 +854,12 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
   )
 }
 
-/** An arrow between two points, drawn on, with a small label on the way (INVESTMENT, LOAN, RENTS…). */
+/** An arrow between two points, with a small label on the way (INVESTMENT, LOAN, RENTS…). It is simply there on its frame. */
 export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, dashed = false, packets = 0, packet, speed = 40 }: { from: [number, number]; to: [number, number]; label?: string; color?: string; start?: number; dur?: number; dashed?: boolean; packets?: number; packet?: string; speed?: number }) {
   const { f, t } = useLocal(start, dur)
   if (f < 0) return null
+  void packet
+  void speed
   const [x1, y1] = from
   const [x2, y2] = to
   const ex = x1 + (x2 - x1) * t
@@ -811,21 +876,11 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
     <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
       <line x1={x1} y1={y1} x2={ex} y2={ey} stroke={color} strokeWidth={4} strokeDasharray={dashed ? '12 10' : undefined} />
       {t > 0.95 && <path d={`M${x2} ${y2}l${-18 * Math.cos(a - 0.45)} ${-18 * Math.sin(a - 0.45)}M${x2} ${y2}l${-18 * Math.cos(a + 0.45)} ${-18 * Math.sin(a + 0.45)}`} stroke={color} strokeWidth={4} fill="none" />}
-      {t >= 1 &&
-        Array.from({ length: packets }, (_, i) => {
-          // Each packet takes `speed` frames end to end; they are spaced evenly along the arrow.
-          const p = ((f - dur) / speed + i / packets) % 1
-          const px = x1 + (x2 - x1) * p
-          const py = y1 + (y2 - y1) * p
-          const fade = Math.min(1, p * 8, (1 - p) * 8)
-          return packet ? (
-            <text key={i} x={px} y={py + 12} textAnchor="middle" fontSize={34} opacity={fade}>
-              {packet}
-            </text>
-          ) : (
-            <circle key={i} cx={px} cy={py} r={9} fill={color} opacity={fade} style={{ filter: `drop-shadow(0 0 8px ${color})` }} />
-          )
-        })}
+      {/* Packets: still dots along the arrow (what flows), no travelling. */}
+      {Array.from({ length: packets }, (_, i) => {
+        const p = (i + 1) / (packets + 1)
+        return <circle key={i} cx={x1 + (x2 - x1) * p} cy={y1 + (y2 - y1) * p} r={9} fill={color} />
+      })}
       {label && t > 0.5 && (
         // Beside the arrow, on its upper side, so the line never runs through the word.
         <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={Math.max(20, Math.min(32, (len * 0.95) / Math.max(1, (label?.length ?? 1) * 0.62)))} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
@@ -836,24 +891,22 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
   )
 }
 
-/** A cycle: things around a ring (build → test → deploy → …), drawn in turn, with a dot going round and round. */
+/** A cycle: things around a ring (build → test → deploy → …), each appearing on its beat. */
 export function Loop({ items, x = 960, y = 540, r = 300, color = '#3ddc97', start = 0, every = 8, speed = 90 }: { items: string[]; x?: number; y?: number; r?: number; color?: string; start?: number; every?: number; speed?: number }) {
   const { f, t } = useLocal(start, 16)
   if (f < 0) return null
   const n = items.length
   const at = (k: number) => -Math.PI / 2 + (k / n) * Math.PI * 2
-  const spin = at(0) + ((f / speed) % 1) * Math.PI * 2
+  void speed
   return (
     <AbsoluteFill>
       <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
         <circle cx={x} cy={y} r={r} fill="none" stroke={color} strokeWidth={4} strokeDasharray={`${2 * Math.PI * r * t} 99999`} transform={`rotate(-90 ${x} ${y})`} opacity={0.6} />
-        {t >= 1 && <circle cx={x + r * Math.cos(spin)} cy={y + r * Math.sin(spin)} r={13} fill={color} style={{ filter: `drop-shadow(0 0 10px ${color})` }} />}
       </svg>
       {items.map((label, k) => {
-        const p = interpolate(f, [k * every, k * every + 8], [0, 1], { ...clamp, easing: ease })
-        if (p <= 0) return null
+        if (!on(f, k * every)) return null
         return (
-          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 150, top: y + r * Math.sin(at(k)) - 46, width: 300, height: 92, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 31, color: '#fff', transform: `scale(${0.7 + 0.3 * p})`, opacity: p }}>
+          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 150, top: y + r * Math.sin(at(k)) - 46, width: 300, height: 92, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 31, color: '#fff' }}>
             {label.toUpperCase()}
           </div>
         )
@@ -890,7 +943,7 @@ function useChart(name: string): ChartData | null {
 
 const short = (n: number) => (Math.abs(n) >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e4 ? `${(n / 1e3).toFixed(0)}K` : n >= 100 ? n.toFixed(0) : n.toFixed(2))
 
-/** A real line chart (stock price, weekly downloads) drawn left to right, the last value counting up, the change in green or red. */
+/** A real line chart (stock price, weekly downloads), the last value and the change in green or red. */
 export function Chart({ name, start = 0, dur = 40, color }: { name: string; start?: number; dur?: number; color?: string }) {
   const data = useChart(name)
   const { f, t } = useLocal(start, dur)
@@ -947,7 +1000,7 @@ export function Chart({ name, start = 0, dur = 40, color }: { name: string; star
   )
 }
 
-/** Big numbers that count up (GitHub stars, forks, issues), one after another. */
+/** Big numbers (GitHub stars, forks, issues), one after another on their beats. */
 export function Stats({ name, start = 0, every = 10 }: { name: string; start?: number; every?: number }) {
   const data = useChart(name)
   const { f } = useLocal(start, 1)
@@ -958,10 +1011,10 @@ export function Stats({ name, start = 0, every = 10 }: { name: string; start?: n
       <div style={{ fontFamily: CODE, fontWeight: 700, fontSize: 46, color: '#9d9d9d', marginBottom: 60 }}>{data.title}</div>
       <div style={{ display: 'flex', gap: 120 }}>
         {data.stats.map((s, i) => {
-          const p = interpolate(f, [i * every, i * every + 24], [0, 1], { ...clamp, easing: ease })
+          const p = on(f, i * every)
           return (
-            <div key={i} style={{ textAlign: 'center', opacity: Math.min(1, p * 3), transform: `translateY(${(1 - p) * 40}px)` }}>
-              <div style={{ fontFamily: MEME, fontSize: 150, color: i ? '#fff' : '#ffd400', lineHeight: 1 }}>{short(Math.round(s.value * p))}</div>
+            <div key={i} style={{ textAlign: 'center', opacity: p }}>
+              <div style={{ fontFamily: MEME, fontSize: 150, color: i ? '#fff' : '#ffd400', lineHeight: 1 }}>{short(Math.round(s.value))}</div>
               <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 34, color: '#9d9d9d', marginTop: 14 }}>{s.label}</div>
             </div>
           )
@@ -972,18 +1025,17 @@ export function Stats({ name, start = 0, every = 10 }: { name: string; start?: n
   )
 }
 
-/** A pointing hand that slides in and taps at (x, y). */
+/** A pointing hand at (x, y), there on its frame. */
 export function Hand({ x, y, start = 0, dir = 'left' }: { x: number; y: number; start?: number; dir?: 'left' | 'right' | 'up' | 'down' }) {
-  const { f, t } = useLocal(start, 10)
+  const { f } = useLocal(start, 10)
   if (f < 0) return null
-  const bob = Math.sin(f / 4) * 8
   const rot = { left: 0, right: 180, up: 90, down: -90 }[dir]
-  return <div style={{ position: 'absolute', left: x - 50 + (1 - t) * 160, top: y - 50 + bob, fontSize: 100, transform: `rotate(${rot}deg) scaleX(-1)`, opacity: t, filter: 'drop-shadow(0 6px 10px rgba(0,0,0,.6))' }}>👉</div>
+  return <div style={{ position: 'absolute', left: x - 50, top: y - 50, fontSize: 100, transform: `rotate(${rot}deg) scaleX(-1)`, filter: 'drop-shadow(0 6px 10px rgba(0,0,0,.6))' }}>👉</div>
 }
 
 /** A red circle drawn around something, like a marker on a screenshot. */
 export function Circle({ x, y, rx = 220, ry = 90, start = 0, color = '#ff2d2d' }: { x: number; y: number; rx?: number; ry?: number; start?: number; color?: string }) {
-  const { f, t } = useLocal(start, 14)
+  const { f } = useLocal(start, 14)
   if (f < 0) return null
   const len = Math.PI * 2 * Math.sqrt((rx * rx + ry * ry) / 2) * 1.1
   return (
@@ -994,47 +1046,38 @@ export function Circle({ x, y, rx = 220, ry = 90, start = 0, color = '#ff2d2d' }
         stroke={color}
         strokeWidth={9}
         strokeLinecap="round"
-        strokeDasharray={len}
-        strokeDashoffset={len * (1 - t)}
       />
     </svg>
   )
 }
 
 /**
- * A cut-out (a person, a product, a logo) as a sticker: a white outline and a shadow, popping in with a little tilt.
- * Put several on a coloured background (<AbsoluteFill style={{ background: '#8b5cf6' }}>) for the Photoshop look.
+ * A cut-out (a person, a product, a logo) as a sticker: a white outline and a shadow, slapped on top, Fireship's
+ * collage. It is simply there on its frame, or `from` an edge of the frame it slides in over 4 frames; `glow` puts a
+ * coloured halo round the outline. Put several on a coloured background for the Photoshop look.
  */
-export function Sticker({ name, x = 960, y = 560, h = 760, rotate = -4, start = 0, flip = false }: { name: string; x?: number; y?: number; h?: number; rotate?: number; start?: number; flip?: boolean }) {
+export function Sticker({ name, x = 960, y = 560, h = 760, rotate = -4, start = 0, flip = false, from, glow }: { name: string; x?: number; y?: number; h?: number; rotate?: number; start?: number; flip?: boolean; from?: 'left' | 'right' | 'top' | 'bottom'; glow?: string }) {
   const { f } = useLocal(start)
-  const { fps } = useVideoConfig()
   if (f < 0) return null
-  const s = spring({ frame: f, fps, config: { damping: 11, mass: 0.6 } })
   const o = 7
   const outline = [`${o}px 0`, `-${o}px 0`, `0 ${o}px`, `0 -${o}px`, `${o * 0.7}px ${o * 0.7}px`, `-${o * 0.7}px ${o * 0.7}px`, `${o * 0.7}px -${o * 0.7}px`, `-${o * 0.7}px -${o * 0.7}px`]
     .map((d) => `drop-shadow(${d} 0 #fff)`)
     .join(' ')
-  const move = `translate(-50%, -50%) scale(${0.6 + 0.4 * s}${flip ? ', 1) scaleX(-1' : ''}) rotate(${rotate * s}deg)`
+  const halo = glow ? ` drop-shadow(0 0 14px ${glow}) drop-shadow(0 0 30px ${glow})` : ''
+  // Off the frame to its place: the whole way over 4 frames, fast out, no bounce.
+  const t = from ? interpolate(f, [0, 4], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }) : 1
+  const away = { left: [-(x + h), 0], right: [1920 - x + h, 0], top: [0, -(y + h)], bottom: [0, 1080 - y + h] }[from ?? 'left']
+  const dx = from ? away[0] * (1 - t) : 0
+  const dy = from ? away[1] * (1 - t) : 0
+  const move = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))${flip ? ' scaleX(-1)' : ''} rotate(${rotate}deg)`
   // A logo ("-logo" file) sits on a white card, so dark lettering shows on the black frame.
   if (/-logo\.\w+$/.test(name))
     return (
-      <div style={{ position: 'absolute', left: x, top: y, transform: move, background: '#fff', borderRadius: h * 0.08, padding: h * 0.12, boxShadow: '0 18px 40px rgba(0,0,0,.5)' }}>
+      <div style={{ position: 'absolute', left: x, top: y, transform: move, background: '#fff', borderRadius: h * 0.08, padding: h * 0.12, boxShadow: glow ? `0 0 0 6px ${glow}, 0 0 40px ${glow}` : '0 18px 40px rgba(0,0,0,.5)' }}>
         <Img src={staticFile(name)} style={{ display: 'block', height: h * 0.76, maxWidth: h * 2.6, objectFit: 'contain' }} />
       </div>
     )
-  return (
-    <Img
-      src={staticFile(name)}
-      style={{
-        position: 'absolute',
-        left: x,
-        top: y,
-        height: h,
-        transform: `translate(-50%, -50%) scale(${0.6 + 0.4 * s}${flip ? ', 1) scaleX(-1' : ''}) rotate(${rotate * s}deg)`,
-        filter: `${outline} drop-shadow(0 18px 24px rgba(0,0,0,.45))`
-      }}
-    />
-  )
+  return <Img src={staticFile(name)} style={{ position: 'absolute', left: x, top: y, height: h, transform: move, filter: `${outline}${halo} drop-shadow(0 18px 24px rgba(0,0,0,.45))` }} />
 }
 
 /** A tag on something: bold capitals on a solid colour, with an optional pointer line to (toX, toY). */
@@ -1056,18 +1099,61 @@ export function Label({ x, y, text, color = '#ff2d2d', ink = '#fff', to, start =
   )
 }
 
-/** A big title card on black: a few words, one in the accent. */
-export function TitleCard({ text, accent, start = 0, color = '#ff8a1f' }: { text: string; accent?: string; start?: number; color?: string }) {
-  const { f, t } = useLocal(start, 8)
+/**
+ * A big title card on black: a few words, one in the accent. With `num` it is Fireship's chapter card: the number in a
+ * red square, the title huge in white condensed capitals beside it.
+ */
+export function TitleCard({ text, accent, start = 0, color = '#ff8a1f', num }: { text: string; accent?: string; start?: number; color?: string; num?: number | string }) {
+  const { f } = useLocal(start, 8)
   if (f < 0) return null
+  const words = text.split(/(\s+)/).map((wd, i) => (
+    <span key={i} style={{ color: accent && wd.toLowerCase() === accent.toLowerCase() ? color : undefined }}>
+      {wd}
+    </span>
+  ))
+  if (num !== undefined) {
+    const size = Math.min(210, 1400 / Math.max(4, text.length * 0.5))
+    return (
+      <AbsoluteFill style={{ background: '#000', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 56, padding: '0 120px' }}>
+          <div style={{ flexShrink: 0, width: 230, height: 230, background: '#e5252a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MEME, fontSize: 170, color: '#fff' }}>{`${num}.`.replace(/\.\.$/, '.')}</div>
+          <div style={{ fontFamily: MEME, fontSize: size, lineHeight: 0.95, color: '#fff', textTransform: 'uppercase' }}>{words}</div>
+        </div>
+      </AbsoluteFill>
+    )
+  }
   return (
     <AbsoluteFill style={{ background: '#000', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontFamily: MEME, fontSize: 150, color: '#fff', textTransform: 'uppercase', textAlign: 'center', padding: '0 120px', lineHeight: 1.05, transform: `scale(${1.15 - 0.15 * t})`, opacity: t }}>
-        {text.split(/(\s+)/).map((wd, i) => (
-          <span key={i} style={{ color: accent && wd.toLowerCase() === accent.toLowerCase() ? color : undefined }}>
-            {wd}
-          </span>
-        ))}
+      <div style={{ fontFamily: MEME, fontSize: 150, color: '#fff', textTransform: 'uppercase', textAlign: 'center', padding: '0 120px', lineHeight: 1.05 }}>{words}</div>
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Fireship's quote card: someone's words in white on a black box over the picture behind (or the wallpaper), the
+ * words that matter (`mark`) cut out in a white highlight, and who said it under it.
+ */
+export function Quote({ text, mark, who, bg, start = 0 }: { text: string; mark?: string; who?: string; bg?: string; start?: number }) {
+  const { f } = useLocal(start, 8)
+  if (f < 0) return null
+  const size = Math.round(Math.max(44, Math.min(76, 2600 / Math.max(20, text.length))))
+  const at = mark ? text.toLowerCase().indexOf(mark.toLowerCase()) : -1
+  const body =
+    at < 0 ? (
+      text
+    ) : (
+      <>
+        {text.slice(0, at)}
+        <span style={{ background: '#fff', color: '#000', padding: '0 10px', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>{text.slice(at, at + mark!.length)}</span>
+        {text.slice(at + mark!.length)}
+      </>
+    )
+  return (
+    <AbsoluteFill style={{ background: WALL, alignItems: 'center', justifyContent: 'center' }}>
+      {bg && <Img src={staticFile(bg)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.55)' }} />}
+      <div style={{ position: 'relative', maxWidth: 1400, background: '#000', padding: '64px 80px', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
+        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: size, lineHeight: 1.35, color: '#fff' }}>{body}</div>
+        {who && <div style={{ fontFamily: CODE, fontSize: 32, color: '#a1a1aa', marginTop: 34 }}>— {who}</div>}
       </div>
     </AbsoluteFill>
   )
@@ -1097,18 +1183,19 @@ export function Dots({ total = 100, lit, title, label, start = 0, color = AMBER,
   const cols = total <= 24 ? Math.min(total, 8) : total <= 100 ? 10 : 20
   const rows = Math.ceil(total / cols)
   const size = Math.min(72, 900 / cols - 8, (title ? 760 : 860) / rows - 8)
-  const on = Math.round(interpolate(f, [6, 6 + dur], [0, lit], { ...clamp, easing: ease }))
+  void dur
+  const lightN = lit
   const share = Math.round((lit / total) * 100)
   return (
     <AbsoluteFill style={{ background: PANEL }}>
       <VisualTitle text={title} />
       <div style={{ position: 'absolute', left: 180, top: 540 - (rows * (size + 8)) / 2 + (title ? 70 : 0), display: 'grid', gridTemplateColumns: `repeat(${cols}, ${size}px)`, gap: 8 }}>
         {Array.from({ length: total }, (_, i) => (
-          <div key={i} style={{ width: size, height: size, borderRadius: size * 0.2, background: i < on ? color : 'transparent', border: `3px solid ${i < on ? color : DIM}`, boxSizing: 'border-box' }} />
+          <div key={i} style={{ width: size, height: size, borderRadius: size * 0.2, background: i < lightN ? color : 'transparent', border: `3px solid ${i < lightN ? color : DIM}`, boxSizing: 'border-box' }} />
         ))}
       </div>
       <div style={{ position: 'absolute', right: 160, top: 540 + (title ? 40 : 0), transform: 'translateY(-50%)', textAlign: 'right' }}>
-        <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 200, lineHeight: 1, color }}>{Math.round((on / Math.max(1, lit)) * share)}%</div>
+        <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 200, lineHeight: 1, color }}>{share}%</div>
         {label && <div style={{ fontFamily: UI, fontSize: 46, color: '#d4d4d8', marginTop: 16, maxWidth: 640 }}>{label}</div>}
       </div>
     </AbsoluteFill>
@@ -1140,9 +1227,9 @@ export function Compare({ a, b, rows, title, start = 0, every = 16, win }: { a: 
           <div style={{ ...col('b'), color: win === 'b' ? '#3ddc84' : '#fafafa' }}>{b}</div>
         </div>
         {rows.map((r, i) => {
-          const p = interpolate(f, [10 + i * every, 18 + i * every], [0, 1], { ...clamp, easing: ease })
+          const p = on(f, 10 + i * every)
           return (
-            <div key={i} style={{ display: 'flex', height: rowH, alignItems: 'center', borderTop: `2px solid ${DIM}`, opacity: p, transform: `translateY(${(1 - p) * 20}px)` }}>
+            <div key={i} style={{ display: 'flex', height: rowH, alignItems: 'center', borderTop: `2px solid ${DIM}`, opacity: p }}>
               <div style={{ flex: 1, fontSize: 42, color: '#a1a1aa', fontFamily: CODE }}>{r.label}</div>
               <div style={col('a')}>{cell(r.a)}</div>
               <div style={col('b')}>{cell(r.b)}</div>
@@ -1170,7 +1257,7 @@ export function Stack({ layers, title, start = 0, every = 12 }: { layers: { labe
       {layers.map((l, i) => {
         // Built from the bottom: the last layer first.
         const k = n - 1 - i
-        const p = interpolate(f, [k * every, k * every + 12], [0, 1], { ...clamp, easing: ease })
+        const p = on(f, k * every)
         if (p <= 0) return null
         const c = l.color ?? (l.hot ? HOT : AMBER)
         const w = 1100 - i * 40
@@ -1180,10 +1267,9 @@ export function Stack({ layers, title, start = 0, every = 12 }: { layers: { labe
             style={{
               position: 'absolute',
               left: 960 - w / 2,
-              top: top + i * (h + 18) - (1 - p) * 60,
+              top: top + i * (h + 18),
               width: w,
               height: h,
-              opacity: p,
               borderRadius: 14,
               border: `3px solid ${l.hot ? c : DIM}`,
               background: l.hot ? `color-mix(in srgb, ${c} 22%, #121214)` : '#1c1c21',
@@ -1216,7 +1302,8 @@ export function Pipeline({ steps, title, start = 0, every = 22, hot, packet }: {
   const gap = 1640 / Math.max(1, n)
   const w = Math.min(320, gap - 70)
   const y = 560 + (title ? 30 : 0)
-  const pos = interpolate(f, [8, 8 + (n - 1) * every], [0, n - 1], { ...clamp, easing: Easing.inOut(Easing.cubic) })
+  // The packet jumps from step to step on each beat (no glide).
+  const pos = Math.max(0, Math.min(n - 1, Math.floor((f - 8) / Math.max(1, every)) + (f >= 8 ? 1 : 0) - 1))
   const x = (i: number) => 140 + gap * i + gap / 2
   return (
     <AbsoluteFill style={{ background: PANEL }}>
@@ -1285,7 +1372,7 @@ export function Tree({ root, branches, title, start = 0, every = 14 }: { root: s
           position: 'absolute',
           left: x,
           top: y,
-          transform: `translate(-50%, -50%) scale(${0.8 + 0.2 * p})`,
+          transform: 'translate(-50%, -50%)',
           opacity: p,
           padding: kind === 'leaf' ? '10px 22px' : '18px 34px',
           borderRadius: 14,
@@ -1303,14 +1390,14 @@ export function Tree({ root, branches, title, start = 0, every = 14 }: { root: s
     )
   }
   const lines: React.ReactNode[] = []
-  const nodes: React.ReactNode[] = [node(960, top, root, interpolate(f, [0, 10], [0, 1], clamp), 'root')]
+  const nodes: React.ReactNode[] = [node(960, top, root, 1, 'root')]
   branches.forEach((b, i) => {
-    const pb = interpolate(f, [10 + i * every, 20 + i * every], [0, 1], { ...clamp, easing: ease })
+    const pb = on(f, 10 + i * every)
     const x = bx(i)
     lines.push(<line key={`b${i}`} x1={960} y1={top + 40} x2={960 + (x - 960) * pb} y2={top + 40 + (top + 230 - (top + 40)) * pb} stroke={DIM} strokeWidth={4} />)
     nodes.push(node(x, top + 260, b.label, pb, 'branch', b.hot))
     ;(b.leaves ?? []).forEach((l, j) => {
-      const pl = interpolate(f, [20 + i * every + j * 6, 28 + i * every + j * 6], [0, 1], { ...clamp, easing: ease })
+      const pl = on(f, 20 + i * every + j * 6)
       const y = top + 400 + j * 90
       lines.push(<line key={`l${i}${j}`} x1={x} y1={top + 300 + (j ? (j - 1) * 90 + 110 : 0)} x2={x} y2={y - 30} stroke={DIM} strokeWidth={3} opacity={pl} />)
       nodes.push(node(x, y, l, pl, 'leaf'))
@@ -1341,7 +1428,7 @@ export function Magnify({ name, w, h, at, label, start = 0, zoom = 2.6 }: { name
   const oy = (1080 - ih) / 2
   const cx = ox + (at[0] + at[2] / 2) * k
   const cy = oy + (at[1] + at[3] / 2) * k
-  const p = interpolate(f, [14, 30], [0, 1], { ...clamp, easing: ease })
+  const p = on(f, 14)
   const r = 230
   // The lens sits beside the detail, on the side with more room, joined to it by a line.
   const lx = cx < 960 ? Math.min(1920 - r - 60, cx + 480) : Math.max(r + 60, cx - 480)

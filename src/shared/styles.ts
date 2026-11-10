@@ -138,12 +138,14 @@ Look
     palette: { bg: '#000000', ink: '#ffffff', accent: '#ff8a1f' },
     guide: `A fast, funny tech explainer made of REAL media: the pages, posts, photos, memes, charts, code and clips listed
 for each part. Not drawn: cut. Every part uses its listed media, in order, with the blocks in @kit/remix (no <Board>):
-  import { Cuts, Punch, Shake, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Gif, Caption, Code, Shell, Diagram, Box,
+  import { Cuts, Punch, FreezeFrame, Shot, Clip, Page, Split, Post, Meme, Gif, Caption, Code, Shell, Diagram, Box,
     Flow, Loop, Chart, Stats, Bars, Timeline, Dots, Compare, Stack, Pipeline, Tree, Magnify, Hand, Circle, Sticker, Label,
-    TitleCard } from '@kit/remix'
+    TitleCard, Quote } from '@kit/remix'
   import { AbsoluteFill } from '@kit'
-  <Cuts at={[0, at('word'), …]} whip?> one child per shot </Cuts>   each child fills the frame; cut on the word it is
-    about; whip: a fast blurred slide between shots (use it where the topic turns)
+  <Cuts at={[0, at('word'), …]} fx?={['cut', 'whip', 'glitch', …]}> one child per shot </Cuts>   each child fills the
+    frame; cut on the word it is about. Hard cuts by default (Fireship). fx[i] is how shot i + 2 comes in: 'whip' (the
+    picture tears in sideways as motion streaks, for a new topic or section), 'glitch' (bands shear and the colours
+    split, for something broken, hacked or a twist). At most 2 whips and 1 glitch in a part; the rest are cuts.
   <Shot name="m/…jpg" fit? zoom? />  photo, logo, B-roll still        <Clip name="m/…mp4" from? />  a real clip or quote
   <Page name="m/…png" w h marks={…} marks2? focus? crop? scroll? underline? markAt? point? />  a page with its sentence
     highlighted (copy w, h, marks, marks2 and focus as listed). It shows only the headline and that paragraph, big,
@@ -178,16 +180,21 @@ for each part. Not drawn: cut. Every part uses its listed media, in order, with 
     splitting into kinds or parts
   <Magnify name="m/…png" w h at={[x, y, w, h]} label? />  a lens on one detail of a real picture or page (a chip's
     marking, one line of a chart), [x, y, w, h] in the picture's pixels (a page's marks give them)
-  <Sticker name="m/…-cut.png" x y h rotate? />  a cut-out person with a white outline, popped on top of a shot; a
-    logo ("m/…-logo.png") shows on a white card. Never on top of text or another Sticker.
+  <Sticker name="m/…-cut.png" x y h rotate? from?="left" glow?="#ff3d6e" start? />  a cut-out person with a white
+    outline, slapped on top of a shot (Fireship's collage); from: it slides in from that edge of the frame in 4 frames;
+    glow: a coloured halo for the one that matters. A logo ("m/…-logo.png") shows on a white card. Never on top of text
+    or another Sticker; a few at different start frames build a collage on one picture.
   <Label x y text="CEO, NVIDIA" to={[x, y]}? color? />  a tilted name tag, with an optional pointer line
-  <TitleCard text="Circular financing" accent="circular" />
-  Edits, wrapped around a shot: <Punch at={[at('trillion')]}> zooms in hard on the word; <Shake at={[f]}> for an impact;
+  <TitleCard text="The scout" num={1} />  a chapter card: the number in a red square, the title huge beside it
+    (without num: a few big words, accent= one word in orange)
+  <Quote text="We will not train on your code" mark="not train" who="GitHub, 2023" bg?="m/…jpg" />  someone's exact
+    words in a black box, the words that matter cut out in white, over their picture (bg) or the wallpaper
+  Edits, wrapped around a shot: <Punch at={[at('trillion')]}> jumps in close on the word (a hard zoom cut, no glide);
     <FreezeFrame at={f} label="THIS GUY"> stops the picture with a record scratch, for the beat before a punchline.
   Diagrams: <Diagram> <Box x y label="NVIDIA" icon="🖥️" pulse? solid? color="#76b900" />
     <Flow from={[x,y]} to={[x,y]} label="investment" packets={3} packet="💰"? /> </Diagram>   Diagram zooms whatever is
-    inside it to fill the frame, so lay it out at any size; build it up box by box; packets keep moving along the
-    arrow; pulse marks the busy one. <Loop items={['build', 'test', 'deploy']} /> for a cycle (inside a Diagram too).
+    inside it to fill the frame, so lay it out at any size; build it up box by box (each Box and Flow appears on
+    its start frame); packets mark what flows along the arrow; pulse rings the busy one. <Loop items={['build', 'test', 'deploy']} /> for a cycle (inside a Diagram too).
     At most 5 boxes in one diagram, 1 to 3 words per label. Aim arrows at box centres if you like: they are drawn
     from edge to edge. A Sticker or Label that belongs to the diagram goes INSIDE the <Diagram> (it zooms with it);
     never lay anything over a diagram from outside it. Boxes are outlined in their colour and size themselves to the
@@ -200,10 +207,15 @@ Timing: every frame number is a frame of the part, what at('word') returns, also
   inside the shot that begins at 'knife' comes in on that word). Something with no start comes in when its shot does.
   Every shot shows its main thing from its first frame: never a shot that is black or empty while it waits.
 
+Motion, as Fireship does it: nothing floats, bounces, fades or drifts. Pictures are held dead still and the edit
+  does the moving: a hard cut on the word, a Punch that jumps closer, a Sticker slapped on (or slid in from the edge),
+  a highlight swiped across the sentence, a box or bar appearing on its word. A whip only where the topic turns, a
+  glitch only for something broken. Build a long shot up in steps on the words (start=), never with a slow tween.
+
 Pace and humour
 - Every shot is on screen long enough to READ, cut exactly on the word it shows (at('word')): a photo or B-roll at
   least 1.5 s; a meme or GIF at least 3 s; a page with its highlight at least 2.5 s; a diagram at least 3 s; code at
-  least 3.5 s plus 1 s for every 3 lines (it types in about a second, then the viewer reads it). A part of 10 seconds
+  least 3.5 s plus 1 s for every 3 lines (it is shown whole; lines= lights the line that matters). A part of 10 seconds
   has 3 or 4 shots, never 6. Shots under 0.8 s are dropped by the kit. Keep a long shot alive inside it instead of
   cutting away: a Punch on the key word, a second highlight, the next box of the diagram.
 - No small card or ticket parked in a corner across shots: it is too small to read and covers the picture. Every

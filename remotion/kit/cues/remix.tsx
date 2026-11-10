@@ -1,5 +1,5 @@
-// Stand-in for '@kit/remix' when finding sound cues: a whoosh on every cut, typing for code and terminals, a pen for
-// the highlighter and the drawn circle, pops for things that appear.
+// Stand-in for '@kit/remix' when finding sound cues, Fireship style: hard cuts are silent, a whip or glitch gets its
+// swish, a pen for the highlighter, pops for stickers and things that appear on their beat.
 import React, { useContext } from 'react'
 import { CutStart, FrameCtx, useCue } from './record'
 import { flashFree } from '../flash'
@@ -7,11 +7,15 @@ import { flashFree } from '../flash'
 type Kids = { children?: React.ReactNode }
 type Any = { start?: number; [k: string]: unknown }
 
-export function Cuts({ at, children, whip = false }: { at: number[]; whip?: boolean } & Kids) {
+export function Cuts({ at, children, whip = false, fx }: { at: number[]; whip?: boolean; fx?: string[] } & Kids) {
   // The same shots as the real kit shows: flashes under 0.8 s are left out.
   const { fps, dur } = useContext(FrameCtx)
   const shots = flashFree(React.Children.toArray(children), at, dur, Math.round(fps * 0.8))
-  shots.forEach(({ from }, i) => i > 0 && useCue(whip ? 'whip' : 'whoosh', from, 10, 0.5))
+  shots.forEach(({ from }, i) => {
+    const how = i === 0 ? 'cut' : fx?.[i - 1] ?? (whip ? 'whip' : 'cut')
+    if (how === 'whip') useCue('whip', from, 10, 0.5)
+    else if (how === 'glitch') useCue('whoosh', from, 6, 0.45)
+  })
   return (
     <>
       {shots.map(({ c, from }, i) => (
@@ -27,7 +31,7 @@ export function Punch({ at = [], children }: { at?: number[] } & Kids) {
   return <>{children}</>
 }
 export function Shake({ at = [], children }: { at?: number[] } & Kids) {
-  at.forEach((f) => useCue('boom', f, undefined, 0.6))
+  at.forEach((f) => useCue('boom', f))
   return <>{children}</>
 }
 export function FreezeFrame({ at = 0, children }: { at?: number } & Kids) {
@@ -48,7 +52,7 @@ export function Timeline({ items = [], start = 0, every = 24, at }: Any & { item
   return null
 }
 export function Bars({ items = [], start = 0, every = 26 }: Any & { items?: unknown[]; every?: number }) {
-  items.forEach((_, i) => useCue('whoosh', start + i * every, 22, 0.35))
+  items.forEach((_, i) => useCue('pop', start + i * every, undefined, 0.5))
   return null
 }
 export const Gif = pop(0.9)
@@ -62,28 +66,16 @@ export const TitleCard = pop(0.8)
 export const Sticker = pop(0.9)
 export const Label = pop(0.5)
 export function Page({ start = 0, markAt = 18, marks = [] }: Any & { markAt?: number; marks?: unknown[] }) {
-  if (marks.length) useCue('pen', start + markAt, 18 + marks.length * 8, 0.6)
+  if (marks.length) useCue('pen', start + markAt, 12, 0.6)
   return null
 }
-export function Code({ code = '', start = 0, cps = 45 }: Any & { code?: string; cps?: number }) {
-  // Typed in at most 1.2 s, as in the real kit.
-  useCue('typing', start + 4, Math.min(code.length / cps, 1.2) * 30)
-  return null
-}
-export function Shell({ command = '', start = 0, cps = 30 }: Any & { command?: string; cps?: number }) {
-  useCue('typing', start + 4, Math.min(command.length / cps, 0.6) * 30)
-  return null
-}
-export function Flow({ start = 0 }: Any) {
-  useCue('whoosh', start, 14, 0.35)
-  return null
-}
-export function Circle({ start = 0 }: Any) {
-  useCue('pen', start, 14, 0.7)
-  return null
-}
-export function Split({ left, right, start = 0 }: Any & { left?: React.ReactNode; right?: React.ReactNode }) {
-  useCue('whoosh', start, 10, 0.4)
+// Code and terminals are shown whole (no typing), so they make no sound of their own.
+export const Code = () => null
+export const Shell = () => null
+export const Quote = pop(0.5)
+export const Flow = pop(0.35)
+export const Circle = pop(0.6)
+export function Split({ left, right }: Any & { left?: React.ReactNode; right?: React.ReactNode }) {
   return (
     <>
       {left}
@@ -95,19 +87,12 @@ export function Loop({ items = [], start = 0, every = 8 }: Any & { items?: unkno
   items.forEach((_, k) => useCue('pop', start + k * every, undefined, 0.4))
   return null
 }
-export function Chart({ start = 0, dur = 40 }: Any & { dur?: number }) {
-  useCue('whoosh', start, dur, 0.4)
-  useCue('count', start + dur * 0.6, dur * 0.4, 0.5)
-  return null
-}
+export const Chart = pop(0.5)
 export function Stats({ start = 0, every = 10 }: Any & { every?: number }) {
-  ;[0, 1, 2].forEach((i) => useCue('count', start + i * every, 24, 0.5))
+  ;[0, 1, 2].forEach((i) => useCue('pop', start + i * every, undefined, 0.5))
   return null
 }
-export function Dots({ start = 0, dur = 40 }: Any & { dur?: number }) {
-  useCue('count', start + 6, dur, 0.5)
-  return null
-}
+export const Dots = pop(0.5)
 export function Compare({ rows = [], start = 0, every = 16 }: Any & { rows?: unknown[]; every?: number }) {
   rows.forEach((_, i) => useCue('pop', start + 10 + i * every, undefined, 0.45))
   return null
@@ -117,7 +102,7 @@ export function Stack({ layers = [], start = 0, every = 12 }: Any & { layers?: u
   return null
 }
 export function Pipeline({ steps = [], start = 0, every = 22 }: Any & { steps?: unknown[]; every?: number }) {
-  useCue('whoosh', start + 8, Math.max(1, steps.length - 1) * every, 0.4)
+  steps.forEach((_, i) => i > 0 && useCue('pop', start + 8 + (i - 1) * every, undefined, 0.4))
   return null
 }
 export function Tree({ branches = [], start = 0, every = 14 }: Any & { branches?: unknown[]; every?: number }) {
@@ -126,6 +111,6 @@ export function Tree({ branches = [], start = 0, every = 14 }: Any & { branches?
   return null
 }
 export function Magnify({ start = 0 }: Any) {
-  useCue('whoosh', start + 14, 16, 0.6)
+  useCue('pop', start + 14, undefined, 0.6)
   return null
 }
