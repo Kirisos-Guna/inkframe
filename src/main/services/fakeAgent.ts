@@ -180,6 +180,16 @@ export default function Scene() {
     )
     return 'Drew a 3D part.'
   }
+  // A FetchDecode-style thumbnail (real-media styles): one Poster with a picture from the video.
+  const thumbFile = p.match(/scenes\/(thumb-[\w-]+)\.tsx/)?.[1]
+  if (thumbFile && p.includes('<Poster')) {
+    const subject = p.match(/m\/[\w.-]+-cut\.png/)?.[0] ?? p.match(/m\/[\w.-]+\.(?:jpg|png)/)?.[0]
+    writeFileSync(
+      join(o.cwd, 'scenes', `${thumbFile}.tsx`),
+      `import { Poster } from '@kit/thumb'\n\nexport default function Scene() {\n  return <Poster lines={[{ text: 'Prompt' }, { text: 'Leaked', color: 'red' }]}${subject ? ` subject="${subject}"` : ''} term="still sending" />\n}\n`
+    )
+    return 'A two-word verdict over the person in the story.'
+  }
   // The remix style: each part cut from the media listed for it.
   const remix = existsSync(join(o.cwd, 'STYLE.md')) && readFileSync(join(o.cwd, 'STYLE.md'), 'utf8').includes('@kit/remix')
   if (remix && /scenes\/[\w-]+\.tsx/.test(p)) {

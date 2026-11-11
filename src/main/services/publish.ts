@@ -191,20 +191,28 @@ Reply with JSON only: {"lines": ["...", ...]}`
  */
 function remixThumb(p: Project) {
   if (!getStyle(p.settings.styleId).realMedia) return ''
-  const cuts = Object.values(p.media ?? {})
-    .flat()
-    .filter((m) => m.cut)
-    .map((m) => `${m.cut} (${m.note})`)
-  return `This video's style is real media (Fireship-like). Thumbnail formula: a bold flat background (deep purple, black or
-a strong brand colour), ONE cut-out face or logo very large on one side as a <Sticker> from '@kit/remix' (white outline),
-2 or 3 huge words with <BigText> in white with one word in yellow (#ffd400), optionally one <Label> or a red <Circle>.
-${cuts.length ? `Cut-outs from the video you can use: ${cuts.slice(0, 8).join(', ')}` : 'No cut-outs were made for this video: use a logo or a bold object drawn simply.'}
-`
+  const all = Object.values(p.media ?? {}).flat()
+  const cuts = all.filter((m) => m.cut).map((m) => `${m.cut} (cut-out: ${m.note ?? ''})`)
+  const photos = all.filter((m) => m.kind === 'photo' && !m.cut).map((m) => `${m.name} (${m.note ?? ''})`)
+  return `This video's thumbnail is in the FetchDecode look, made with ONE block, <Poster> from '@kit/thumb':
+  <Poster lines={[{ text: 'GPU' }, { text: 'Expired', color: 'red' }]} subject="m/…-cut.png" tag?="Reverse engineering"
+    term?="still false" logos?={['m/…-logo.png', …]} side?="right" />
+Pure black, 2 or 3 HUGE words stacked on the left (each line is sized to its length: short lines come out giant),
+cream white with exactly ONE line in 'red', 'yellow' or 'orange'; one big real picture on the right (a person who is
+in the story, or the object the video is about), fading into the black. The words are a verdict or a twist, not the
+title: "GPU EXPIRED", "APP AUTOPSY", "YOUR APP. MY RULES.", "17 YEARS", "32,767 KEYS", "CODE TO ACTION". A number goes
+on its own line in yellow. tag: 2-3 small words for the topic (optional); term: a 2-4 word line typed in a green
+terminal, for a code or hacking video (optional); logos: up to 5 company logos from the video, small, at the top
+(optional). Use at most two of tag, term and logos. Nothing else on the picture: no arrows, circles, stickers or
+backgrounds of your own.
+${cuts.length ? `Cut-outs from the video (best as the subject): ${cuts.slice(0, 8).join(', ')}\n` : ''}${photos.length ? `Photos from the video: ${photos.slice(0, 8).join(', ')}\n` : ''}${!cuts.length && !photos.length ? 'The video has no photos: use a logo file from the video as the subject.\n' : ''}`
 }
 
 // ---------- thumbnails ----------
 // Different concepts for the variants, so "Make 3" gives three real choices (see remotion/THUMBNAILS.md).
 const CONCEPTS = ['The glowing object', 'Big number', 'Before → after / versus', 'Mystery']
+/** FetchDecode-style ideas for the real-media thumbnails: each variant a different kind of line. */
+const POSTER_CONCEPTS = ['A two-word verdict (GPU EXPIRED, APP AUTOPSY)', 'The big number (17 YEARS, 32,767 KEYS)', 'A statement and its twist (YOUR APP. MY RULES.)', 'What it does, in 3 words (CODE TO ACTION, INSIDE YOUR SCREEN)']
 
 export async function makeThumbnails(id: string, count: number, note?: string, onStatus?: (s: string) => void): Promise<Project> {
   const p = getProject(id)!
@@ -217,7 +225,7 @@ export async function makeThumbnails(id: string, count: number, note?: string, o
     .filter((_, i, a) => a.length <= 4 || i % Math.ceil(a.length / 4) === 0)
     .slice(0, 4)
     .map((x) => `thumbs/${x.id}.png`)
-  const concepts = CONCEPTS
+  const concepts = style.realMedia ? POSTER_CONCEPTS : CONCEPTS
   // The same instructions for every thumbnail session, as the cached system prompt.
   const system = `${drawingSystem(readFileSync(methodFile(), 'utf8'), null, styleDoc(style, styleGuide(style.id)))}\n\n---\n\n# How to make the thumbnail\n\n${readFileSync(thumbMethodFile(), 'utf8')}`
   const draw = { provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, system }
@@ -236,7 +244,7 @@ Parts: ${p.parts.map((x) => x.title).join(' · ')}
 Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
 Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
 ${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}${remixThumb(p)}
-Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
+${style.realMedia ? 'Make it clear at stamp size: the Poster does the layout, you choose the words, the colour line and the picture.' : "Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them)."}
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 
 Write the scene to ${file}. Do not create or change any other file. Reply with one sentence about the idea.`
