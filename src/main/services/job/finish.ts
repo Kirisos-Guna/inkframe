@@ -11,14 +11,11 @@ import { buildSfxTrack } from '../sfx'
 const req = createRequire(__filename)
 
 /**
- * The transition between parts. The real-media styles cut hard, like the channels they come from: the app's default
- * fade (0.4 s of two pictures melting into each other, every few seconds) is not used there; a transition picked on
- * purpose (flash, wipe…) still is.
+ * The transition between parts, picked by the app from the style (there is no setting for it any more): the
+ * real-media styles cut hard, like the channels they come from (their whips and glitches are inside the parts, on the
+ * words); the drawn styles fade softly from one part to the next.
  */
-export const transitionOf = (p: Project) => {
-  const t = p.settings.transition
-  return getStyle(p.settings.styleId).realMedia && t === 'Fade' ? 'None' : t
-}
+export const transitionOf = (p: Project) => (getStyle(p.settings.styleId).realMedia ? 'None' : 'Fade')
 
 export const finishDetail = (p: Project) =>
   [

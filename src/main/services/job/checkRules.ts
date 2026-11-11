@@ -103,6 +103,9 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
       bars += b
       lastBarsPart = s.index
     }
+    // Text drawn by hand in the scene that is too small for a phone (most people watch there).
+    const sizes = [...s.code.matchAll(/font-?size["']?\s*[=:]\s*\{?\s*["']?(\d+(?:\.\d+)?)/gi)].map((m) => Number(m[1])).filter((v) => v > 0 && v < PHONE_TEXT)
+    if (sizes.length) add(s.id, `Text at ${Math.min(...sizes)} px is too small to read on a phone: make every word at least ${PHONE_TEXT} px (fewer words, bigger), titles 80 px or more`)
     const n = (s.code.match(/<TitleCard\b/g) ?? []).length
     if (n) {
       if (cards + n > 2) add(s.id, `Too many word cards: the video already has ${cards}. Show this line on a visual instead of a TitleCard: a Punch on the number in its highlighted page, Bars, Stats, or a Caption over a picture`)
@@ -113,6 +116,9 @@ export function lintScenes(scenes: { id: string; index: number; code: string }[]
   }
   return notes
 }
+
+/** The smallest text a scene may draw itself (in the 1920 x 1080 frame) and still be read on a phone. */
+export const PHONE_TEXT = 40
 
 /** The teaching shapes besides Diagram and Bars (checked on their own above), each for a different kind of idea. */
 const SHAPES = ['Dots', 'Compare', 'Stack', 'Pipeline', 'Tree', 'Timeline', 'Magnify', 'Loop']

@@ -54,7 +54,6 @@ const CREATIVITY = [
   { v: 'Wild', sub: 'Surprise me' }
 ] as const
 const ENGINES = ['Auto', 'Remotion', 'HyperFrames'] as const
-const TRANSITIONS = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom'] as const
 const CAPTIONS = ['Off', 'Clean', 'Bold pop', 'Karaoke'] as const
 const SFX = ['Off', 'Subtle', 'Lively'] as const
 const LANGS = ['English', 'Tamil'] as const
@@ -599,13 +598,6 @@ export default function NewVideo() {
               <div className="mt-2 text-[13px] text-dim">
                 {(s.engine ?? 'Auto') === 'Auto' ? 'The style decides: React scenes, real 3D, or HTML.' : s.engine === 'HyperFrames' ? 'HTML + GSAP: great for kinetic type, charts and motion graphics.' : 'React scenes: hand-drawn lines and real 3D.'}
               </div>
-            </div>
-            <div>
-              <div className="text-[15px] font-semibold text-ink/90">Between parts</div>
-              <div className="mt-3">
-                <Chips options={TRANSITIONS} value={s.transition ?? 'None'} onToggle={(transition) => set({ transition })} size="sm" />
-              </div>
-              {style?.realMedia && s.transition === 'Fade' && <div className="mt-2 text-[13px] text-dim">This style cuts hard between parts; Fade is not used.</div>}
             </div>
             <div>
               <div className="text-[15px] font-semibold text-ink/90">Captions</div>

@@ -34,9 +34,9 @@ describe('lintScript', () => {
 })
 
 describe('lintScript, the house voice', () => {
-  it('wants sentences of at most 24 words', () => {
-    const ok = Array.from({ length: 23 }, () => 'and').join(' ') + '.'
-    const long = Array.from({ length: 26 }, () => 'and').join(' ') + '.'
+  it('wants sentences of at most 20 words (simple English)', () => {
+    const ok = Array.from({ length: 19 }, () => 'and').join(' ') + '.'
+    const long = Array.from({ length: 22 }, () => 'and').join(' ') + '.'
     expect(lintScript(`It walks. ${ok} ${words(120)}`, 150).join(' ')).not.toMatch(/Split these long sentences/)
     expect(lintScript(`It walks. ${long} ${words(120)}`, 150).join(' ')).toMatch(/Split these long sentences/)
   })

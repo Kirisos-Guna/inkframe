@@ -277,9 +277,28 @@ export function Page({
   const all0 = [...marks, ...marks2]
   const around = all0.length ? padBox(all0, w, h, focus) : focus
   const cropped = (crop ?? !scroll) && !!around
-  const [fx, fy, fw, fh] = cropped ? roomy(around!, all0, w, h) : [0, 0, w, h]
-  const width = cropped ? Math.min(1640, (fw / fh) * 860) : 1560
-  const k = width / fw
+  let [fx, fy, fw, fh] = cropped ? roomy(around!, all0, w, h) : [0, 0, w, h]
+  let width = cropped ? Math.min(1640, (fw / fh) * 860) : 1560
+  let k = width / fw
+  // Read on a phone: a highlighted line is at least PHONE_LINE pixels tall on screen. A crop that would be smaller is
+  // zoomed in further and narrowed to what fits the frame, starting at the highlight's left (the hand's margin kept).
+  const line = all0.length ? Math.max(...all0.map((m) => m[3])) : 0
+  if (cropped && line && line * k < PHONE_LINE) {
+    k = PHONE_LINE / line
+    const left = Math.min(...all0.map((m) => m[0]))
+    const maxW = 1800 / k
+    if (fw > maxW) {
+      fx = Math.max(0, Math.min(w - maxW, Math.max(fx, left - line * 2.5)))
+      fw = maxW
+    }
+    const maxH = 1000 / k
+    if (fh > maxH) {
+      const mid = (Math.min(...all0.map((m) => m[1])) + Math.max(...all0.map((m) => m[1] + m[3]))) / 2
+      fy = Math.max(0, Math.min(h - maxH, mid - maxH / 2))
+      fh = maxH
+    }
+    width = fw * k
+  }
   const tallView = scroll ? 900 / k : fh
   const height = Math.min(fh, tallView) * k
   const all = [...marks, ...marks2]
@@ -368,6 +387,9 @@ export function padBox(marks: number[][], w: number, h: number, focus?: number[]
   const y1 = Math.min(h, Math.max(...marks.map((m) => m[1] + m[3])) + line * 3.5)
   return [x0, y0, x1 - x0, y1 - y0]
 }
+
+/** The height on screen (of 1080) a highlighted line of a page gets at least, so it reads on a phone. */
+const PHONE_LINE = 74
 
 /** A crop box made at most 2.2 times as wide as it is tall, centred on the highlight, inside the picture. */
 export function roomy([x, y, fw, fh]: number[], marks: number[][], w: number, h: number): number[] {
@@ -574,7 +596,7 @@ export function Code({ code, lang = 'ts', file = 'index.ts', start = 0, cps = 45
   const half = React.useContext(InSplit)
   // The longest line and its line-number column (3.9 characters' worth) must fit the editor: a line ran off the edge.
   const fits = (1560 - 40 - (tree ? 300 : 0)) / (longest * 0.6 + 3.9)
-  const font = Math.round(Math.max(half ? 34 : 22, Math.min(half ? 84 : rows.length <= 3 ? 66 : 54, fits, 860 / (rows.length * 1.5))))
+  const font = Math.round(Math.max(half ? 44 : 38, Math.min(half ? 84 : rows.length <= 3 ? 72 : 60, fits, 860 / (rows.length * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 1560, borderRadius: 14, overflow: 'hidden', background: '#1e1e1e', boxShadow: '0 40px 120px rgba(0,0,0,.6)' }}>
@@ -641,7 +663,7 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   const half = React.useContext(InSplit)
   const longest = Math.max(16, command.length + 4, ...output.map((l) => l.length))
   const lines = 1 + output.length
-  const font = Math.round(Math.max(half ? 40 : 28, Math.min(half ? 84 : 60, 1380 / (longest * 0.6), 820 / (lines * 1.5))))
+  const font = Math.round(Math.max(half ? 46 : 40, Math.min(half ? 84 : 64, 1380 / (longest * 0.6), 820 / (lines * 1.5))))
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 1500, borderRadius: 14, background: '#0d1117', boxShadow: '0 40px 120px rgba(0,0,0,.6)', padding: `${font}px ${font * 1.2}px`, fontFamily: CODE, fontSize: font, lineHeight: `${Math.round(font * 1.5)}px`, color: '#c9d1d9', whiteSpace: 'pre', overflow: 'hidden' }}>
@@ -660,11 +682,74 @@ export function Shell({ command, output = [], start = 0, cps = 30 }: { command: 
   )
 }
 
+/** The height on screen a box's label gets at least, once the diagram is zoomed to the frame, so it reads on a phone. */
+const PHONE_LABEL = 64
+
+/**
+ * Boxes laid out far apart (a PC at the left edge, a monitor at the right) leave the diagram no room to zoom, so on a
+ * phone their labels are specks. This pulls everything toward the middle (positions only, never sizes) until the
+ * labels come out big enough after the zoom, never so close that two boxes touch.
+ */
+function tighten(children: React.ReactNode, fill: number): React.ReactNode {
+  const boxes: { x: number; y: number; w: number; h: number; font: number }[] = []
+  const collect = (node: React.ReactNode) =>
+    React.Children.forEach(node, (c) => {
+      if (!React.isValidElement(c)) return
+      const p = c.props as Record<string, unknown>
+      if (c.type === Box && typeof p.x === 'number' && typeof p.y === 'number') boxes.push({ x: p.x, y: p.y, ...boxSize(String(p.label ?? ''), p.w as number | undefined, p.h as number | undefined) })
+      if (p.children && c.type !== Diagram) collect(p.children as React.ReactNode)
+    })
+  collect(children)
+  if (boxes.length < 2) return children
+  const x0 = Math.min(...boxes.map((b) => b.x - b.w / 2))
+  const x1 = Math.max(...boxes.map((b) => b.x + b.w / 2))
+  const y0 = Math.min(...boxes.map((b) => b.y - b.h / 2))
+  const y1 = Math.max(...boxes.map((b) => b.y + b.h / 2))
+  const font = Math.min(...boxes.map((b) => b.font))
+  const zoom = Math.min((1920 * fill) / (x1 - x0), (1080 * fill) / (y1 - y0), 1.8)
+  if (font * zoom >= PHONE_LABEL) return children
+  // The spread that would give the labels their size: the centres' span shrunk by q, the box sizes kept.
+  const want = Math.min(1.8, PHONE_LABEL / font)
+  const bw = Math.max(...boxes.map((b) => b.w))
+  const bh = Math.max(...boxes.map((b) => b.h))
+  const sx = x1 - x0 - bw
+  const sy = y1 - y0 - bh
+  let q = Math.min(sx > 0 ? ((1920 * fill) / want - bw) / sx : 1, sy > 0 ? ((1080 * fill) / want - bh) / sy : 1, 1)
+  // Never closer than a gap between any two boxes (room for an arrow and its label).
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]
+      const b = boxes[j]
+      const dx = Math.abs(a.x - b.x)
+      const dy = Math.abs(a.y - b.y)
+      const needX = dx ? ((a.w + b.w) / 2 + 150) / dx : Infinity
+      const needY = dy ? ((a.h + b.h) / 2 + 110) / dy : Infinity
+      q = Math.max(q, Math.min(needX, needY))
+    }
+  q = Math.max(0.3, Math.min(1, q))
+  if (q >= 0.98) return children
+  const cx = (x0 + x1) / 2
+  const cy = (y0 + y1) / 2
+  const at = (x: number, y: number): [number, number] => [cx + (x - cx) * q, cy + (y - cy) * q]
+  const move = (node: React.ReactNode): React.ReactNode =>
+    React.Children.map(node, (c) => {
+      if (!React.isValidElement(c) || c.type === Diagram) return c
+      const p = c.props as Record<string, unknown>
+      const next: Record<string, unknown> = {}
+      if (typeof p.x === 'number' && typeof p.y === 'number') [next.x, next.y] = at(p.x, p.y)
+      for (const k of ['from', 'to'])
+        if (Array.isArray(p[k]) && typeof (p[k] as number[])[0] === 'number') next[k] = at((p[k] as number[])[0], (p[k] as number[])[1])
+      return React.cloneElement(c as React.ReactElement<Record<string, unknown>>, next, p.children ? move(p.children as React.ReactNode) : undefined)
+    })
+  return move(children)
+}
+
 /**
  * A diagram on black that fills the frame: it finds where its Boxes, Flows, Loops and Labels are (from their x, y, w,
  * h, from and to) and zooms and centres them to fill about 88% of the frame, however small they were placed.
  */
-export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: React.ReactNode; bg?: string; fill?: number }) {
+export function Diagram({ children: given, bg = '#000', fill = 0.88 }: { children: React.ReactNode; bg?: string; fill?: number }) {
+  const children = tighten(given, fill)
   const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
   const add = (x: number, y: number) => {
     b.x0 = Math.min(b.x0, x)
@@ -726,9 +811,9 @@ export function Diagram({ children, bg = '#000', fill = 0.88 }: { children: Reac
 
 /** A flat diagram box (like Fireship's company boxes): a solid colour, the name in dark capitals. */
 /** A box's size and type size for its label: wide enough that the label is never cut off (shrinking type past 760). */
-export function boxSize(label: string, w = 340, h = 136) {
-  const font = Math.min(34, 690 / Math.max(1, label.length * 0.6))
-  return { w: Math.max(w, Math.min(760, label.length * font * 0.6 + 80)), h, font }
+export function boxSize(label: string, w = 420, h = 160) {
+  const font = Math.min(48, 820 / Math.max(1, label.length * 0.6))
+  return { w: Math.max(w, Math.min(900, label.length * font * 0.6 + 90)), h, font }
 }
 
 export function Box({ x, y, w: w0, h: h0, label, color = '#76b900', start = 0, sub, icon, pulse = false, solid = false }: { x: number; y: number; w?: number; h?: number; label: string; color?: string; start?: number; sub?: string; icon?: string; pulse?: boolean; solid?: boolean }) {
@@ -778,7 +863,7 @@ export function Timeline({ items, start = 0, every = 24, at }: { items: { date: 
   const shown = items.filter((_, i) => f >= when(i)).length
   const gap = 26
   // About 52 characters fit on a line of a card; each card is as tall as its lines.
-  const heights = items.map((it) => 96 + Math.max(1, Math.ceil(it.text.length / 52)) * 48)
+  const heights = items.map((it) => 96 + Math.max(1, Math.ceil(it.text.length / 44)) * 70)
   const tops = heights.map((_, i) => heights.slice(0, i).reduce((n, h) => n + h + gap, 0))
   const visible = 5
   const first = Math.max(0, shown - visible)
@@ -795,9 +880,9 @@ export function Timeline({ items, start = 0, every = 24, at }: { items: { date: 
             key={i}
             style={{
               position: 'absolute',
-              left: 960 - 560,
+              left: 960 - 740,
               top: y,
-              width: 1120,
+              width: 1480,
               height: heights[i],
               background: '#f6f1e7',
               borderRadius: 10,
@@ -808,8 +893,8 @@ export function Timeline({ items, start = 0, every = 24, at }: { items: { date: 
               borderLeft: '8px solid #c0392b'
             }}
           >
-            <div style={{ fontFamily: CODE, fontSize: 26, color: '#c0392b', letterSpacing: 1 }}>{it.date}</div>
-            <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 38, color: '#1a1a1a', marginTop: 8, lineHeight: 1.25 }}>{it.text}</div>
+            <div style={{ fontFamily: CODE, fontSize: 34, color: '#c0392b', letterSpacing: 1 }}>{it.date}</div>
+            <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 56, color: '#1a1a1a', marginTop: 8, lineHeight: 1.25 }}>{it.text}</div>
           </div>
         )
       })}
@@ -830,7 +915,7 @@ export function Bars({ items, title, log = false, start = 0, every = 26, color =
   const top = 540 - (items.length * rowH) / 2 + (title ? 60 : 0)
   const longLabel = Math.max(6, ...items.map((i) => i.label.length))
   const longText = Math.max(0, ...items.map((i) => (i.text ?? '').length))
-  const label = Math.round(Math.min(52, rowH * 0.3, 530 / (longLabel * 0.64), 360 / Math.max(1, longText * 0.6)))
+  const label = Math.round(Math.min(60, Math.max(40, Math.min(rowH * 0.32, 530 / (longLabel * 0.64), 360 / Math.max(1, longText * 0.6)))))
   // Label column, bar and value, as one block in the middle of the frame.
   const labelW = Math.min(600, longLabel * label * 0.64 + 64)
   const left = Math.max(40, (1920 - (labelW + 900 + longText * label * 0.6 + 40)) / 2)
@@ -883,7 +968,7 @@ export function Flow({ from, to, label, color = '#3ddc97', start = 0, dur = 14, 
       })}
       {label && t > 0.5 && (
         // Beside the arrow, on its upper side, so the line never runs through the word.
-        <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={Math.max(20, Math.min(32, (len * 0.95) / Math.max(1, (label?.length ?? 1) * 0.62)))} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
+        <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontFamily={CODE} fontWeight={700} fontSize={Math.max(34, Math.min(44, (len * 0.95) / Math.max(1, (label?.length ?? 1) * 0.62)))} fill={color} letterSpacing={1} stroke="#000" strokeWidth={8} paintOrder="stroke">
           {label.toUpperCase()}
         </text>
       )}
@@ -906,7 +991,7 @@ export function Loop({ items, x = 960, y = 540, r = 300, color = '#3ddc97', star
       {items.map((label, k) => {
         if (!on(f, k * every)) return null
         return (
-          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 150, top: y + r * Math.sin(at(k)) - 46, width: 300, height: 92, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 31, color: '#fff' }}>
+          <div key={k} style={{ position: 'absolute', left: x + r * Math.cos(at(k)) - 190, top: y + r * Math.sin(at(k)) - 56, width: 380, height: 112, background: '#16161a', border: `3px solid ${color}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: CODE, fontWeight: 700, fontSize: 42, color: '#fff' }}>
             {label.toUpperCase()}
           </div>
         )
@@ -967,7 +1052,7 @@ export function Chart({ name, start = 0, dur = 40, color }: { name: string; star
   const year = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
   return (
     <AbsoluteFill style={{ background: '#0b0b0d' }}>
-      <div style={{ position: 'absolute', left: 210, top: 90, fontFamily: UI, fontWeight: 800, fontSize: 52, color: '#fff' }}>{data.title}</div>
+      <div style={{ position: 'absolute', left: 210, top: 90, fontFamily: UI, fontWeight: 800, fontSize: 64, color: '#fff' }}>{data.title}</div>
       <div style={{ position: 'absolute', right: 210, top: 70, textAlign: 'right', fontFamily: CODE, fontWeight: 700 }}>
         <div style={{ fontSize: 84, color: '#fff' }}>
           {data.unit === '$' ? '$' : ''}
@@ -984,7 +1069,7 @@ export function Chart({ name, start = 0, dur = 40, color }: { name: string; star
         {[0, 0.5, 1].map((k) => (
           <g key={k}>
             <line x1={210} x2={210 + W} y1={Y(lo + (hi - lo) * k)} y2={Y(lo + (hi - lo) * k)} stroke="#26262c" strokeWidth={2} />
-            <text x={190} y={Y(lo + (hi - lo) * k) + 8} textAnchor="end" fontFamily={CODE} fontSize={22} fill="#77777f">
+            <text x={190} y={Y(lo + (hi - lo) * k) + 8} textAnchor="end" fontFamily={CODE} fontSize={32} fill="#9a9aa2">
               {short(lo + (hi - lo) * k)}
             </text>
           </g>
@@ -992,8 +1077,8 @@ export function Chart({ name, start = 0, dur = 40, color }: { name: string; star
         <path d={`${d}L${X(shown - 1)} 860L210 860Z`} fill={line} opacity={0.12} />
         <path d={d} fill="none" stroke={line} strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={X(shown - 1)} cy={Y(end[1])} r={12} fill={line} style={{ filter: `drop-shadow(0 0 12px ${line})` }} />
-        <text x={210} y={910} fontFamily={CODE} fontSize={22} fill="#77777f">{year(pts[0][0])}</text>
-        <text x={210 + W} y={910} textAnchor="end" fontFamily={CODE} fontSize={22} fill="#77777f">{year(pts[pts.length - 1][0])}</text>
+        <text x={210} y={910} fontFamily={CODE} fontSize={32} fill="#9a9aa2">{year(pts[0][0])}</text>
+        <text x={210 + W} y={910} textAnchor="end" fontFamily={CODE} fontSize={32} fill="#9a9aa2">{year(pts[pts.length - 1][0])}</text>
       </svg>
       <div style={{ position: 'absolute', left: 210, bottom: 60, fontFamily: UI, fontSize: 20, color: '#55555c' }}>Source: {data.source}</div>
     </AbsoluteFill>
@@ -1008,14 +1093,14 @@ export function Stats({ name, start = 0, every = 10 }: { name: string; start?: n
   if (!data.stats) return data.points ? <Chart name={name} start={start} /> : null
   return (
     <AbsoluteFill style={{ background: '#0b0b0d', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontFamily: CODE, fontWeight: 700, fontSize: 46, color: '#9d9d9d', marginBottom: 60 }}>{data.title}</div>
+      <div style={{ fontFamily: CODE, fontWeight: 700, fontSize: 58, color: '#9d9d9d', marginBottom: 60 }}>{data.title}</div>
       <div style={{ display: 'flex', gap: 120 }}>
         {data.stats.map((s, i) => {
           const p = on(f, i * every)
           return (
             <div key={i} style={{ textAlign: 'center', opacity: p }}>
               <div style={{ fontFamily: MEME, fontSize: 150, color: i ? '#fff' : '#ffd400', lineHeight: 1 }}>{short(Math.round(s.value))}</div>
-              <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 34, color: '#9d9d9d', marginTop: 14 }}>{s.label}</div>
+              <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 46, color: '#9d9d9d', marginTop: 14 }}>{s.label}</div>
             </div>
           )
         })}
@@ -1081,7 +1166,7 @@ export function Sticker({ name, x = 960, y = 560, h = 760, rotate = -4, start = 
 }
 
 /** A tag on something: bold capitals on a solid colour, with an optional pointer line to (toX, toY). */
-export function Label({ x, y, text, color = '#ff2d2d', ink = '#fff', to, start = 0, rotate = -3, size = 40 }: { x: number; y: number; text: string; color?: string; ink?: string; to?: [number, number]; start?: number; rotate?: number; size?: number }) {
+export function Label({ x, y, text, color = '#ff2d2d', ink = '#fff', to, start = 0, rotate = -3, size = 56 }: { x: number; y: number; text: string; color?: string; ink?: string; to?: [number, number]; start?: number; rotate?: number; size?: number }) {
   const { f, t } = useLocal(start, 6)
   if (f < 0) return null
   return (
@@ -1136,7 +1221,7 @@ export function TitleCard({ text, accent, start = 0, color = '#ff8a1f', num }: {
 export function Quote({ text, mark, who, bg, start = 0 }: { text: string; mark?: string; who?: string; bg?: string; start?: number }) {
   const { f } = useLocal(start, 8)
   if (f < 0) return null
-  const size = Math.round(Math.max(44, Math.min(76, 2600 / Math.max(20, text.length))))
+  const size = Math.round(Math.max(56, Math.min(84, 2900 / Math.max(20, text.length))))
   const at = mark ? text.toLowerCase().indexOf(mark.toLowerCase()) : -1
   const body =
     at < 0 ? (
@@ -1169,7 +1254,7 @@ const DIM = '#3f3f46'
 /** A title over a teaching visual, the same everywhere. */
 function VisualTitle({ text }: { text?: string }) {
   if (!text) return null
-  return <div style={{ position: 'absolute', top: 90, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 64, color: '#fafafa' }}>{text}</div>
+  return <div style={{ position: 'absolute', top: 90, left: 0, right: 0, textAlign: 'center', fontFamily: UI, fontWeight: 800, fontSize: 84, color: '#fafafa' }}>{text}</div>
 }
 
 /**
@@ -1196,7 +1281,7 @@ export function Dots({ total = 100, lit, title, label, start = 0, color = AMBER,
       </div>
       <div style={{ position: 'absolute', right: 160, top: 540 + (title ? 40 : 0), transform: 'translateY(-50%)', textAlign: 'right' }}>
         <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 200, lineHeight: 1, color }}>{share}%</div>
-        {label && <div style={{ fontFamily: UI, fontSize: 46, color: '#d4d4d8', marginTop: 16, maxWidth: 640 }}>{label}</div>}
+        {label && <div style={{ fontFamily: UI, fontSize: 58, color: '#d4d4d8', marginTop: 16, maxWidth: 700 }}>{label}</div>}
       </div>
     </AbsoluteFill>
   )
@@ -1212,16 +1297,16 @@ export function Compare({ a, b, rows, title, start = 0, every = 16, win }: { a: 
   const cell = (v: string) => {
     const yes = /^(yes|✓|true)$/i.test(v.trim())
     const no = /^(no|✗|×|false)$/i.test(v.trim())
-    return <span style={{ color: yes ? '#3ddc84' : no ? HOT : '#f4f4f5', fontSize: yes || no ? 64 : 44, fontWeight: 700 }}>{yes ? '✓' : no ? '✗' : v}</span>
+    return <span style={{ color: yes ? '#3ddc84' : no ? HOT : '#f4f4f5', fontSize: yes || no ? 76 : 56, fontWeight: 700 }}>{yes ? '✓' : no ? '✗' : v}</span>
   }
-  const rowH = Math.min(130, 620 / Math.max(1, rows.length))
+  const rowH = Math.min(150, 680 / Math.max(1, rows.length))
   const top = 540 - ((rows.length + 1) * rowH) / 2 + (title ? 50 : 0)
   const col = (side: 'a' | 'b') => ({ width: 520, textAlign: 'center' as const, borderRadius: 14, background: win === side ? 'color-mix(in srgb, #3ddc84 10%, transparent)' : undefined })
   return (
     <AbsoluteFill style={{ background: PANEL }}>
       <VisualTitle text={title} />
       <div style={{ position: 'absolute', left: 140, right: 140, top, fontFamily: UI }}>
-        <div style={{ display: 'flex', height: rowH, alignItems: 'center', fontWeight: 800, fontSize: 52, color: '#fafafa' }}>
+        <div style={{ display: 'flex', height: rowH, alignItems: 'center', fontWeight: 800, fontSize: 64, color: '#fafafa' }}>
           <div style={{ flex: 1 }} />
           <div style={{ ...col('a'), color: win === 'a' ? '#3ddc84' : '#fafafa' }}>{a}</div>
           <div style={{ ...col('b'), color: win === 'b' ? '#3ddc84' : '#fafafa' }}>{b}</div>
@@ -1230,7 +1315,7 @@ export function Compare({ a, b, rows, title, start = 0, every = 16, win }: { a: 
           const p = on(f, 10 + i * every)
           return (
             <div key={i} style={{ display: 'flex', height: rowH, alignItems: 'center', borderTop: `2px solid ${DIM}`, opacity: p }}>
-              <div style={{ flex: 1, fontSize: 42, color: '#a1a1aa', fontFamily: CODE }}>{r.label}</div>
+              <div style={{ flex: 1, fontSize: 54, color: '#c4c4cc', fontFamily: CODE }}>{r.label}</div>
               <div style={col('a')}>{cell(r.a)}</div>
               <div style={col('b')}>{cell(r.b)}</div>
             </div>
@@ -1364,7 +1449,7 @@ export function Tree({ root, branches, title, start = 0, every = 14 }: { root: s
   const bx = (i: number) => 960 + (i - (n - 1) / 2) * Math.min(460, 1700 / Math.max(1, n))
   const node = (x: number, y: number, label: string, p: number, kind: 'root' | 'branch' | 'leaf', hot?: boolean) => {
     const c = hot ? HOT : AMBER
-    const size = kind === 'root' ? 52 : kind === 'branch' ? 42 : 32
+    const size = kind === 'root' ? 64 : kind === 'branch' ? 52 : 42
     return (
       <div
         key={`${kind}${label}${x}`}

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Copy, Download, Image as ImageIcon, Music, RefreshCw, Sparkles, X } from 'lucide-react'
-import type { CaptionStyle, OutputLang, Project, SfxLevel, Transition } from '@shared/types'
+import type { CaptionStyle, OutputLang, Project, SfxLevel } from '@shared/types'
 import { fmtTime, useApp } from '@/store/app'
 import { Chips } from '@/components/ui'
 
-const TRANSITIONS: Transition[] = ['None', 'Fade', 'Flash', 'Wipe', 'Slide', 'Zoom']
 const CAPTIONS: CaptionStyle[] = ['Off', 'Clean', 'Bold pop', 'Karaoke']
 const SFX: SfxLevel[] = ['Off', 'Subtle', 'Lively']
 const LANGS: OutputLang[] = ['English', 'Tamil']
@@ -179,10 +178,8 @@ export function Publish({ p }: { p: Project }) {
       </Section>
 
       {/* Finish */}
-      <Section title="Finish" sub="Transitions, sound effects and music are added over the drawn parts. No part is drawn again.">
-        <div className="label mb-2">Between parts</div>
-        <Chips options={TRANSITIONS} value={p.settings.transition ?? 'None'} onToggle={(transition) => setSettings({ transition })} size="sm" />
-        <div className="label mb-2 mt-4">Sound effects</div>
+      <Section title="Finish" sub="Sound effects and music are added over the drawn parts. No part is drawn again.">
+        <div className="label mb-2">Sound effects</div>
         <div className="flex flex-wrap items-center gap-3">
           <Chips options={SFX} value={p.settings.sfx ?? 'Off'} onToggle={(sfx) => setSettings({ sfx })} size="sm" />
           {(p.settings.sfx ?? 'Off') !== 'Off' && (

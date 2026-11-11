@@ -212,6 +212,12 @@ Motion, as Fireship does it: nothing floats, bounces, fades or drifts. Pictures 
   a highlight swiped across the sentence, a box or bar appearing on its word. A whip only where the topic turns, a
   glitch only for something broken. Build a long shot up in steps on the words (start=), never with a slow tween.
 
+Phone first: most people watch on a phone, where the whole frame is a few inches wide. Every word on screen is at
+  least 40 px (in 1920 x 1080), titles 80 px or more; at most about 8 words on a line and 4 lines of text in a shot.
+  Show a few big words, not a paragraph: a page is a close crop of the highlighted sentence, code is 8 lines or
+  fewer of under 40 characters, a diagram has at most 4 boxes close together. Any text you draw yourself (fontSize)
+  follows the same sizes.
+
 Pace and humour
 - Every shot is on screen long enough to READ, cut exactly on the word it shows (at('word')): a photo or B-roll at
   least 1.5 s; a meme or GIF at least 3 s; a page with its highlight at least 2.5 s; a diagram at least 3 s; code at

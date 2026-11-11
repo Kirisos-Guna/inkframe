@@ -89,7 +89,11 @@ export const HOUSE_VOICE = `THE HOUSE VOICE (every script sounds like this; it w
   is in on the joke, never above the viewer.
 - Near the end, one twist that turns the whole video back on the viewer or reframes every item ("Here's the twist:
   every one of these people is a version of us."), then the practical takeaway, then stop.
-- Plain words. Jargon is fine once it is explained in one sentence the first time it is said.
+- SIMPLE ENGLISH, always (many viewers speak English as a second language, and it is heard once, at speed): the
+  everyday word over the fancy one ("use" not "utilize", "show" not "demonstrate", "hidden" not "covert", "about" not
+  "approximately"), one idea per sentence, most sentences under 15 words, no idioms or wordplay that only a native
+  speaker gets. A tech term is fine, but explain it in simple words the first time ("an SDR, a cheap radio you plug
+  into a laptop"). If a 12-year-old would stop and ask what a word means, use a simpler one.
 - No sponsor reads, no "subscribe", no channel plugs.`
 
 export const SCRIPT_PROCESS = `Work in this order, privately, and only output the final result:
@@ -193,7 +197,7 @@ export function lintScript(script: string, targetWords: number) {
   const n = words(script).length
   if (targetWords && Math.abs(n - targetWords) / targetWords > 0.15)
     issues.push(`It is ${n} words; it must be about ${targetWords} (within 10%). ${n > targetWords ? 'Cut the weakest sentences, not the facts.' : 'Add a concrete example or a reveal where a beat is thin, not filler.'}`)
-  const long = sentences(script).filter((s) => words(s).length > 24)
+  const long = sentences(script).filter((s) => words(s).length > 20)
   if (long.length) issues.push(`Split these long sentences: ${long.slice(0, 4).map((s) => `"${s.slice(0, 80)}…"`).join(' ')}`)
   const first = sentences(script)[0] ?? ''
   if (/^(hi|hello|hey|welcome|today|so,? today|in this|what is|.{0,40}\b(is|are) (a|an|the) (term|type|kind|process|method)\b)/i.test(first.trim()))
@@ -203,9 +207,26 @@ export function lintScript(script: string, targetWords: number) {
   const cold = script.split(/\n\s*\n/).slice(1).map((b) => b.trim()).filter((b) => COLD.test(b))
   if (cold.length)
     issues.push(`These beats open cold, on a new subject with no bridge: ${cold.slice(0, 3).map((b) => `"${b.slice(0, 50)}…"`).join(' ')} Start each with a BUT or SO sentence that picks up what the beat before left open.`)
+  // Hard words where an everyday one says the same: the script is heard once, by people for whom English is often a
+  // second language.
+  const hard = [...new Set((lower.match(HARD_WORDS) ?? []).map((w) => w.trim()))]
+  if (hard.length) issues.push(`Use simple everyday words instead of: ${hard.slice(0, 8).map((w) => `"${w}"`).join(', ')}. The viewer hears it once and English may not be their first language.`)
   if (TALKS_DOWN.test(lower)) issues.push(`A line talks down to the viewer ("${lower.match(TALKS_DOWN)![0]}"): tease the situation, not them.`)
   return issues
 }
+
+/** Words a simpler one says just as well (checked as whole words). */
+const HARD_WORDS = new RegExp(
+  `\\b(${[
+    'utiliz\\w*', 'utilis\\w*', 'leverag\\w*', 'facilitat\\w*', 'ubiquitous\\w*', 'paradigm\\w*', 'myriad', 'plethora', 'nuanced?',
+    'inherently', 'notwithstanding', 'albeit', 'salient', 'ostensibly', 'henceforth', 'thereby', 'wherein', 'whereby', 'commence\\w*',
+    'endeavou?r\\w*', 'ameliorat\\w*', 'exacerbat\\w*', 'juxtapos\\w*', 'quintessential\\w*', 'esoteric', 'surreptitious\\w*',
+    'clandestine', 'insidious', 'nefarious', 'egregious', 'meticulous\\w*', 'aforementioned', 'heretofore', 'paramount', 'proliferat\\w*',
+    'circumvent\\w*', 'obfuscat\\w*', 'efficacy', 'cognizant', 'commensurate', 'dichotomy', 'conundrum', 'ramifications?', 'exponentially',
+    'unprecedented', 'orchestrat\\w*', 'emanat\\w*', 'ascertain\\w*', 'elucidat\\w*', 'purport\\w*', 'ergo'
+  ].join('|')})\\b`,
+  'g'
+)
 
 /** Beat openings that change the subject without a bridge. */
 const COLD = /^(now meet|meet |here's the secret|here is the secret|look at |let's |next,|another |moving on|now,? let's|now for)/i

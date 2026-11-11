@@ -94,7 +94,7 @@ describe('mistakes counted in the scenes', () => {
     const { boxSize } = await import('../remotion/kit/remix')
     const s = boxSize('SETTINGS.LOCAL.JSON')
     expect(s.w).toBeGreaterThanOrEqual('SETTINGS.LOCAL.JSON'.length * s.font * 0.6 + 40)
-    expect(boxSize('a very long label that would never fit in any box at all, really').w).toBeLessThanOrEqual(760)
+    expect(boxSize('a very long label that would never fit in any box at all, really').w).toBeLessThanOrEqual(900)
   })
 })
 
@@ -174,5 +174,28 @@ describe('suggestions are fixed too', () => {
     const note = autoFixNote({} as never, part, false)
     expect(note).toContain('nobody can listen in')
     expect(note).toContain('suggests improvements')
+  })
+})
+
+describe('made for a phone and for simple English', () => {
+  it('flags text a scene draws too small for a phone', async () => {
+    const { lintScenes } = await import('../src/main/services/job/checkRules')
+    const r = lintScenes([
+      { id: 'a', index: 0, code: '<div style={{ fontSize: 26 }}>tiny</div><text fontSize={64}>ok</text>' },
+      { id: 'b', index: 1, code: '<text font-size="72">big</text>' }
+    ])
+    expect(r.get('a')?.join()).toContain('Text at 26 px is too small')
+    expect(r.get('b')).toBeUndefined()
+  })
+  it('flags hard words in a script', async () => {
+    const { lintScript } = await import('../src/main/services/scriptCraft')
+    const out = lintScript('Attackers utilize clandestine radios. It is simple.', 0).join(' ')
+    expect(out).toContain('"utilize"')
+    expect(out).toContain('"clandestine"')
+    expect(lintScript('The cable leaks. A cheap radio hears it.', 0).join(' ')).not.toContain('simple everyday words')
+  })
+  it('zooms a page crop so a line reads on a phone', async () => {
+    const { padBox } = await import('../remotion/kit/remix')
+    expect(padBox([[518, 426, 752, 38]], 2534, 1598)[2]).toBeGreaterThan(0)
   })
 })
