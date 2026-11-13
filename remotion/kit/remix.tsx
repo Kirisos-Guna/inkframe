@@ -280,22 +280,31 @@ export function Page({
   let [fx, fy, fw, fh] = cropped ? roomy(around!, all0, w, h) : [0, 0, w, h]
   let width = cropped ? Math.min(1640, (fw / fh) * 860) : 1560
   let k = width / fw
-  // Read on a phone: a highlighted line is at least PHONE_LINE pixels tall on screen. A crop that would be smaller is
-  // zoomed in further and narrowed to what fits the frame, starting at the highlight's left (the hand's margin kept).
+  // Whole lines, never words cut at the edge: the crop is as wide as the text column (to the paragraph's right edge,
+  // which a one-line highlight does not show), and zooms in for a phone only as far as that whole width still fits.
+  // Taller than the frame allows, it keeps whole lines around the highlight, the ones at the cut edges fading out.
   const line = all0.length ? Math.max(...all0.map((m) => m[3])) : 0
-  if (cropped && line && line * k < PHONE_LINE) {
-    k = PHONE_LINE / line
+  let fadeTop = false
+  let fadeBottom = false
+  if (cropped && line) {
     const left = Math.min(...all0.map((m) => m[0]))
-    const maxW = 1800 / k
-    if (fw > maxW) {
-      fx = Math.max(0, Math.min(w - maxW, Math.max(fx, left - line * 2.5)))
-      fw = maxW
-    }
-    const maxH = 1000 / k
-    if (fh > maxH) {
-      const mid = (Math.min(...all0.map((m) => m[1])) + Math.max(...all0.map((m) => m[1] + m[3]))) / 2
-      fy = Math.max(0, Math.min(h - maxH, mid - maxH / 2))
-      fh = maxH
+    const colRight = focus && focus[0] <= left + line && focus[0] + focus[2] > fx + fw && focus[2] <= line * 48 ? focus[0] + focus[2] + line * 0.8 : fx + fw
+    fw = Math.min(w - fx, colRight - fx)
+    k = Math.min(Math.max(k, PHONE_LINE / line), 1800 / fw)
+    const maxH = 900 / k
+    {
+      // Line pitch: the distance between highlighted lines, or a usual line spacing.
+      const ys = [...new Set(all0.map((m) => m[1]))].sort((a, b) => a - b)
+      const pitch = ys.length > 1 ? Math.min(...ys.slice(1).map((y, i) => y - ys[i]).filter((d) => d > line * 0.8)) || line * 1.3 : line * 1.3
+      const first = ys[0]
+      const last = Math.max(...all0.map((m) => m[1] + m[3]))
+      // As many whole lines as the crop had (at least 7, for some context), never more than fit the frame.
+      const rows = Math.max(1, Math.min(Math.floor(maxH / pitch), Math.max(7, Math.round(fh / pitch))))
+      const above = Math.max(0, Math.floor((rows - Math.ceil((last - first) / pitch)) / 2))
+      fy = Math.max(0, first - above * pitch - pitch * 0.25)
+      fh = Math.min(h - fy, rows * pitch)
+      fadeTop = fy > 0
+      fadeBottom = fy + fh < h
     }
     width = fw * k
   }
@@ -338,6 +347,8 @@ export function Page({
           width,
           height,
           transform: `translateY(${dy}px) rotate(${tilt}deg)`,
+          // Lines cut by the crop's top or bottom edge fade out instead of showing half a line.
+          ...(fadeTop || fadeBottom ? { WebkitMaskImage: `linear-gradient(to bottom, ${fadeTop ? 'transparent 0%, #000 9%' : '#000 0%'}, ${fadeBottom ? '#000 91%, transparent 100%' : '#000 100%'})` } : {}),
           boxShadow: '0 30px 90px rgba(0,0,0,.45)',
           borderRadius: 12,
           overflow: 'hidden',
