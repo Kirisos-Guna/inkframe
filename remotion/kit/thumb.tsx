@@ -236,10 +236,10 @@ const INK: Record<string, string> = { white: '#f4efe3', red: '#ff2b2b', yellow: 
  */
 export function Poster({
   lines,
-  subject,
+  subject: given,
   tag,
   term,
-  logos = [],
+  logos: allLogos = [],
   side = 'right',
   bg = '#050505'
 }: {
@@ -253,6 +253,9 @@ export function Poster({
 }) {
   const { width } = useVideoConfig()
   const k = width / W
+  // Never an empty picture side: with no picture, the first logo takes it, big on its card.
+  const subject = given ?? allLogos[0]
+  const logos = given ? allLogos : allLogos.slice(1)
   const cut = !!subject && /-cut\.\w+$/.test(subject)
   const logo = !!subject && /-logo\.\w+$/.test(subject)
   const right = side === 'right'
@@ -269,12 +272,12 @@ export function Poster({
   const sizes = want.map((s) => Math.round(s * fit))
   const block = sizes.reduce((a, b) => a + b * 0.92, 0) + extra
   let y = Math.max(50, (H - block) / 2) + (logos.length ? 110 : 0)
-  const fade = right ? 'linear-gradient(to right, transparent 0%, #000 32%)' : 'linear-gradient(to left, transparent 0%, #000 32%)'
+  const fade = right ? 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.35) 22%, #000 52%)' : 'linear-gradient(to left, transparent 0%, rgba(0,0,0,.35) 22%, #000 52%)'
   return (
     <AbsoluteFill style={{ background: bg, overflow: 'hidden' }}>
       <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, transform: `scale(${k})`, transformOrigin: '0 0' }}>
         {subject && (
-          <div style={{ position: 'absolute', top: 0, bottom: 0, width: 1150, [right ? 'right' : 'left']: 0 }}>
+          <div style={{ position: 'absolute', top: 0, bottom: 0, width: cut || logo ? 1150 : 980, [right ? 'right' : 'left']: 0 }}>
             {logo ? (
               // A logo on a light card, so dark lettering shows on the black, in the middle of the picture's side.
               <div style={{ position: 'absolute', top: '50%', [right ? 'right' : 'left']: 70, transform: 'translateY(-50%) rotate(-3deg)', background: '#f4efe3', borderRadius: 40, padding: '60px 70px', boxShadow: '0 30px 80px rgba(0,0,0,.8), 0 0 80px rgba(255,255,255,.08)' }}>
@@ -297,7 +300,7 @@ export function Poster({
             ) : (
               <Img
                 src={staticFile(subject)}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'contrast(1.12) saturate(1.15) brightness(0.92)', WebkitMaskImage: fade, maskImage: fade }}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: right ? '70% 50%' : '30% 50%', filter: 'contrast(1.12) saturate(1.15) brightness(0.92)', WebkitMaskImage: fade, maskImage: fade }}
               />
             )}
             {/* The light falls off toward the bottom and the edge, like a studio shot. */}

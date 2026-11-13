@@ -1,8 +1,8 @@
 // Writing (script, titles + description, captions) and thumbnails.
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
+import type { MediaItem, Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
 import { getProject, getSettings, getStyle, libDir, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
@@ -12,6 +12,7 @@ import { mediaCredits } from './job/mediaPlan'
 import { HOUSE_VOICE, lintScript, retentionPrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS, WPM } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
+import { cutLooksRight } from './cutout'
 
 /** Writing goes to Codex by default (when it is installed), otherwise to Claude Code. */
 export async function writer() {
@@ -192,8 +193,10 @@ Reply with JSON only: {"lines": ["...", ...]}`
 function remixThumb(p: Project) {
   if (!getStyle(p.settings.styleId).realMedia) return ''
   const all = Object.values(p.media ?? {}).flat()
-  const cuts = all.filter((m) => m.cut).map((m) => `${m.cut} (cut-out: ${m.note ?? ''})`)
-  const photos = all.filter((m) => m.kind === 'photo' && !m.cut).map((m) => `${m.name} (${m.note ?? ''})`)
+  // Only cut-outs that really hold a subject: a person segmenter keeps a speck, or nothing, of a chip or a server.
+  const good = (m: MediaItem) => !!m.cut && cutLooksRight(join(p.dir, 'public', m.cut))
+  const cuts = all.filter(good).map((m) => `${m.cut} (cut-out: ${m.note ?? ''})`)
+  const photos = all.filter((m) => m.kind === 'photo' && !/-logo\.\w+$/.test(m.name) && !good(m)).map((m) => `${m.name} (photo: ${m.note ?? ''})`)
   return `This video's thumbnail is in the FetchDecode look, made with ONE block, <Poster> from '@kit/thumb':
   <Poster lines={[{ text: 'GPU' }, { text: 'Expired', color: 'red' }]} subject="m/…-cut.png" tag?="Reverse engineering"
     term?="still false" logos?={['m/…-logo.png', …]} side?="right" />
@@ -205,7 +208,22 @@ on its own line in yellow. tag: 2-3 small words for the topic (optional); term: 
 terminal, for a code or hacking video (optional); logos: up to 5 company logos from the video, small, at the top
 (optional). Use at most two of tag, term and logos. Nothing else on the picture: no arrows, circles, stickers or
 backgrounds of your own.
-${cuts.length ? `Cut-outs from the video (best as the subject): ${cuts.slice(0, 8).join(', ')}\n` : ''}${photos.length ? `Photos from the video: ${photos.slice(0, 8).join(', ')}\n` : ''}${!cuts.length && !photos.length ? 'The video has no photos: use a logo file from the video as the subject.\n' : ''}`
+${cuts.length ? `Cut-outs of people from the video (best as the subject): ${cuts.slice(0, 8).join(', ')}\n` : ''}${photos.length ? `Photos from the video (for an object, a chip or a product, use its photo as the subject): ${photos.slice(0, 8).join(', ')}\n` : ''}${!cuts.length && !photos.length ? 'The video has no photos: use a logo file from the video as the subject.\n' : ''}Always give a subject: the picture side is never empty.
+`
+}
+
+/**
+ * A thumbnail whose subject is a cut-out that came out empty or a speck (a chip, a server) gets the photo it was cut
+ * from instead, so the picture side is never black.
+ */
+function fixThumbSubject(p: Project, file: string) {
+  const code = readFileSync(file, 'utf8')
+  const m = code.match(/subject=["'{`]+(m\/[^"'`}]+-cut\.png)/)
+  if (!m || cutLooksRight(join(p.dir, 'public', m[1]))) return
+  const photo = Object.values(p.media ?? {})
+    .flat()
+    .find((x) => x.cut === m[1])?.name
+  if (photo) writeFileSync(file, code.replace(m[1], photo))
 }
 
 // ---------- thumbnails ----------
@@ -252,6 +270,7 @@ Write the scene to ${file}. Do not create or change any other file. Reply with o
     const abs = join(p.dir, file)
     if (!existsSync(abs)) throw new Error('The thumbnail scene was not written')
     fixSceneImports(abs)
+    fixThumbSubject(p, abs)
     let err = await checkScene(abs)
     for (let tries = 0; err && tries < 2; tries++) {
       onStatus?.('Repairing the thumbnail')
