@@ -53,81 +53,9 @@ export interface Part {
 
 /** Remotion draws React/SVG (and three.js 3D) scenes; HyperFrames draws HTML + GSAP scenes. */
 export type Engine = 'remotion' | 'hyperframes'
-export type Transition = 'None' | 'Fade' | 'Flash' | 'Wipe' | 'Slide' | 'Zoom'
 export type CaptionStyle = 'Off' | 'Clean' | 'Bold pop' | 'Karaoke'
 export type SfxLevel = 'Off' | 'Subtle' | 'Lively'
 export type OutputLang = 'English' | 'Tamil'
-
-/** One planned piece of real media for a part (from the research step). */
-export interface Shot {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'gif' | 'stock' | 'clip' | 'code' | 'doccode' | 'chart' | 'quote'
-  /** quote: who says it, the words, and what to search for */
-  who?: string
-  says?: string
-  /** chart: where the numbers come from, and what */
-  source?: 'price' | 'npm' | 'github'
-  symbol?: string
-  package?: string
-  repo?: string
-  range?: string
-  label?: string
-  /** page, tweet, doccode */
-  url?: string
-  /** page: the exact sentence on the page to highlight, a second one (yellow), and a tall capture to scroll down */
-  mark?: string
-  mark2?: string
-  scroll?: boolean
-  /** doccode: text inside the docs example to take */
-  contains?: string
-  /** photo, stock: what to search for */
-  query?: string
-  /** meme: the Imgflip template name, and one caption per box of the template (top/bottom: older plans) */
-  template?: string
-  texts?: string[]
-  top?: string
-  bottom?: string
-  /** gif: a caption under the reaction (query is what to search for) */
-  text?: string
-  /** clip: the user's link and the seconds wanted */
-  link?: string
-  from?: string
-  to?: string
-  /** code */
-  lang?: string
-  file?: string
-  code?: string
-  /** photo: cut the subject out (people, products, logos) for a sticker */
-  cutout?: boolean
-  /** what it shows, for the designer */
-  why?: string
-}
-
-/** A fetched piece of real media, in the project's public folder (name is relative to it). */
-export interface MediaItem {
-  kind: 'page' | 'tweet' | 'photo' | 'meme' | 'gif' | 'clip' | 'code' | 'chart'
-  name: string
-  w?: number
-  h?: number
-  /** page: where the highlighted sentence's lines are, in the picture's pixels: [x, y, w, h] */
-  marks?: [number, number, number, number][]
-  /** page: the second sentence's lines, and a tight crop (headline + paragraph) */
-  marks2?: [number, number, number, number][]
-  focus?: [number, number, number, number]
-  /** photo: the cut-out version (transparent PNG), when asked for */
-  cut?: string
-  /** licence credit, added to the description */
-  credit?: string
-  top?: string
-  bottom?: string
-  /** meme: the template, and one caption per box of it; gif: its caption */
-  template?: string
-  texts?: string[]
-  text?: string
-  lang?: string
-  file?: string
-  code?: string
-  note?: string
-}
 
 export interface Thumbnail {
   id: string
@@ -141,7 +69,6 @@ export interface PublishKit {
   titles: string[]
   description: string
   tags: string[]
-  hashtags: string[]
   at: number
 }
 
@@ -195,7 +122,6 @@ export interface ProjectSettings {
   helpers: boolean
   /** Default engine for parts. 'Auto' follows the style. */
   engine?: 'Auto' | 'Remotion' | 'HyperFrames'
-  transition?: Transition
   captions?: CaptionStyle
   /** Sound effects timed to what happens on screen, and their volume (0..1). */
   sfx?: SfxLevel
@@ -232,8 +158,6 @@ export interface Project {
   output?: string
   /** The check of the finished video file (black frames, freezes, sound, length): empty notes when all is well. */
   finalCheck?: { at: number; notes: string[] }
-  /** Real media per part id (remix styles). */
-  media?: Record<string, MediaItem[]>
   /** When the final video was last written (so the page loads the new one). */
   outputAt?: number
   thumbnails?: Thumbnail[]
@@ -262,8 +186,6 @@ export interface StyleDef {
   engine?: Engine
   /** Extra direction for the designer, written into STYLE.md. */
   guide?: string
-  /** Built from real media (screenshots, photos, memes, clips, code) found by research, not drawn. */
-  realMedia?: boolean
 }
 
 export interface LearnSession {
@@ -305,19 +227,12 @@ export interface AppSettings {
   writerModel?: string
   /** How this channel's scripts sound (persona, audience, words to use or avoid, an example line). Used for every script. */
   scriptVoice?: string
-  /** Free API keys for stock clips (remix styles). */
-  pexelsKey?: string
-  pixabayKey?: string
   /** Use the graphics card to encode the finished video (default on; falls back to the CPU) */
   gpu?: boolean
-  /** Free GIPHY key, for reaction GIFs in the remix styles */
-  giphyKey?: string
   /** Hidden built-in styles (the library's own can't be deleted, only hidden) */
   hiddenStyles?: string[]
   /** The local voice last used to make a voiceover (see localVoice.ts). */
   voice?: VoiceChoice
-  /** Fast Tech Remix may use short clips of real people saying a line (from YouTube). Off: other channels can claim them. */
-  quoteClips?: boolean
 }
 
 export interface Status {

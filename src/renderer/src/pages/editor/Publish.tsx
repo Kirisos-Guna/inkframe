@@ -137,7 +137,7 @@ export function Publish({ p }: { p: Project }) {
                 <IconBtn onClick={() => copy(p.publish!.tags.join(', '), 'Tags')} label="Copy" icon={<Copy size={13} />} />
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {[...p.publish.tags, ...p.publish.hashtags].map((t) => (
+                {p.publish.tags.map((t) => (
                   <span key={t} className="chip px-2 py-0.5 text-[12.5px]">
                     {t}
                   </span>

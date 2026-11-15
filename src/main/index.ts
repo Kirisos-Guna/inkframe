@@ -16,7 +16,6 @@ import { findTrendingIdeas } from './services/trends'
 import * as pipeline from './services/pipeline'
 import { startLearn, stopLearn } from './services/learn'
 import { scoutStyle } from './services/styleScout'
-import { extractJson, runAgent } from './services/agent'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
 import { toSrt, toVtt, linesFromWords } from './services/captions'
 import { killAllAgents, onUsage, type Usage } from './services/agent'
@@ -192,7 +191,6 @@ function registerIpc() {
       p.words = []
       p.parts = []
       p.captionLines = undefined
-      p.media = undefined
       p.finalCheck = undefined
       p.output = undefined
       pipeline.startTranscription(p.id)

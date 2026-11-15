@@ -57,14 +57,14 @@ export function blackParts(notes: string[]) {
 }
 
 /** Checks the finished video file. Takes about as long as playing it back fast; costs no tokens. */
-export async function checkFinalVideo(p: Project, file: string, signal?: AbortSignal, pace?: number) {
+export async function checkFinalVideo(p: Project, file: string, signal?: AbortSignal) {
   // Freezes shorter than 8 s are normal holds; black shorter than half a second is a cut.
   const r = await run(
     ffmpegPath(),
-    ['-hide_banner', '-i', file, '-vf', `blackdetect=d=0.5:pix_th=0.02,freezedetect=n=0.001:d=8${pace ? ",select='gt(scene,0.25)',showinfo" : ''}`, '-af', 'volumedetect', '-f', 'null', '-'],
+    ['-hide_banner', '-i', file, '-vf', 'blackdetect=d=0.5:pix_th=0.02,freezedetect=n=0.001:d=8', '-af', 'volumedetect', '-f', 'null', '-'],
     { signal }
   )
-  return { at: Date.now(), notes: readFinalLog(r.stderr, p, pace) }
+  return { at: Date.now(), notes: readFinalLog(r.stderr, p) }
 }
 
 /** What a rendered part shows wrong by itself: black stretches and, for the fast styles, shots held too long. */
@@ -102,11 +102,7 @@ export function readPartLog(log: string, len: number, longest?: number): PartFau
 }
 
 /** Looks at one rendered part with FFmpeg (no AI): about a second per part. */
-export async function checkPartVideo(file: string, len: number, longest?: number, signal?: AbortSignal) {
-  const r = await run(
-    ffmpegPath(),
-    ['-hide_banner', '-i', file, '-vf', `scale=320:-2,blackdetect=d=0.3:pix_th=0.02${longest ? ",select='gt(scene,0.09)',metadata=print:key=lavfi.scene_score" : ''}`, '-an', '-f', 'null', '-'],
-    { signal }
-  )
-  return readPartLog(r.stderr, len, longest)
+export async function checkPartVideo(file: string, len: number, signal?: AbortSignal) {
+  const r = await run(ffmpegPath(), ['-hide_banner', '-i', file, '-vf', 'scale=320:-2,blackdetect=d=0.3:pix_th=0.02', '-an', '-f', 'null', '-'], { signal })
+  return readPartLog(r.stderr, len)
 }

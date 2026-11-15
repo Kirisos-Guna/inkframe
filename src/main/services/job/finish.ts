@@ -10,17 +10,13 @@ import { buildSfxTrack } from '../sfx'
 
 const req = createRequire(__filename)
 
-/**
- * The transition between parts, picked by the app from the style (there is no setting for it any more): the
- * real-media styles cut hard, like the channels they come from (their whips and glitches are inside the parts, on the
- * words); the drawn styles fade softly from one part to the next.
- */
-export const transitionOf = (p: Project) => (getStyle(p.settings.styleId).realMedia ? 'None' : 'Fade')
+/** The transition between parts (there is no setting for it): a soft fade from part to part. */
+const BETWEEN_PARTS = 'Fade'
 
 export const finishDetail = (p: Project) =>
   [
     'Joining the parts and laying the voiceover on top',
-    transitionOf(p) && transitionOf(p) !== 'None' ? `${transitionOf(p)!.toLowerCase()} between parts` : '',
+    'a soft fade between parts',
     p.settings.captions && p.settings.captions !== 'Off' ? `${p.settings.captions.toLowerCase()} captions` : '',
     p.settings.music ? 'music under the voice' : '',
     p.settings.sfx && p.settings.sfx !== 'Off' ? `${p.settings.sfx.toLowerCase()} sound effects` : ''
@@ -61,7 +57,7 @@ export async function finish(p: Project, out: string, size: { height: number; fp
     workDir,
     height: size.height,
     fps: size.fps,
-    transition: transitionOf(p),
+    transition: BETWEEN_PARTS,
     captions,
     assFile,
     music: p.settings.music && existsSync(p.settings.music.file) ? p.settings.music : null,

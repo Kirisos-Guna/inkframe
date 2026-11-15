@@ -112,12 +112,10 @@ describe('the finished video fixes its own black pictures', () => {
 })
 
 describe('what the checker is asked', () => {
-  it('splits what is broken from what could be better, and knows real media is cropped on purpose', async () => {
+  it('splits what is broken from what could be better', async () => {
     const { checkBatchPrompt } = await import('../src/main/services/prompts')
-    const p = checkBatchPrompt([], 'High', true)
+    const p = checkBatchPrompt([], 'High')
     expect(p).toContain('"fix"')
     expect(p).toContain('"minor"')
-    expect(p).toContain('cropped close')
-    expect(checkBatchPrompt([], 'High', false)).not.toContain('cropped close')
   })
 })

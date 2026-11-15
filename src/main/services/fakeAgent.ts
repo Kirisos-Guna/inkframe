@@ -59,18 +59,6 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     const answer = nums.filter((n) => !(n === skip && !skipped && (skipped = true)))
     return JSON.stringify({ parts: answer.map((n) => (noted.includes(n) ? { part: n, fix: ['Text is too small'], minor: [] } : { part: n, fix: [], minor: ['A closer crop would read better'] })) })
   }
-  // Remix research: a plan with real links, so the real fetching (browser screenshots, embeds, Commons, Imgflip) runs.
-  if (p.includes('You are the researcher for a fast, Fireship-style')) {
-    // INKFRAME_FAKE_PLAN=file: this plan instead (to test fetching particular pages).
-    if (process.env.INKFRAME_FAKE_PLAN) return readFileSync(process.env.INKFRAME_FAKE_PLAN, 'utf8')
-    const n = [...p.matchAll(/^(\d+)\. \[/gm)].length
-    const kinds = [
-      [{ kind: 'page', url: 'https://en.wikipedia.org/wiki/Nvidia', mark: 'Nvidia Corporation is an American multinational technology company headquartered in Santa Clara' }, { kind: 'photo', query: 'Jensen Huang', cutout: true }, { kind: 'chart', source: 'price', symbol: 'NVDA', range: '1y', label: 'Nvidia stock' }],
-      [{ kind: 'tweet', url: 'https://x.com/elonmusk/status/1585341984679469056' }, { kind: 'meme', template: 'Drake Hotline Bling', texts: ['Building a product', 'Renting GPUs to yourself'] }],
-      [{ kind: 'code', lang: 'ts', file: 'bubble.ts', code: "const valuation = await raise({ from: 'nvidia' })\nawait buyGpus(valuation) // from nvidia\nconsole.log('profit?', false)" }, { kind: 'photo', query: 'Nvidia logo' }, { kind: 'chart', source: 'github', repo: 'NVIDIA/cuda-samples' }]
-    ]
-    return JSON.stringify({ parts: Array.from({ length: n }, (_, i) => ({ part: i + 1, shots: kinds[i % kinds.length] })) })
-  }
   // Finding a style: the searches, then the picks from the list of results.
   if (p.includes('Write 3 YouTube searches')) return JSON.stringify({ topic: 'Cloud and Kubernetes', queries: ['kubernetes explained tamil', 'cloud computing eppadi velai seikirathu tamil'] })
   if (p.includes('Pick the 4 best to learn')) {
@@ -122,8 +110,7 @@ export async function fakeAgent(o: AgentOpts): Promise<string> {
     return JSON.stringify({
       titles: ['Where Your Prompt Really Goes', 'The Trip Your Prompt Takes'],
       description: 'Your prompt travels further than you think.\n\nChapters\n0:00 You hit send\n\n#AI #explained',
-      tags: ['how ai works', 'chatgpt explained'],
-      hashtags: ['#AI']
+      tags: ['how ai works', 'chatgpt explained']
     })
   }
   if (p.includes('caption lines from a speech-to-text')) {
@@ -179,51 +166,6 @@ export default function Scene() {
 `
     )
     return 'Drew a 3D part.'
-  }
-  // A FetchDecode-style thumbnail (real-media styles): one Poster with a picture from the video.
-  const thumbFile = p.match(/scenes\/(thumb-[\w-]+)\.tsx/)?.[1]
-  if (thumbFile && p.includes('<Poster')) {
-    const subject = p.match(/m\/[\w.-]+-cut\.png/)?.[0] ?? p.match(/m\/[\w.-]+\.(?:jpg|png)/)?.[0]
-    writeFileSync(
-      join(o.cwd, 'scenes', `${thumbFile}.tsx`),
-      `import { Poster } from '@kit/thumb'\n\nexport default function Scene() {\n  return <Poster lines={[{ text: 'Prompt' }, { text: 'Leaked', color: 'red' }]}${subject ? ` subject="${subject}"` : ''} term="still sending" />\n}\n`
-    )
-    return 'A two-word verdict over the person in the story.'
-  }
-  // The remix style: each part cut from the media listed for it.
-  const remix = existsSync(join(o.cwd, 'STYLE.md')) && readFileSync(join(o.cwd, 'STYLE.md'), 'utf8').includes('@kit/remix')
-  if (remix && /scenes\/[\w-]+\.tsx/.test(p)) {
-    const sections = p.split(/^-{20,}$/m)
-    let drawn = 0
-    for (const sec of sections.length > 1 ? sections.slice(1) : [p]) {
-      const file = sec.match(/scenes\/([\w-]+)\.tsx/)?.[1]
-      if (!file || file.startsWith('thumb-')) continue
-      const shots: string[] = []
-      // Memes and GIFs come with their block written out: use it as given.
-      for (const m of sec.matchAll(/^\d+\. (?:meme|gif) "[^"]+"[^:]*: (<(?:Meme|Gif) .*? \/>)/gm)) shots.push(m[1])
-      for (const m of sec.matchAll(/^\d+\. (page|photo|meme|tweet|clip|chart) "([^"]+)"(?: (\d+)x(\d+))?(?:: top ("(?:[^"\\]|\\.)*"), bottom ("(?:[^"\\]|\\.)*"))?(?:, highlight marks=(\[\[[\d,[\]]*\]\]))?(?: marks2=\S+)?(?: focus=(\[[\d,]+\]))?(?:, cut-out "([^"]+)")?(.*)$/gm)) {
-        const [, kind, name, w, h, top, bottom, marks, focus, cut, rest] = m
-        if (kind === 'page') shots.push(`<Punch at={[40]}><Page name="${name}" w={${w}} h={${h}} marks={${marks ?? '[]'}}${focus ? ` focus={${focus}} crop` : ''} point /></Punch>`)
-        else if (kind === 'chart') shots.push(/Data: GitHub/.test(rest) ? `<Stats name="${name}" />` : `<Chart name="${name}" />`)
-        else if (cut) shots.push(`<AbsoluteFill><Shot name="${name}" zoom={1.15} /><Sticker name="${cut}" x={1300} h={820} /><Label x={560} y={300} text="THIS GUY" to={[1100, 420]} start={14} /></AbsoluteFill>`)
-        else if (kind === 'tweet') shots.push(`<Post name="${name}" w={${w}} h={${h}} />`)
-        else if (kind === 'meme') {
-          if (top !== undefined) shots.push(`<Meme name="${name}" top={${top}} bottom={${bottom ?? '""'}} />`)
-        }
-        else if (kind === 'clip') shots.push(`<Clip name="${name}" />`)
-        else shots.push(`<AbsoluteFill><Shot name="${name}" fit="contain" /><Caption text="WE'RE SO CLOSE. PLS VENMO ME" start={20} /></AbsoluteFill>`)
-      }
-      for (const m of sec.matchAll(/^\d+\. code \((\w+), ([^)]+)\): (".*")$/gm)) shots.push(`<Code lang="${m[1]}" file="${m[2]}" code={${m[3]}} lines={[2]} tree={['src/', '  ${m[2]}', '  db.ts', 'package.json']} />`)
-      if (!shots.length) shots.push('<TitleCard text="No media here" accent="media" />')
-      const at = shots.map((_, i) => `Math.round((dur * ${i}) / ${shots.length})`)
-      o.onStep?.(`Drawing ${file}`)
-      writeFileSync(
-        join(o.cwd, 'scenes', `${file}.tsx`),
-        `import { useScene, AbsoluteFill } from '@kit'\nimport { Cuts, Punch, Shot, Page, Post, Meme, Gif, Caption, Code, Clip, TitleCard, Hand, Sticker, Label, Chart, Stats } from '@kit/remix'\n\nexport default function Scene() {\n  const { dur } = useScene()\n  return (\n    <AbsoluteFill style={{ background: '#000' }}>\n      <Cuts fx={['whip', 'glitch']} at={[${at.join(', ')}]}>\n        ${shots.join('\n        ')}\n      </Cuts>\n    </AbsoluteFill>\n  )\n}\n`
-      )
-      drawn++
-    }
-    if (drawn) return `Cut ${drawn} part${drawn > 1 ? 's' : ''} from real media.`
   }
   // The Dark Systems Diagram style is drawn with its building blocks (Steps is left out of the import on purpose).
   const tamil = !!o.system?.includes('is in Tamil')

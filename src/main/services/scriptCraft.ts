@@ -45,9 +45,15 @@ THE VOICE
 - Confident and exact. No hedging piles ("it's important to note", "essentially", "basically").
 - At most one rhetorical question per beat. Never read a bare list aloud: each item must cause the next.
 
-THE ENDING
-- The payoff answers the opening question in one clear line, and calls back to the opening image.
-- Then one sentence the viewer will remember and repeat. Then stop: no recap of everything, no "and that's how".
+THE ENDING (the last 15 to 25 seconds, in this order; it decides whether they watch the next video)
+1. The payoff: answer the opening question in one clear line, and call back to the opening image or person.
+2. What it means for the viewer: one or two sentences on what changes for THEM (what to do, check or watch for
+   now), concrete, never a lecture.
+3. The line to remember: one short sentence they will repeat to a friend, often a twist on the opening line.
+4. Stop on that line. Never fade out: no "thanks for watching", "see you next time", "that's it for today", "so there
+   you have it", "to sum up", "in conclusion", no recap of every point, no new fact after the payoff.
+(A long YouTube video may add, before the stop, one short sentence that makes the next related video the obvious next
+question, as asked below.)
 
 NEVER USE (tired, AI-sounding)
 "in this video", "in today's video", "let's dive in", "dive into", "delve", "buckle up", "without further ado",
@@ -211,6 +217,10 @@ export function lintScript(script: string, targetWords: number) {
   // second language.
   const hard = [...new Set((lower.match(HARD_WORDS) ?? []).map((w) => w.trim()))]
   if (hard.length) issues.push(`Use simple everyday words instead of: ${hard.slice(0, 8).map((w) => `"${w}"`).join(', ')}. The viewer hears it once and English may not be their first language.`)
+  // A weak last line: the ending fades out instead of landing.
+  const lastLines = sentences(script).slice(-3).join(' ').toLowerCase()
+  const fade = lastLines.match(FADE_OUT)
+  if (fade) issues.push(`The ending fades out ("${fade[0]}"): end on the payoff, what it means for the viewer, and one line to remember, then stop.`)
   if (TALKS_DOWN.test(lower)) issues.push(`A line talks down to the viewer ("${lower.match(TALKS_DOWN)![0]}"): tease the situation, not them.`)
   return issues
 }
@@ -227,6 +237,9 @@ const HARD_WORDS = new RegExp(
   ].join('|')})\\b`,
   'g'
 )
+
+/** Endings that fade out instead of landing. */
+const FADE_OUT = /thanks for watching|thank you for watching|see you (next time|in the next)|that's (it|all) for (today|now)|so there you have it|to sum (it )?up|until next time|catch you (later|next)/
 
 /** Beat openings that change the subject without a bridge. */
 const COLD = /^(now meet|meet |here's the secret|here is the secret|look at |let's |next,|another |moving on|now,? let's|now for)/i

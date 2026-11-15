@@ -2,8 +2,7 @@
 
 # Inkframe
 
-A Windows desktop app that turns a voiceover into an explainer video: hand-drawn, 3D, or a fast tech remix made of
-real screenshots, posts, code, memes and GIFs. It can also find a viral idea, write the script and speak it for you.
+A Windows desktop app that turns a voiceover into an explainer video: hand-drawn, diagrams or real 3D. It can also find a viral idea, write the script and speak it for you.
 
 ## Download
 Get **Inkframe-Setup-x.y.z.exe** from the [latest release](https://github.com/Kirisos-Guna/inkframe/releases/latest)
@@ -20,11 +19,6 @@ you click any part, leave a comment, and only that part is made again.
   cutaways, paper cut-outs, 2D animation, cartoon music videos, dark systems diagrams, and **real 3D** with three.js
   (paper plane, pop-up book, blueprint builds, pencil sketches, little worlds, interactive explainers). Learn a new look
   from a video file or a channel link, and delete the ones you don't use (library styles can be brought back).
-- **Fast Tech Remix:** a fast, funny explainer cut from **real media** found on the web: docs and articles with the key
-  sentence highlighted, real posts, photos, charts, code in an editor, and a few memes and GIFs. Real references come
-  first; reactions are kept to about one every 45 seconds. Meme captions go in each template's own boxes (Drake's
-  panels, Gru's boards), and about half the GIFs are anime reactions (with a free GIPHY key). Every shot stays up long
-  enough to read.
 - **Two engines:** React scenes (Remotion, for drawn lines and three.js 3D) and HTML scenes
   ([HyperFrames](https://github.com/heygen-com/hyperframes) + GSAP, for kinetic type, charts and motion graphics).
   Pick per video or per part.
@@ -56,8 +50,6 @@ The name lives in one place: [src/shared/brand.ts](src/shared/brand.ts).
 - **Claude Code**, signed in once. The app finds it on PATH, in `~/.local/bin`, in npm's folder, or inside the
   Claude desktop app. Runs on your Claude plan; no API key.
 - Optional: the **Codex** app or CLI, signed in, as a second writer (and a second video maker).
-- Optional: free **Pexels**, **Pixabay** and **GIPHY** keys for stock clips and reaction GIFs in Fast Tech Remix
-  (Settings).
 - Everything else comes by itself on first use: FFmpeg is built in; whisper.cpp (~150 MB with its model), Remotion's
   and HyperFrames' headless browsers download the first time they are needed.
 - yt-dlp (for links, recreating videos and YouTube trends) and the voice model also download by themselves the first
@@ -79,7 +71,6 @@ npm run build:win
 | Voiceover | whisper.cpp finds every word and its time, while you write the direction | [transcribe.ts](src/main/services/transcribe.ts) |
 | Parts | Claude splits the voiceover into parts (about one per 9 s), each with a title and an idea | [prompts.ts](src/main/services/prompts.ts) `splitPrompt` |
 | Design | Claude reads [METHOD.md](remotion/METHOD.md) or [HYPERFRAMES.md](remotion/HYPERFRAMES.md) and the style, then writes each part as a React scene (with the [scene kit](remotion/kit/index.tsx) and [3D kit](remotion/kit/three.tsx)) or an HTML scene | [pipeline.ts](src/main/services/pipeline.ts), [engines.ts](src/main/services/engines.ts) |
-| Real media | Fast Tech Remix only: the writer plans real pages, posts, photos, charts, code, memes and GIFs for each part, then they are fetched and screenshotted on this PC | [mediaPlan.ts](src/main/services/job/mediaPlan.ts), [realMedia.ts](src/main/services/realMedia.ts), [memes.ts](src/shared/memes.ts) |
 | Checks | FFmpeg finds black frames and shots too fast or too long; Claude looks at three frames of each part for cut-off text, things off screen, etc. On High, a failing part gets up to two automatic fixes | [checks.ts](src/main/services/job/checks.ts), [finalCheck.ts](src/main/services/job/finalCheck.ts) |
 | Render | Remotion or HyperFrames renders each part | [render.ts](src/main/services/render.ts), [hyperframes.ts](src/main/services/hyperframes.ts) |
 | Finish | One FFmpeg pass, encoded on the GPU when it can: transitions, burned-in captions, sound effects, music ducking, and your voice | [media.ts](src/main/services/media.ts) `finishVideo`, [captions.ts](src/main/services/captions.ts) |
@@ -111,6 +102,5 @@ FAKE=1 node scripts/drive.mjs make run voice.wav  # the same with a stand-in for
 Remotion is free for individuals and companies of up to 3 people; larger companies need a
 [Remotion company licence](https://www.remotion.dev/license). whisper.cpp and FFmpeg are open source.
 HyperFrames is Apache-2.0 (its anonymous telemetry is turned off by Inkframe). GSAP is free to use under its
-[standard licence](https://gsap.com/standard-license). three.js and rough.js are MIT; the Inter, Caveat, Baloo Thambi 2, Anton and JetBrains Mono fonts are under the SIL Open Font Licence, Permanent Marker under the Apache Licence 2.0, Prism (code colours) is MIT, and MediaPipe with its selfie segmentation model (photo cut-outs) is Apache-2.0. The Kokoro voice model, kokoro-js and
-Transformers.js are Apache-2.0, and ONNX Runtime is MIT. Photos come from Wikimedia Commons (credited in the
-description), meme templates from Imgflip, and GIFs from GIPHY.
+[standard licence](https://gsap.com/standard-license). three.js and rough.js are MIT; the Inter, Caveat, Baloo Thambi 2, Anton and JetBrains Mono fonts are under the SIL Open Font Licence, and Permanent Marker under the Apache Licence 2.0. The Kokoro voice model, kokoro-js and
+Transformers.js are Apache-2.0, and ONNX Runtime is MIT.

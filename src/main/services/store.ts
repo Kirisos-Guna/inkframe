@@ -41,7 +41,14 @@ export function getSettings(): AppSettings {
     defaultEffort: 'High',
     defaultChecks: 'High'
   }
-  return { ...d, ...readJson<Partial<AppSettings>>(settingsFile(), {}) }
+  const saved = readJson<Partial<AppSettings> & Record<string, unknown>>(settingsFile(), {})
+  // The stock-clip and GIF keys were for Fast Tech Remix, which is gone: they are not kept on disk.
+  const old = ['pexelsKey', 'pixabayKey', 'giphyKey', 'quoteClips'].filter((k) => k in saved)
+  if (old.length) {
+    for (const k of old) delete saved[k]
+    writeJson(settingsFile(), saved)
+  }
+  return { ...d, ...saved }
 }
 export function setSettings(patch: Partial<AppSettings>) {
   const next = { ...getSettings(), ...patch }
@@ -81,6 +88,17 @@ export function getProject(id: string, dir?: string): Project | undefined {
     for (const x of p.parts) {
       if (x.status === 'Designing' || x.status === 'Making it again') x.status = drawn(x.id) ? 'Designed' : 'Not designed yet'
       else if (x.status === 'Rendering') x.status = 'Designed'
+    }
+    // Fast Tech Remix was removed: a video made in it moves to the first style, and its parts (scenes built from the
+    // remix blocks, which no longer exist) are drawn again in that style on the next Make. The finished video stays.
+    const gone = (s?: string) => s === 'tech-remix'
+    if (gone(p.settings.styleId) || p.parts.some((x) => gone(x.styleId))) {
+      p.settings.styleId = BUILTIN_STYLES[0].id
+      for (const x of p.parts) {
+        const f = join(d, 'scenes', `${x.id}.tsx`)
+        if (gone(x.styleId)) x.styleId = undefined
+        if (existsSync(f) && readFileSync(f, 'utf8').includes('@kit/remix')) x.status = 'Not designed yet'
+      }
     }
     // A change that was being worked on is done again on the next run.
     for (const c of p.comments) if (c.state === 'Working') c.state = 'Waiting'

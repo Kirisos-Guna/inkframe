@@ -128,29 +128,7 @@ ${wordsLine(p, part.start, part.end, fps, part.start) || '(none)'}`
 
 The idea for this part: ${part.idea || 'your choice, following the direction'}${
     part.material.length ? `\nThe user dragged these onto this part, so show them: ${part.material.map((m) => m.split(/[\\/]/).pop()).join(', ')}` : ''
-  }${mediaSection(p, part)}`
-}
-
-/** The real media found for a part (remix styles), in the order to show it, as the designer needs it. */
-function mediaSection(p: Project, part: Part) {
-  const list = p.media?.[part.id]
-  if (!list) return ''
-  if (!list.length) return '\nNo real media could be found for this part: build it from a diagram, a title card or code.'
-  return `\nReal media for this part, in this order (show each one; names are files for the remix blocks):\n${list
-    .map((m, i) => {
-      const size = m.w ? ` ${m.w}x${m.h}` : ''
-      if (m.kind === 'chart') return `${i + 1}. chart "${m.name}" (${m.note}; ${m.credit}): <Chart name> for a line, <Stats name> for GitHub numbers`
-      if (m.kind === 'code') return `${i + 1}. code (${m.lang}, ${m.file ?? 'file'}): ${JSON.stringify(m.code)}`
-      if (m.kind === 'meme')
-        return m.template
-          ? `${i + 1}. meme "${m.name}"${size}: <Meme name="${m.name}" w={${m.w}} h={${m.h}} template=${JSON.stringify(m.template)} texts={${JSON.stringify(m.texts ?? [])}} /> (the captions sit in the template's own boxes: add no Caption on it)`
-          : `${i + 1}. meme "${m.name}"${size}: top ${JSON.stringify(m.top ?? '')}, bottom ${JSON.stringify(m.bottom ?? '')}`
-      if (m.kind === 'gif') return `${i + 1}. gif "${m.name}"${size}: <Gif name="${m.name}" w={${m.w}} h={${m.h}}${m.text ? ` text=${JSON.stringify(m.text)}` : ''} /> (a looping reaction: ${m.note})`
-      if (m.kind === 'page')
-        return `${i + 1}. page "${m.name}"${size}${m.marks?.length ? `, highlight marks=${JSON.stringify(m.marks)}` : ''}${m.marks2?.length ? ` marks2=${JSON.stringify(m.marks2)}` : ''}${m.focus ? ` focus=${JSON.stringify(m.focus)}` : ''}${(m.h ?? 0) > (m.w ?? 1) * 1.3 ? ' (tall: use scroll)' : ''} (${m.credit}${m.note ? `: ${m.note}` : ''})`
-      return `${i + 1}. ${m.kind} "${m.name}"${size}${m.cut ? `, cut-out "${m.cut}" for a Sticker` : ''} (${m.note ?? m.credit ?? ''})`
-    })
-    .join('\n')}`
+  }`
 }
 
 /**
@@ -212,7 +190,7 @@ When all ${parts.length} are written, reply with one short sentence.`
  * Checks for several parts at once. Each picture is a strip of three moments (early, middle, end) of one part, so one
  * small image per part instead of three.
  */
-export function checkBatchPrompt(items: { part: Part; sheet: string; said: string[] }[], level: string, realMedia = false) {
+export function checkBatchPrompt(items: { part: Part; sheet: string; said: string[] }[], level: string) {
   return `You are checking parts of an explainer video before it ships. Each picture is one part: three moments side by side
 (early, middle, end). Read each picture. Under each part: what the voice is saying at each of the three moments.
 
@@ -229,14 +207,7 @@ Sort what you see into two lists.
 - a picture about a different subject than the words (not merely a loose or indirect match)
 "minor": anything else that could be better (a weaker picture choice, a position, balance, a nicer layout). It never
 goes in "fix".
-${
-  realMedia
-    ? `This video is cut from REAL screenshots, posts, photos and memes: a page screenshot cropped close, so its own
-text runs past the crop or fades out at the edge, is on purpose (not "cut off"); text in a real photo or post (any
-language) is part of the picture; a real page or post that is about the topic counts as matching the words.
-`
-    : ''
-}${level === 'Low' ? 'Only put in "fix" what is obvious at first glance.' : level === 'High' ? 'Look carefully, but "fix" is only for what is really broken.' : ''}
+${level === 'Low' ? 'Only put in "fix" what is obvious at first glance.' : level === 'High' ? 'Look carefully, but "fix" is only for what is really broken.' : ''}
 
 Reply with JSON only: {"parts": [{"part": <number>, "fix": ["short note", ...], "minor": ["short note", ...]}]}  (empty lists
 when there is nothing)`

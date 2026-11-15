@@ -20,7 +20,6 @@ import { fitToScript, snapToPauses } from './wordTimes'
 import { pausesOf } from './media'
 import { finish, finishDetail } from './job/finish'
 import { blackParts, checkFinalVideo } from './job/finalCheck'
-import { gatherMedia } from './job/mediaPlan'
 
 // The rest of the app uses these through this file.
 export { emit, flushSaves } from './job/events'
@@ -127,13 +126,6 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
     emit(p, true)
   }
   if (signal.aborted) throw new Error('Stopped')
-
-  // Remix styles: research and fetch the real media each part shows, before it is drawn.
-  if (style.realMedia) {
-    await guarded(p, signal, (s) => gatherMedia(p, s))
-    // The media lists go to the drawing sessions with each part.
-    writeGuides(p)
-  }
 
   // Rendering runs alongside the drawing: a part is rendered as soon as it is designed, two at a time.
   clearRenderBundles(p)
@@ -272,7 +264,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
   emit(p, true)
   if (p.settings.checks !== 'Off') {
     step(p, 'Checking the finished video', { title: 'Checking the finished video', detail: 'Black frames, frozen pictures, the sound and the length (no AI).' })
-    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 6 : undefined))
+    p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s))
     emit(p, true)
     // A black picture in the finished video is a broken part: fixed by itself (once per run), rendered, and the video
     // put together and checked again, instead of a note the user cannot act on.
@@ -307,7 +299,7 @@ async function runJob(p: Project, signal: AbortSignal, recheck?: 'missing' | 'al
         step(p, 'Putting it together again', { title: 'Putting the video together', detail: finishDetail(p) })
         await guarded(p, signal, (s) => finish(p, out, { height: p.settings.quality.height, fps: p.settings.quality.fps }, s))
         p.outputAt = Date.now()
-        p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s, style.realMedia ? 6 : undefined))
+        p.finalCheck = await guarded(p, signal, (s) => checkFinalVideo(p, out, s))
         emit(p, true)
       }
     }

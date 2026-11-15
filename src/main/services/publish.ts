@@ -1,18 +1,16 @@
 // Writing (script, titles + description, captions) and thumbnails.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { MediaItem, Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
+import type { Project, Provider, PublishKit, Thumbnail } from '../../shared/types'
 import { getProject, getSettings, getStyle, libDir, styleGuide } from './store'
 import { extractJson, runAgent } from './agent'
 import { codexPath } from './tools'
 import { bundleProject, checkScene, fixSceneImports, methodFile, stillScene, thumbMethodFile } from './render'
 import { drawingSystem, isTamil, styleDoc, TAMIL_STYLE } from './prompts'
-import { mediaCredits } from './job/mediaPlan'
 import { HOUSE_VOICE, lintScript, retentionPrompt, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS, WPM } from './scriptCraft'
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
-import { cutLooksRight } from './cutout'
 
 /** Writing goes to Codex by default (when it is installed), otherwise to Claude Code. */
 export async function writer() {
@@ -129,20 +127,52 @@ ${transcript.slice(0, 12000)}
 Parts (use them as chapters, keep the times exactly, first must be 0:00; merge neighbours so there are 4–12 chapters with short clear names):
 ${chapters}
 
-${isTamil(p) ? `Write everything below in Tamil. ${TAMIL_STYLE} The transcript comes from speech recognition: go by the meaning, and fix misheard words. Hashtags and tags: a mix of Tamil and the English words people search for.\n\n` : ''}Write:
-- 5 title options, each under 60 characters. Curiosity first: promise something the viewer does not know yet. No clickbait lies, no ALL CAPS words except acronyms.
-- A description: 2 short paragraphs that hook and summarise, then "Chapters" with the timestamps, then 3–5 hashtags on the last line.
-- 15 tags (short phrases people search for).
+${isTamil(p) ? `Write everything below in Tamil. ${TAMIL_STYLE} The transcript comes from speech recognition: go by the meaning, and fix misheard words. Tags: a mix of Tamil and the English words people search for.\n\n` : ''}Write:
+- 5 title options, each under 60 characters, each built a different way (a number that sounds wrong; a named thing
+  plus what went wrong; a question the viewer cannot leave unanswered; "how" or "why" plus the surprising part; a
+  contrast, X vs Y). Put the words people would SEARCH for (the product, company, bug or concept by name) in the first
+  half of the title, then the curiosity: promise something the viewer does not know yet, never the answer. Simple
+  everyday words. No clickbait lies, no ALL CAPS words except acronyms, no emojis. Best first.
+- A description. Its first two lines are what search results and the "more" fold show: the hook and the main search
+  words, in under 150 characters. Then 2 short paragraphs that say what the viewer will learn, naming the real things
+  (products, companies, people, numbers) people search for, in plain sentences (no keyword lists). Then "Chapters"
+  with the timestamps. No hashtags, no links you were not given, no "subscribe".
+- 25 to 30 tags people would type into YouTube search, all together under 450 characters: the exact topic first;
+  the named things (product, company, person, bug, protocol); the "how does X work", "why did X fail", "X explained"
+  questions people ask; the broader field (e.g. networking, software engineering); and 2 or 3 close topics viewers of
+  this also watch. Lowercase plain phrases, no # signs, no repeats.
 
-Reply with JSON only: {"titles": [...], "description": "...", "tags": [...], "hashtags": ["#...", ...]}`
+Reply with JSON only: {"titles": [...], "description": "...", "tags": [...]}`
   })
   const k = extractJson<Omit<PublishKit, 'at'>>(reply)
-  // The licences of the photos and clips used ask for credit: it goes at the end of the description.
-  const credits = mediaCredits(p)
-  const description = (k.description ?? '') + (credits.length ? `\n\nMedia credits:\n${credits.map((c) => `- ${c}`).join('\n')}` : '')
-  p.publish = { titles: k.titles ?? [], description, tags: k.tags ?? [], hashtags: k.hashtags ?? [], at: Date.now() }
+  // No hashtags anywhere: a line of them at the end of the description, or tags written with #, are dropped.
+  const description = stripHashtags(k.description ?? '')
+  p.publish = { titles: k.titles ?? [], description, tags: fitTags(k.tags ?? []), at: Date.now() }
   emit(p, true)
   return p
+}
+
+/** A description without the hashtags a writer may still put at its end (on their own lines or after the last words). */
+export function stripHashtags(d: string) {
+  return d.replace(/(\s*#\p{L}[\p{L}\p{N}_]*)+\s*$/u, '').trim()
+}
+
+/**
+ * Tags as YouTube takes them: no # signs, no repeats, and within its 500-character limit as YouTube counts it (the
+ * commas, and the quotes it puts around a tag of several words). A tag that does not fit is skipped, not the rest.
+ */
+export function fitTags(tags: string[]) {
+  const out: string[] = []
+  let len = 0
+  const cost = (t: string) => t.length + (/\s/.test(t) ? 2 : 0)
+  for (const t of tags.map((x) => x.replace(/^#+/, '').trim()).filter(Boolean)) {
+    if (out.some((o) => o.toLowerCase() === t.toLowerCase())) continue
+    const add = cost(t) + (out.length ? 1 : 0)
+    if (len + add > 490) continue
+    out.push(t)
+    len += add
+  }
+  return out
 }
 
 // ---------- captions ----------
@@ -186,51 +216,9 @@ Reply with JSON only: {"lines": ["...", ...]}`
   return p
 }
 
-/**
- * Thumbnails for the real-media style follow the developer-news formula: one cut-out face or logo, big and outlined,
- * 2-3 huge words, a bold background. The video's own cut-outs are offered.
- */
-function remixThumb(p: Project) {
-  if (!getStyle(p.settings.styleId).realMedia) return ''
-  const all = Object.values(p.media ?? {}).flat()
-  // Only cut-outs that really hold a subject: a person segmenter keeps a speck, or nothing, of a chip or a server.
-  const good = (m: MediaItem) => !!m.cut && cutLooksRight(join(p.dir, 'public', m.cut))
-  const cuts = all.filter(good).map((m) => `${m.cut} (cut-out: ${m.note ?? ''})`)
-  const photos = all.filter((m) => m.kind === 'photo' && !/-logo\.\w+$/.test(m.name) && !good(m)).map((m) => `${m.name} (photo: ${m.note ?? ''})`)
-  return `This video's thumbnail is in the FetchDecode look, made with ONE block, <Poster> from '@kit/thumb':
-  <Poster lines={[{ text: 'GPU' }, { text: 'Expired', color: 'red' }]} subject="m/…-cut.png" tag?="Reverse engineering"
-    term?="still false" logos?={['m/…-logo.png', …]} side?="right" />
-Pure black, 2 or 3 HUGE words stacked on the left (each line is sized to its length: short lines come out giant),
-cream white with exactly ONE line in 'red', 'yellow' or 'orange'; one big real picture on the right (a person who is
-in the story, or the object the video is about), fading into the black. The words are a verdict or a twist, not the
-title: "GPU EXPIRED", "APP AUTOPSY", "YOUR APP. MY RULES.", "17 YEARS", "32,767 KEYS", "CODE TO ACTION". A number goes
-on its own line in yellow. tag: 2-3 small words for the topic (optional); term: a 2-4 word line typed in a green
-terminal, for a code or hacking video (optional); logos: up to 5 company logos from the video, small, at the top
-(optional). Use at most two of tag, term and logos. Nothing else on the picture: no arrows, circles, stickers or
-backgrounds of your own.
-${cuts.length ? `Cut-outs of people from the video (best as the subject): ${cuts.slice(0, 8).join(', ')}\n` : ''}${photos.length ? `Photos from the video (for an object, a chip or a product, use its photo as the subject): ${photos.slice(0, 8).join(', ')}\n` : ''}${!cuts.length && !photos.length ? 'The video has no photos: use a logo file from the video as the subject.\n' : ''}Always give a subject: the picture side is never empty.
-`
-}
-
-/**
- * A thumbnail whose subject is a cut-out that came out empty or a speck (a chip, a server) gets the photo it was cut
- * from instead, so the picture side is never black.
- */
-function fixThumbSubject(p: Project, file: string) {
-  const code = readFileSync(file, 'utf8')
-  const m = code.match(/subject=["'{`]+(m\/[^"'`}]+-cut\.png)/)
-  if (!m || cutLooksRight(join(p.dir, 'public', m[1]))) return
-  const photo = Object.values(p.media ?? {})
-    .flat()
-    .find((x) => x.cut === m[1])?.name
-  if (photo) writeFileSync(file, code.replace(m[1], photo))
-}
-
 // ---------- thumbnails ----------
 // Different concepts for the variants, so "Make 3" gives three real choices (see remotion/THUMBNAILS.md).
 const CONCEPTS = ['The glowing object', 'Big number', 'Before → after / versus', 'Mystery']
-/** FetchDecode-style ideas for the real-media thumbnails: each variant a different kind of line. */
-const POSTER_CONCEPTS = ['A two-word verdict (GPU EXPIRED, APP AUTOPSY)', 'The big number (17 YEARS, 32,767 KEYS)', 'A statement and its twist (YOUR APP. MY RULES.)', 'What it does, in 3 words (CODE TO ACTION, INSIDE YOUR SCREEN)']
 
 export async function makeThumbnails(id: string, count: number, note?: string, onStatus?: (s: string) => void): Promise<Project> {
   const p = getProject(id)!
@@ -243,7 +231,7 @@ export async function makeThumbnails(id: string, count: number, note?: string, o
     .filter((_, i, a) => a.length <= 4 || i % Math.ceil(a.length / 4) === 0)
     .slice(0, 4)
     .map((x) => `thumbs/${x.id}.png`)
-  const concepts = style.realMedia ? POSTER_CONCEPTS : CONCEPTS
+  const concepts = CONCEPTS
   // The same instructions for every thumbnail session, as the cached system prompt.
   const system = `${drawingSystem(readFileSync(methodFile(), 'utf8'), null, styleDoc(style, styleGuide(style.id)))}\n\n---\n\n# How to make the thumbnail\n\n${readFileSync(thumbMethodFile(), 'utf8')}`
   const draw = { provider: p.settings.provider, model: p.settings.model, effort: p.settings.effort, cwd: p.dir, tools: true, system }
@@ -261,8 +249,8 @@ What the video is about: ${(p.words.map((w) => w.w).join(' ') || p.direction).sl
 Parts: ${p.parts.map((x) => x.title).join(' · ')}
 Style: ${style.name} (in your instructions: draw it exactly that way, with its background, colours and lettering)${style.render === 'three' ? '. Real 3D: build the subject with @kit/three' : ''}
 Concept for this one: ${concept}${note ? `\nThe creator asked for: ${note}` : ''}
-${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}${remixThumb(p)}
-${style.realMedia ? 'Make it clear at stamp size: the Poster does the layout, you choose the words, the colour line and the picture.' : "Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them)."}
+${isTamil(p) ? `The words on the thumbnail are in Tamil, 2-4 words. ${TAMIL_STYLE}\n` : ''}
+Make it clear at stamp size, in the video's own look: one big subject, 2–4 huge words in the video's lettering, the style's accent on the key thing, one pointer at most, bottom-right corner empty. No look the video does not have (no stock glows, sun rays or red arrows unless the style uses them).
 It is one still: everything is fully drawn from frame 0 (no animation, every start at 0).
 
 Write the scene to ${file}. Do not create or change any other file. Reply with one sentence about the idea.`
@@ -270,7 +258,6 @@ Write the scene to ${file}. Do not create or change any other file. Reply with o
     const abs = join(p.dir, file)
     if (!existsSync(abs)) throw new Error('The thumbnail scene was not written')
     fixSceneImports(abs)
-    fixThumbSubject(p, abs)
     let err = await checkScene(abs)
     for (let tries = 0; err && tries < 2; tries++) {
       onStatus?.('Repairing the thumbnail')

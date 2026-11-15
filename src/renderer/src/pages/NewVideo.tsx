@@ -82,7 +82,6 @@ const defaultSettings = (): ProjectSettings => ({
   effort: 'High',
   helpers: false,
   engine: 'Auto',
-  transition: 'Fade',
   captions: 'Off',
   sfx: 'Subtle',
   sfxVolume: 0.6,

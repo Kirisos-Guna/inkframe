@@ -1,7 +1,6 @@
 // Checking parts: three moments of each part in one picture, several parts per call, on a quick model.
-import { existsSync, readFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { join } from 'path'
-import { getStyle } from '../store'
 import { checkPartVideo, type PartFault } from './finalCheck'
 import type { Comment, Part, Project } from '../../../shared/types'
 import { extractJson, LimitError, runAgent } from '../agent'
@@ -11,8 +10,7 @@ import { checkBatchPrompt } from '../prompts'
 import { setPart, step } from './events'
 import { part } from './parts'
 import { chunk } from './util'
-import { checkValid, lintScenes } from './checkRules'
-import { sceneFile } from '../render'
+import { checkValid } from './checkRules'
 import { agentOpts } from './scenes'
 import { CHECK_BATCH } from './control'
 
@@ -27,14 +25,8 @@ export const checkModel = (p: Project) =>
 export async function checkParts(p: Project, parts: Part[], serveUrl: string | undefined, signal: AbortSignal, since = 0) {
   const results = new Map<string, { ok: boolean; notes: string[]; at: number }>()
   const items: { part: Part; sheet: string; said: string[] }[] = []
-  // What FFmpeg finds in each rendered part (black stretches, shots held too long in the fast styles): no AI.
+  // What FFmpeg finds in each rendered part (black stretches): no AI.
   const measured = new Map<string, string[]>()
-  const realMedia = !!getStyle(p.settings.styleId).realMedia
-  const longest = realMedia ? 7 : undefined
-  // Counted in the scenes' code (no AI): a picture shown twice, too many word cards. Remix styles only.
-  const linted = realMedia
-    ? lintScenes(p.parts.map((x) => ({ id: x.id, index: x.index, code: existsSync(sceneFile(p, x)) ? readFileSync(sceneFile(p, x), 'utf8') : '' })))
-    : new Map<string, string[]>()
   for (const x of parts) {
     const done = part(p, x.id)?.checks
     if (since && done && done.at >= since) {
@@ -50,10 +42,9 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
         frames.push(f)
       }
       if (x.video && existsSync(x.video)) {
-        const faults = await checkPartVideo(x.video, x.end - x.start, longest, signal).catch(() => [])
+        const faults = await checkPartVideo(x.video, x.end - x.start, signal).catch(() => [])
         if (faults.length) measured.set(x.id, faults.map((q) => faultNote(p, x, q)))
       }
-      if (linted.has(x.id)) measured.set(x.id, [...(measured.get(x.id) ?? []), ...linted.get(x.id)!])
       const sheet = join(p.dir, 'work', `check-${x.index + 1}.jpg`)
       await stripImage(frames, sheet)
       items.push({ part: x, sheet: `work/check-${x.index + 1}.jpg`, said: MOMENTS.map((at) => saidAround(p, x.start + at * (x.end - x.start))) })
@@ -66,7 +57,7 @@ export async function checkParts(p: Project, parts: Part[], serveUrl: string | u
   }
   for (const group of chunk(items, CHECK_BATCH)) {
     try {
-      const reply = await runAgent({ ...agentOpts(p, signal), model: checkModel(p), effort: 'Low', prompt: checkBatchPrompt(group, p.settings.checks, realMedia) })
+      const reply = await runAgent({ ...agentOpts(p, signal), model: checkModel(p), effort: 'Low', prompt: checkBatchPrompt(group, p.settings.checks) })
       const r = extractJson<{ parts: { part: number; ok?: boolean; notes?: string[]; fix?: string[]; minor?: string[] }[] }>(reply)
       for (const { part: x } of group) {
         const got = r.parts?.find((y) => Number(y.part) === x.index + 1)
