@@ -153,7 +153,7 @@ Reply with JSON only:
     const out = extractJson<Omit<RecreateResult, 'source' | 'by'>>(reply)
     if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
     onStatus('Checking the script')
-    const script = await polishScript({ provider, model }, out.script, targetWords)
+    const script = await polishScript({ provider, model }, out.script, targetWords, true)
     return {
       title: out.title ?? '',
       script,

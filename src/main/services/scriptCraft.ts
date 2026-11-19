@@ -45,15 +45,15 @@ THE VOICE
 - Confident and exact. No hedging piles ("it's important to note", "essentially", "basically").
 - At most one rhetorical question per beat. Never read a bare list aloud: each item must cause the next.
 
-THE ENDING (the last 15 to 25 seconds, in this order; it decides whether they watch the next video)
+THE ENDING (the last 15 to 25 seconds, in this order)
 1. The payoff: answer the opening question in one clear line, and call back to the opening image or person.
 2. What it means for the viewer: one or two sentences on what changes for THEM (what to do, check or watch for
    now), concrete, never a lecture.
 3. The line to remember: one short sentence they will repeat to a friend, often a twist on the opening line.
-4. Stop on that line. Never fade out: no "thanks for watching", "see you next time", "that's it for today", "so there
-   you have it", "to sum up", "in conclusion", no recap of every point, no new fact after the payoff.
-(A long YouTube video may add, before the stop, one short sentence that makes the next related video the obvious next
-question, as asked below.)
+4. A short, warm sign-off as the very last line: "Thanks for watching, see you in the next one." (or a close
+   variation). Nothing after it. Never tease or name another video ("that's the next video", "in my next video"), no
+   "to sum up", "so there you have it", "that's it for today", no recap of every point, no new fact after the payoff.
+(A short for TikTok, Reels or Shorts has no sign-off: its last line loops back to the first.)
 
 NEVER USE (tired, AI-sounding)
 "in this video", "in today's video", "let's dive in", "dive into", "delve", "buckle up", "without further ado",
@@ -67,8 +67,8 @@ FORMAT
 Plain spoken text only: no headings, no stage directions, no brackets, no emojis, no bullet points. Blank lines between
 beats. Numbers written the way they are read aloud ("about four hundred", "nineteen seventy-eight").`
 
-/** Spoken words a minute in the house voice (the default local voice reads at 1.1x, about 200). */
-export const WPM = 195
+/** Spoken words a minute in the house voice (the default local voice reads about 170). */
+export const WPM = 172
 
 /**
  * The house voice of every script: a developer explaining things to a friend, quick and dry, each point handing off to
@@ -195,7 +195,7 @@ const sentences = (s: string) => s.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).f
  * that starts with a greeting or a definition, and formatting. Returns what to fix (empty: it passes).
  */
 /** The checks a program can do. */
-export function lintScript(script: string, targetWords: number) {
+export function lintScript(script: string, targetWords: number, signOff = false) {
   const issues: string[] = []
   const lower = script.toLowerCase().replace(/[’‘]/g, "'")
   const found = BANNED.filter((b) => lower.includes(b))
@@ -217,10 +217,14 @@ export function lintScript(script: string, targetWords: number) {
   // second language.
   const hard = [...new Set((lower.match(HARD_WORDS) ?? []).map((w) => w.trim()))]
   if (hard.length) issues.push(`Use simple everyday words instead of: ${hard.slice(0, 8).map((w) => `"${w}"`).join(', ')}. The viewer hears it once and English may not be their first language.`)
-  // A weak last line: the ending fades out instead of landing.
-  const lastLines = sentences(script).slice(-3).join(' ').toLowerCase()
+  // The ending: no recap or fade-out phrases, no tease of another video, and (for a YouTube video) a sign-off last.
+  const lastLines = sentences(script).slice(-4).join(' ').toLowerCase()
   const fade = lastLines.match(FADE_OUT)
-  if (fade) issues.push(`The ending fades out ("${fade[0]}"): end on the payoff, what it means for the viewer, and one line to remember, then stop.`)
+  if (fade) issues.push(`The ending fades out ("${fade[0]}"): end on the payoff, what it means for the viewer, one line to remember, then the sign-off.`)
+  const tease = lastLines.match(NEXT_VIDEO)
+  if (tease) issues.push(`The ending teases another video ("${tease[0]}"): cut that sentence; end with the line to remember and the sign-off.`)
+  if (signOff && !SIGN_OFF.test(sentences(script).slice(-2).join(' ').toLowerCase()))
+    issues.push('End with a short sign-off as the very last line, after the line to remember: "Thanks for watching, see you in the next one."')
   if (TALKS_DOWN.test(lower)) issues.push(`A line talks down to the viewer ("${lower.match(TALKS_DOWN)![0]}"): tease the situation, not them.`)
   return issues
 }
@@ -239,7 +243,11 @@ const HARD_WORDS = new RegExp(
 )
 
 /** Endings that fade out instead of landing. */
-const FADE_OUT = /thanks for watching|thank you for watching|see you (next time|in the next)|that's (it|all) for (today|now)|so there you have it|to sum (it )?up|until next time|catch you (later|next)/
+const FADE_OUT = /that's (it|all) for (today|now)|so there you have it|to sum (it )?up|in summary|let's recap/
+/** A sentence that teases or names another video. */
+const NEXT_VIDEO = /(that's|that is) (the|a|my) next video|in (the|my) next video,|next video,? (we|i)'ll|(stay tuned|watch) for (the|my) next|that's a story for (the|another) (next )?video/
+/** The sign-off a YouTube video ends on. */
+const SIGN_OFF = /thanks for watching|thank you for watching|see you (in the next|next time)/
 
 /** Beat openings that change the subject without a bridge. */
 const COLD = /^(now meet|meet |here's the secret|here is the secret|look at |let's |next,|another |moving on|now,? let's|now for)/i

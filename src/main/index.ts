@@ -10,7 +10,7 @@ import { duration, gpuEncoder, peaks } from './services/media'
 import { engineOf } from './services/engines'
 import { closeStillBrowser } from './services/render'
 import { recreateVideo, type RecreateRequest } from './services/recreate'
-import { DEFAULT_VOICE, previewVoice, speak, VOICES } from './services/localVoice'
+import { DEFAULT_VOICE, OLD_DEFAULT_VOICE, previewVoice, speak, VOICES } from './services/localVoice'
 import type { TrendRequest, VoiceChoice } from '../shared/types'
 import { findTrendingIdeas } from './services/trends'
 import * as pipeline from './services/pipeline'
@@ -233,7 +233,12 @@ function registerIpc() {
   const voiceStatus = (s: string) => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('voice:status', s)
   }
-  h('voice:list', () => ({ voices: VOICES, choice: store.getSettings().voice ?? DEFAULT_VOICE }))
+  h('voice:list', () => {
+    // A voice never changed from the old default moves to the new one.
+    const v = store.getSettings().voice
+    const old = v && v.id === OLD_DEFAULT_VOICE.id && v.speed === OLD_DEFAULT_VOICE.speed && v.pitch === OLD_DEFAULT_VOICE.pitch
+    return { voices: VOICES, choice: !v || old ? DEFAULT_VOICE : v }
+  })
   h('voice:preview', (choice: VoiceChoice) => previewVoice(choice, voiceStatus))
   h('voice:speak', async (script: string, choice: VoiceChoice) => {
     const file = await speak(script, choice, voiceStatus)

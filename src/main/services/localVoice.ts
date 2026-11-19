@@ -10,9 +10,9 @@ import { fakeEnabled } from './fakeAgent'
 
 /** The voices offered, best first for a quick developer explainer. Kokoro's own voice names. */
 export const VOICES: LocalVoice[] = [
-  { id: 'am_puck', name: 'Puck', about: 'Young man, American, quick and crisp: the developer-explainer voice (default)' },
+  { id: 'am_fenrir', name: 'Fenrir', about: 'Man, American, lively, with a lot of ups and downs: the tech-channel narrator voice (default)' },
+  { id: 'am_puck', name: 'Puck', about: 'Young man, American, quick and crisp' },
   { id: 'am_michael', name: 'Michael', about: 'Man, American, warm and clear' },
-  { id: 'am_fenrir', name: 'Fenrir', about: 'Man, American, bright and lively' },
   { id: 'am_liam', name: 'Liam', about: 'Young man, American, light and fast' },
   { id: 'am_eric', name: 'Eric', about: 'Man, American, higher and friendly' },
   { id: 'am_onyx', name: 'Onyx', about: 'Man, American, deep and calm' },
@@ -24,8 +24,13 @@ export const VOICES: LocalVoice[] = [
   { id: 'bf_emma', name: 'Emma', about: 'Woman, British, clear and composed' }
 ]
 
-/** Quick and a touch faster than normal, at the voice's own pitch: about 200 words a minute. */
-export const DEFAULT_VOICE: VoiceChoice = { id: 'am_puck', speed: 1.1, pitch: 0 }
+/**
+ * A lively narrator at a steady tech-channel pace, about 170 words a minute, at the voice's own pitch (measured
+ * against a popular tech explainer: the same pitch, about 135 Hz, and the same range of ups and downs).
+ */
+export const DEFAULT_VOICE: VoiceChoice = { id: 'am_fenrir', speed: 1.05, pitch: 0 }
+/** The default before 1.23.1: a voice left at it moves to the new default. */
+export const OLD_DEFAULT_VOICE: VoiceChoice = { id: 'am_puck', speed: 1.1, pitch: 0 }
 
 const SAMPLE = "You'd sit in a meeting where someone says, just put a cache in front of it. And you nod, like you know exactly what that means."
 

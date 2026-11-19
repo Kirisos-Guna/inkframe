@@ -59,7 +59,7 @@ ${
   short
     ? `\nThis is a short (${r.platform}): the first sentence IS the hook, no build-up; one idea, one reveal, one punchline; the last line loops back to the first so it rewatches well. No call to action.\n`
     : r.platform === 'YouTube'
-      ? '\nAfter the line to remember, one short sentence that points to a related next video (no "subscribe").\n'
+      ? '\nAfter the line to remember, end with a short sign-off as the last line ("Thanks for watching, see you in the next one."). Never tease or name another video.\n'
       : ''
 }
 ${SCRIPT_CRAFT}
@@ -75,7 +75,7 @@ Reply with JSON only:
   })
   const out = extractJson<{ title: string; script: string; hooks?: string[]; sources?: string[] }>(reply)
   if (!out.script?.trim()) throw new Error('The writer did not return a script. Try again.')
-  const script = await polishScript(w, out.script, words)
+  const script = await polishScript(w, out.script, words, !short && r.platform === 'YouTube')
   return { title: out.title ?? '', script, hooks: cleanHooks(out.hooks), sources: out.sources ?? [], by: `${w.provider} · ${w.model}` }
 }
 
@@ -92,14 +92,14 @@ const cleanHooks = (h: unknown) => (Array.isArray(h) ? h.map(String).map((s) => 
  * is off, asks the writer for one revision that names exactly what to change. A revision that comes back worse is
  * not used.
  */
-export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number) {
-  const issues = lintScript(script, targetWords)
+export async function polishScript(w: { provider: Provider; model: string }, script: string, targetWords: number, signOff = false) {
+  const issues = lintScript(script, targetWords, signOff)
   try {
     // Every script gets the editor's pass for the thread and the jumps between beats (what makes people leave), plus
     // whatever the local check found. A rewrite that the local check likes less is not used.
     const reply = await runAgent({ ...w, effort: 'High', cwd: libDir('writing'), prompt: retentionPrompt(script, issues, targetWords) })
     const revised = extractJson<{ script: string }>(reply).script?.trim()
-    return revised && lintScript(revised, targetWords).length <= issues.length ? revised : script
+    return revised && lintScript(revised, targetWords, signOff).length <= issues.length ? revised : script
   } catch {
     // The first version is still a whole script: better than nothing.
     return script

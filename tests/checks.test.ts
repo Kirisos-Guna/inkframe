@@ -30,9 +30,14 @@ describe('upload text for more views', () => {
     expect(tags).not.toContain('faa')
     expect(tags.join(',').length).toBeLessThanOrEqual(480)
   })
-  it('a script that fades out at the end is sent back', async () => {
+  it('a script ends on a sign-off, never a tease of another video', async () => {
     const { lintScript } = await import('../src/main/services/scriptCraft')
-    expect(lintScript('The cable leaks. Thanks for watching, see you next time.', 0).join(' ')).toContain('The ending fades out')
+    const good = 'The cable leaks. Nobody broke in. Thanks for watching, see you in the next one.'
+    expect(lintScript(good, 0, true).join(' ')).not.toMatch(/sign-off|teases|fades out/)
+    const tease = "Why is the backup the thing that takes you down? That's the next video. Nobody broke in."
+    expect(lintScript(tease, 0, true).join(' ')).toContain('teases another video')
+    expect(lintScript(tease, 0, true).join(' ')).toContain('End with a short sign-off')
+    expect(lintScript('It leaks. So there you have it. Thanks for watching.', 0, true).join(' ')).toContain('fades out')
   })
 })
 
