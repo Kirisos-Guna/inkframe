@@ -41,7 +41,7 @@ export async function scoutStyle(id: string, onStatus: (s: string) => void): Pro
   const language = LANGUAGE_NAMES[p.language ?? ''] ?? (p.language && p.language !== 'en' ? p.language : 'English')
   const s = getSettings()
   // Small jobs: a quick model is plenty.
-  const quick = p.settings.provider === 'Codex' ? { provider: 'Codex' as const, model: p.settings.model } : { provider: 'Claude Code' as const, model: 'Haiku 5.5' }
+  const quick = p.settings.provider === 'Codex' ? { provider: 'Codex' as const, model: p.settings.model } : { provider: p.settings.provider, model: 'Haiku 5.5' }
   const cwd = libDir('writing')
 
   onStatus('Working out what to search for')
@@ -106,8 +106,8 @@ Reply with JSON only: {"picks": ["id", "id", "id", "id"]}`
     urls: chosen.map((c) => `https://www.youtube.com/watch?v=${c.id}`),
     skipTest: true,
     mode: 'Look + pacing',
-    provider: p.settings.provider === 'Codex' ? 'Codex' : s.defaultProvider,
-    model: p.settings.provider === 'Codex' ? p.settings.model : 'Sonnet 5.5',
+    provider: p.settings.provider === 'Codex' || p.settings.provider === 'OpenRouter' ? p.settings.provider : s.defaultProvider,
+    model: p.settings.provider === 'Codex' || p.settings.provider === 'OpenRouter' ? p.settings.model : 'Sonnet 5.5',
     effort: 'Medium'
   })
 }

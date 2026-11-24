@@ -12,5 +12,12 @@ export const isLimitText = (text: string) => LIMIT.test(text)
 /** The reset time a message gives as "...|<seconds since 1970>", in ms, if it is still ahead. */
 export function resetFromText(text: string, now = Date.now()) {
   const at = Number(text.match(/\|(\d{10})\b/)?.[1] ?? 0) * 1000
-  return at > now ? at : undefined
+  if (at > now) return at
+  // OpenRouter's free models: "free-models-per-min" frees up within a minute, "free-models-per-day" at midnight UTC.
+  if (/per-min/i.test(text)) return now + 65_000
+  if (/per-day/i.test(text)) {
+    const d = new Date(now)
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) + 60_000
+  }
+  return undefined
 }

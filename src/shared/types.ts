@@ -1,5 +1,5 @@
 export type VideoKind = 'Explainer' | 'Story' | 'Case study' | 'Tutorial' | 'Sales pitch'
-export type Provider = 'Claude Code' | 'Codex'
+export type Provider = 'Claude Code' | 'Codex' | 'OpenRouter'
 export type Effort = 'Low' | 'Medium' | 'High'
 export type ChecksLevel = 'Off' | 'Low' | 'Medium' | 'High'
 
@@ -227,6 +227,11 @@ export interface AppSettings {
   writerModel?: string
   /** How this channel's scripts sound (persona, audience, words to use or avoid, an example line). Used for every script. */
   scriptVoice?: string
+  /** OpenRouter (free models through the Claude Code engine): the user's key and the models chosen in Settings. */
+  openrouterKey?: string
+  openrouterModel?: string
+  /** For quick jobs (checks, small fixes); unset: the main model. */
+  openrouterQuickModel?: string
   /** Use the graphics card to encode the finished video (default on; falls back to the CPU) */
   gpu?: boolean
   /** Hidden built-in styles (the library's own can't be deleted, only hidden) */

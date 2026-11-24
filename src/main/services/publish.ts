@@ -12,13 +12,16 @@ import { HOUSE_VOICE, lintScript, retentionPrompt, SCRIPT_CRAFT, SCRIPT_JSON, SC
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
-/** Writing goes to Codex by default (when it is installed), otherwise to Claude Code. */
-export async function writer() {
+/**
+ * Who writes: Codex by default (when it is installed), otherwise Claude Code, or OpenRouter's free model when chosen.
+ */
+export async function writer(): Promise<{ provider: Provider; model: string }> {
   const s = getSettings()
   const want = s.writerProvider ?? 'Codex'
   const provider = want === 'Codex' && !(await codexPath()) ? 'Claude Code' : want
-  const model = provider === 'Codex' ? s.writerModel ?? 'Codex default' : s.defaultProvider === 'Claude Code' ? s.defaultModel : 'Sonnet 5.5'
-  return { provider, model } as const
+  const model =
+    provider === 'Codex' ? s.writerModel ?? 'Codex default' : provider === 'OpenRouter' ? s.openrouterModel ?? '' : s.defaultProvider === 'Claude Code' ? s.defaultModel : 'Sonnet 5.5'
+  return { provider, model }
 }
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`

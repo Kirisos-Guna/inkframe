@@ -6,6 +6,8 @@ import { SHOWPIECES } from '@shared/styles'
 import { errorText, useApp } from '@/store/app'
 import { Segmented, Select } from '@/components/ui'
 import { StylePreview } from '@/components/StylePreview'
+import { useFreeModels } from '@/components/openrouter'
+import { OPENROUTER_DEFAULT } from '@shared/openrouter'
 
 type Tab = 'Library' | 'My styles' | 'Learn from a video'
 
@@ -154,6 +156,7 @@ function Learn() {
   const [line, setLine] = useState('')
   const [provider, setProvider] = useState<Provider>(settings?.defaultProvider ?? 'Claude Code')
   const [model, setModel] = useState(settings?.defaultModel ?? 'Opus 5.5')
+  const free = useFreeModels(model)
   const [effort, setEffort] = useState<Effort>('High')
   const [sessions, setSessions] = useState<LearnSession[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
@@ -248,8 +251,15 @@ function Learn() {
           <div className="mt-4 flex gap-4">
             <div className="pt-6 text-[14.5px] text-muted">Built by</div>
             <div className="grid flex-1 grid-cols-2 gap-2.5">
-              <Select<Provider> value={provider} options={['Claude Code', 'Codex']} onChange={setProvider} />
-              <Select value={model} options={provider === 'Codex' ? ['Codex default'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1']} onChange={setModel} />
+              <Select<Provider>
+                value={provider}
+                options={['Claude Code', 'Codex', 'OpenRouter']}
+                onChange={(v) => {
+                  setProvider(v)
+                  setModel(v === 'Codex' ? 'Codex default' : v === 'OpenRouter' ? settings?.openrouterModel ?? OPENROUTER_DEFAULT : 'Opus 5.5')
+                }}
+              />
+              <Select value={model} options={provider === 'Codex' ? ['Codex default'] : provider === 'OpenRouter' ? free : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1']} onChange={setModel} />
               <Select<string>
                 className="col-span-2"
                 value={`Intelligence: ${effort}`}

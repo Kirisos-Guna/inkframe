@@ -7,6 +7,8 @@ import type { Effort, Provider } from '../../shared/types'
 import { claudePath, codexPath, setClaudeSignedOut } from './tools'
 import { fakeAgent, fakeEnabled } from './fakeAgent'
 import { isLimitText, resetFromText } from './limits'
+import { getSettings, libDir } from './store'
+import { OPENROUTER_DEFAULT, OPENROUTER_URL } from '../../shared/openrouter'
 
 export interface Usage {
   fiveHour: number // percent used
@@ -102,10 +104,10 @@ function friendly(tool: string, input: Record<string, unknown>) {
 }
 
 /** Starts the CLI. A .cmd needs a shell, and then every argument with a space must be quoted by hand. */
-function start(exe: string, args: string[], cwd: string) {
+function start(exe: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
   const shell = /\.(cmd|bat)$/i.test(exe)
   const q = (a: string) => (shell && /[\s&()^|<>"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a)
-  const p = spawn(shell ? `"${exe}"` : exe, args.map(q), { cwd, env: cleanEnv(), windowsHide: true, shell })
+  const p = spawn(shell ? `"${exe}"` : exe, args.map(q), { cwd, env: { ...cleanEnv(), ...extraEnv }, windowsHide: true, shell })
   // Decode as one UTF-8 stream, so a character split between two chunks is not garbled.
   p.stdout.setEncoding('utf8')
   p.stderr.setEncoding('utf8')
@@ -145,10 +147,41 @@ export async function runAgent(o: AgentOpts): Promise<string> {
   return o.provider === 'Codex' ? runCodex(o) : runClaude(o)
 }
 
+/**
+ * OpenRouter runs through the same Claude Code engine (its tools, its picture reading, its stream), pointed at
+ * OpenRouter's Anthropic-compatible API with the user's key. Every model the app asks for by Claude name (Sonnet for a
+ * quick fix, Haiku for a check) becomes the OpenRouter model chosen in Settings, and Claude Code's own background
+ * calls go there too. Its own settings folder keeps the user's Claude sign-in out of it.
+ */
+function openRouterSetup(o: AgentOpts) {
+  const s = getSettings()
+  const key = s.openrouterKey?.trim()
+  if (!key) throw new Error('OpenRouter is chosen, but no OpenRouter API key is set. Add your key in Settings (get one free at openrouter.ai/keys).')
+  const quick = o.model in MODEL_IDS && /Haiku|Sonnet/.test(o.model)
+  const model = (o.model in MODEL_IDS || !o.model ? (quick ? s.openrouterQuickModel : undefined) ?? s.openrouterModel : o.model) || OPENROUTER_DEFAULT
+  const env: Record<string, string> = {
+    ANTHROPIC_BASE_URL: OPENROUTER_URL,
+    ANTHROPIC_AUTH_TOKEN: key,
+    ANTHROPIC_API_KEY: '',
+    ANTHROPIC_MODEL: model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+    ANTHROPIC_SMALL_FAST_MODEL: model,
+    CLAUDE_CONFIG_DIR: libDir('openrouter'),
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+  }
+  return { model, env }
+}
+
 async function runClaude(o: AgentOpts): Promise<string> {
   const exe = await claudePath()
   if (!exe) throw new Error('Claude Code is not installed on this computer. Install it, sign in once, or set its path in Settings.')
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
+  const router = o.provider === 'OpenRouter' ? openRouterSetup(o) : null
+  // Effort is a Claude setting: other models get their own default thinking.
+  const args = router
+    ? ['-p', '--output-format', 'stream-json', '--verbose', '--model', router.model]
+    : ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
   // Lean sessions: only the tools this job needs, none of the user's MCP servers or skills, a short task-specific
   // system prompt instead of the general coding one, and nothing saved. Same work, far fewer tokens per call.
   args.push('--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file', systemPromptFile(o.system))
@@ -156,12 +189,13 @@ async function runClaude(o: AgentOpts): Promise<string> {
     args.push('--tools', 'Read,Write,Edit', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit')
     for (const d of o.addDirs ?? []) args.push('--add-dir', d)
   } else {
-    // Research (the script writer's) may search and read the web.
-    const web = o.search ? ['WebSearch', 'WebFetch'] : []
+    // Research (the script writer's) may search and read the web. Web search is Anthropic's own server tool: through
+    // OpenRouter the writer reads pages it knows instead.
+    const web = o.search ? (router ? ['WebFetch'] : ['WebSearch', 'WebFetch']) : []
     args.push('--tools', ['Read', ...web].join(','), '--allowedTools', 'Read', ...web)
   }
   return new Promise((resolve, reject) => {
-    const p = start(exe, args, o.cwd)
+    const p = start(exe, args, o.cwd, router?.env)
     let buf = ''
     let result: string | null = null
     let error: string | null = null
@@ -205,6 +239,10 @@ async function runClaude(o: AgentOpts): Promise<string> {
         setClaudeSignedOut(false)
         resolve(result)
       } else if (limit) reject(limit)
+      else if (router && /\b401\b|authenticat|user not found|invalid api key/i.test(`${error ?? ''} ${stderr}`))
+        reject(new Error('OpenRouter did not accept the API key. Check it in Settings (openrouter.ai/keys).'))
+      else if (router && /\b404\b|no endpoints|not a valid model|model.*not (found|available)/i.test(`${error ?? ''} ${stderr}`))
+        reject(new Error(`OpenRouter cannot run "${router.model}" right now (free models come and go). Choose another free model in Settings.`))
       else if (isSignInError(`${error ?? ''} ${stderr}`)) {
         setClaudeSignedOut(true)
         reject(new Error(SIGN_IN_HELP))

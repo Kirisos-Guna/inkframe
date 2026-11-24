@@ -9,7 +9,7 @@ import { codexPath, ffmpegPath, resetToolCache, ytDlpPath } from './tools'
 import { run } from './media'
 import { download, transcribe } from './transcribe'
 import { readVtt } from './vtt'
-import { channelVoice, polishScript } from './publish'
+import { channelVoice, polishScript, writer } from './publish'
 import { HOUSE_VOICE, SCRIPT_CRAFT, SCRIPT_JSON, SCRIPT_PROCESS, WPM } from './scriptCraft'
 
 export interface RecreateRequest {
@@ -101,9 +101,7 @@ export async function recreateVideo(r: RecreateRequest, onStatus: (s: string) =>
     const duration = meta.duration ?? 0
     const targetWords = r.minutes > 0 ? Math.round(r.minutes * WPM) : spoken
     const s = getSettings()
-    const want = s.writerProvider ?? 'Codex'
-    const provider = want === 'Codex' && !(await codexPath()) ? 'Claude Code' : want
-    const model = provider === 'Codex' ? (s.writerModel ?? 'Codex default') : s.defaultProvider === 'Claude Code' ? s.defaultModel : 'Sonnet 5.5'
+    const { provider, model } = await writer()
     onStatus(`Analysing it and writing your script (${provider})`)
     const reply = await runAgent({
       provider,

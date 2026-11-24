@@ -27,6 +27,8 @@ import { Chips, Row, Select, StepBadge, Waveform } from '@/components/ui'
 import { StylePreview } from '@/components/StylePreview'
 import { ScriptWriter } from '@/components/ScriptWriter'
 import { VoiceMaker } from '@/components/VoiceMaker'
+import { useFreeModels } from '@/components/openrouter'
+import { OPENROUTER_DEFAULT } from '@shared/openrouter'
 
 const TEMPLATES: Record<string, string> = {
   Explainer:
@@ -90,6 +92,7 @@ const defaultSettings = (): ProjectSettings => ({
 
 export default function NewVideo() {
   const { settings: app, styles, go, showToast, upsertProject, status } = useApp()
+  const free = useFreeModels(app?.openrouterModel)
   const [draft, setDraft] = useState<Project | null>(null)
   const [peaks, setPeaks] = useState<number[]>([])
   const [adding, setAdding] = useState(0)
@@ -707,10 +710,12 @@ export default function NewVideo() {
             <div className="flex-1 space-y-2.5">
               <Select<Provider>
                 value={s.provider}
-                options={['Claude Code', 'Codex']}
-                onChange={(provider) => set({ provider, model: provider === 'Codex' ? CODEX_MODELS[0] : 'Opus 5.5' })}
+                options={['Claude Code', 'Codex', 'OpenRouter']}
+                onChange={(provider) =>
+                  set({ provider, model: provider === 'Codex' ? CODEX_MODELS[0] : provider === 'OpenRouter' ? app?.openrouterModel ?? OPENROUTER_DEFAULT : 'Opus 5.5' })
+                }
               />
-              <Select value={s.model} options={s.provider === 'Codex' ? CODEX_MODELS : MODELS} onChange={(model) => set({ model })} />
+              <Select value={s.model} options={s.provider === 'Codex' ? CODEX_MODELS : s.provider === 'OpenRouter' ? free : MODELS} onChange={(model) => set({ model })} />
               <Select<string>
                 value={`Intelligence: ${s.effort}`}
                 options={['Intelligence: Low', 'Intelligence: Medium', 'Intelligence: High']}
@@ -728,13 +733,21 @@ export default function NewVideo() {
             </div>
           </div>
           {(() => {
-            const found = s.provider === 'Claude Code' ? status?.claude : status?.codex
+            const router = s.provider === 'OpenRouter'
+            const found = s.provider === 'Codex' ? status?.codex : status?.claude
             const signedOut = s.provider === 'Claude Code' && status?.claude && !status.claudeSignedIn
-            const problem = found === false ? `${s.provider} not found on this computer. Set it in Settings.` : signedOut ? 'Claude Code is not signed in. Run claude in a terminal and sign in once.' : null
+            const problem =
+              found === false
+                ? `${router ? 'Claude Code (the engine OpenRouter runs through)' : s.provider} not found on this computer. Set it in Settings.`
+                : router && !app?.openrouterKey
+                  ? 'No OpenRouter key yet: add your free key in Settings.'
+                  : signedOut
+                    ? 'Claude Code is not signed in. Run claude in a terminal and sign in once.'
+                    : null
             return (
               <div className={`mt-4 flex items-center gap-2 text-[14.5px] ${problem ? 'text-accent2' : 'text-ok'}`}>
                 {problem ? <X size={15} /> : <Check size={15} />}
-                {problem ?? `Runs on your ${s.provider === 'Codex' ? 'ChatGPT' : 'Claude'} plan. No credits to buy.`}
+                {problem ?? (router ? 'Runs on a free OpenRouter model: no plan needed, but free models are weaker and have daily limits.' : `Runs on your ${s.provider === 'Codex' ? 'ChatGPT' : 'Claude'} plan. No credits to buy.`)}
               </div>
             )
           })()}

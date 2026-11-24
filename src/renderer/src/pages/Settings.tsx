@@ -5,11 +5,14 @@ import { APP_NAME, APP_VERSION } from '@shared/brand'
 import { useApp } from '@/store/app'
 import { Select } from '@/components/ui'
 import { UpdateSettings } from '@/components/Update'
+import { useFreeModels } from '@/components/openrouter'
+import { OPENROUTER_DEFAULT } from '@shared/openrouter'
 
 export default function Settings() {
   const { settings, status } = useApp()
   const [s, setS] = useState<AppSettings | undefined>(settings)
   useEffect(() => setS(settings), [settings])
+  const free = useFreeModels(s?.openrouterModel)
   // The graphics card's video encoder, if FFmpeg can use one (undefined while checking).
   const [gpu, setGpu] = useState<string | null | undefined>(undefined)
   useEffect(() => {
@@ -79,8 +82,16 @@ export default function Settings() {
       <section className="card mt-5 px-7 py-5">
         <div className="mb-4 text-[19px] font-semibold">Made by (default for new videos)</div>
         <div className="grid grid-cols-4 gap-3">
-          <Select<Provider> value={s.defaultProvider} options={['Claude Code', 'Codex']} onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'Codex default' : 'Opus 5.5' })} />
-          <Select value={s.defaultModel} options={s.defaultProvider === 'Codex' ? ['Codex default'] : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']} onChange={(v) => save({ defaultModel: v })} />
+          <Select<Provider>
+            value={s.defaultProvider}
+            options={['Claude Code', 'Codex', 'OpenRouter']}
+            onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'Codex default' : v === 'OpenRouter' ? s.openrouterModel ?? OPENROUTER_DEFAULT : 'Opus 5.5' })}
+          />
+          <Select
+            value={s.defaultModel}
+            options={s.defaultProvider === 'Codex' ? ['Codex default'] : s.defaultProvider === 'OpenRouter' ? free : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']}
+            onChange={(v) => save({ defaultModel: v })}
+          />
           <Select<string>
             value={`Intelligence: ${s.defaultEffort}`}
             options={['Intelligence: Low', 'Intelligence: Medium', 'Intelligence: High']}
@@ -91,10 +102,51 @@ export default function Settings() {
       </section>
 
       <section className="card mt-5 px-7 py-5">
+        <div className="text-[19px] font-semibold">OpenRouter (free models)</div>
+        <div className="mb-4 mt-1 text-[14px] text-muted">
+          Optional. Choose OpenRouter under Made by or Writing done by to make videos with free models instead of your Claude or ChatGPT plan. They run
+          through the same engine, but they are weaker than Claude: expect more fixes and simpler drawings. Free models have daily limits (about 50
+          requests a day, or 1,000 once your OpenRouter account has bought $10 of credits); a video uses one or two per part, plus its checks.{' '}
+          <a className="text-accent" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
+            Get a free key
+          </a>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="text-[13.5px] text-muted">
+            OpenRouter API key
+            <input
+              key={s.openrouterKey ?? ''}
+              type="password"
+              className="input mt-1 py-2 text-[14px]"
+              defaultValue={s.openrouterKey ?? ''}
+              placeholder="Not set"
+              onBlur={(e) => e.target.value.trim() !== (s.openrouterKey ?? '') && save({ openrouterKey: e.target.value.trim() })}
+            />
+          </label>
+          <label className="text-[13.5px] text-muted">
+            Model (draws, writes, reads pictures)
+            <div className="mt-1">
+              <Select value={s.openrouterModel ?? OPENROUTER_DEFAULT} options={free} onChange={(v) => save({ openrouterModel: v })} />
+            </div>
+          </label>
+          <label className="text-[13.5px] text-muted">
+            Quick jobs (checks, small fixes)
+            <div className="mt-1">
+              <Select
+                value={s.openrouterQuickModel ?? 'Same as the model'}
+                options={['Same as the model', ...free]}
+                onChange={(v) => save({ openrouterQuickModel: v === 'Same as the model' ? undefined : v })}
+              />
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <section className="card mt-5 px-7 py-5">
         <div className="text-[19px] font-semibold">Writing done by</div>
         <div className="mb-4 mt-1 text-[14px] text-muted">Scripts, titles, descriptions and captions.</div>
         <div className="grid grid-cols-4 gap-3">
-          <Select<Provider> value={s.writerProvider ?? 'Codex'} options={['Codex', 'Claude Code']} onChange={(v) => save({ writerProvider: v })} />
+          <Select<Provider> value={s.writerProvider ?? 'Codex'} options={['Codex', 'Claude Code', 'OpenRouter']} onChange={(v) => save({ writerProvider: v })} />
           {(s.writerProvider ?? 'Codex') === 'Codex' && (
             <Select value={s.writerModel ?? 'Codex default'} options={['Codex default']} onChange={(v) => save({ writerModel: v })} />
           )}

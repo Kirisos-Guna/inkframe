@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { OpenRouterModel } from '../shared/openrouter'
 import type {
   LocalVoice,
   VoiceChoice,
@@ -37,6 +38,9 @@ const api = {
   settings: {
     get: () => invoke<AppSettings>('settings:get'),
     set: (patch: Partial<AppSettings>) => invoke<AppSettings>('settings:set', patch)
+  },
+  openrouter: {
+    models: () => invoke<OpenRouterModel[]>('openrouter:models')
   },
   status: () => invoke<Status>('status:get'),
   projects: {
