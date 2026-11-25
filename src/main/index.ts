@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, shell, Tray } from 'electron'
+import { OPENCODE_DEFAULT } from '../shared/opencode'
 import { createReadStream, existsSync, mkdirSync, statSync } from 'fs'
 import { extname, join } from 'path'
 import { Readable } from 'stream'
@@ -18,8 +19,7 @@ import { startLearn, stopLearn } from './services/learn'
 import { scoutStyle } from './services/styleScout'
 import { makeThumbnails, writeCaptions, writePublishKit, writeScript, type ScriptRequest } from './services/publish'
 import { toSrt, toVtt, linesFromWords } from './services/captions'
-import { killAllAgents, onUsage, type Usage } from './services/agent'
-import { freeModels, OPENROUTER_DEFAULT, type OpenRouterModel } from '../shared/openrouter'
+import { killAllAgents, onUsage, openCodeFreeModels, type Usage } from './services/agent'
 import { checkForUpdates, downloadUpdate, installUpdate, setupUpdates, updateState } from './services/updater'
 import { copyFileSync, readFileSync, writeFileSync } from 'fs'
 
@@ -155,14 +155,10 @@ function registerIpc() {
   const h = <A extends unknown[], R>(ch: string, fn: (...a: A) => R) => ipcMain.handle(ch, (_e, ...a) => fn(...(a as A)))
 
   h('settings:get', () => store.getSettings())
-  // OpenRouter's public list of models (no key needed): the free ones that can do the app's work.
-  h('openrouter:models', async (): Promise<OpenRouterModel[]> => {
-    try {
-      const r = await fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(15000) })
-      return freeModels(((await r.json()) as { data: Parameters<typeof freeModels>[0] }).data)
-    } catch {
-      return [{ id: OPENROUTER_DEFAULT, name: OPENROUTER_DEFAULT, context: 0, tools: true, images: true }]
-    }
+  // The free models of the OpenCode desktop app, from its console tool's own list.
+  h('opencode:models', async () => {
+    const free = await openCodeFreeModels()
+    return free.length ? free : [OPENCODE_DEFAULT]
   })
   h('settings:set', (patch) => {
     const s = store.setSettings(patch as object)

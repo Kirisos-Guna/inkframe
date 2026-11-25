@@ -43,9 +43,13 @@ export function getSettings(): AppSettings {
   }
   const saved = readJson<Partial<AppSettings> & Record<string, unknown>>(settingsFile(), {})
   // The stock-clip and GIF keys were for Fast Tech Remix, which is gone: they are not kept on disk.
-  const old = ['pexelsKey', 'pixabayKey', 'giphyKey', 'quoteClips'].filter((k) => k in saved)
-  if (old.length) {
+  const old = ['pexelsKey', 'pixabayKey', 'giphyKey', 'quoteClips', 'openrouterKey', 'openrouterModel', 'openrouterQuickModel'].filter((k) => k in saved)
+  // OpenRouter was removed: a choice of it falls back to Claude Code.
+  const gone = (['defaultProvider', 'writerProvider'] as const).filter((k) => (saved[k] as string) === 'OpenRouter')
+  if (old.length || gone.length) {
     for (const k of old) delete saved[k]
+    for (const k of gone) saved[k] = 'Claude Code'
+    if (gone.includes('defaultProvider')) saved.defaultModel = 'Opus 5.5'
     writeJson(settingsFile(), saved)
   }
   return { ...d, ...saved }
@@ -99,6 +103,12 @@ export function getProject(id: string, dir?: string): Project | undefined {
         if (gone(x.styleId)) x.styleId = undefined
         if (existsSync(f) && readFileSync(f, 'utf8').includes('@kit/remix')) x.status = 'Not designed yet'
       }
+    }
+    // OpenRouter was removed: a video set to it goes back to the default maker.
+    if ((p.settings.provider as string) === 'OpenRouter') {
+      const s = getSettings()
+      p.settings.provider = s.defaultProvider
+      p.settings.model = s.defaultModel
     }
     // A change that was being worked on is done again on the next run.
     for (const c of p.comments) if (c.state === 'Working') c.state = 'Waiting'

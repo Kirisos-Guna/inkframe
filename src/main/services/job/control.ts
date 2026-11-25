@@ -97,7 +97,7 @@ export async function guarded<T>(p: Project, job: AbortSignal, fn: (signal: Abor
 export function waitForLimit(p: Project, e: LimitError) {
   // Everything stops (drawing, rendering, checks) and stays paused until the user presses Resume.
   if (!p.job.paused) pauseJob(p.id)
-  const who = p.settings.provider === 'Codex' ? 'Codex' : p.settings.provider === 'OpenRouter' ? 'OpenRouter free-model' : 'Claude'
+  const who = p.settings.provider === 'Codex' ? 'Codex' : p.settings.provider === 'OpenCode' ? 'OpenCode free-model' : 'Claude'
   const when = e.resetsAt ? ` It resets at about ${new Date(e.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
   step(p, `Paused: the ${who} limit is reached`, {
     title: `Paused: the ${who} limit is reached`,

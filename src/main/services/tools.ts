@@ -65,6 +65,20 @@ export async function codexPath() {
   return resolved.codex
 }
 
+/**
+ * OpenCode's console tool: the copy inside the OpenCode desktop app (its free models need no key there), one on the
+ * PATH, or the path set in Settings.
+ */
+export async function opencodePath() {
+  const s = getSettings()
+  if (s.opencodePath && existsSync(s.opencodePath)) return s.opencodePath
+  if (resolved.opencode === undefined) {
+    const desktop = join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'ai.opencode.desktop', 'resources', 'opencode-cli.exe')
+    resolved.opencode = [desktop].find(existsSync) ?? (await which('opencode')) ?? null
+  }
+  return resolved.opencode
+}
+
 export async function ytDlpPath() {
   const s = getSettings()
   if (s.ytDlpPath && existsSync(s.ytDlpPath)) return s.ytDlpPath
@@ -113,6 +127,7 @@ export async function getStatus(): Promise<Status> {
     claude: !!(await claudePath()),
     claudeSignedIn: !signedOut && (existsSync(join(app.getPath('home'), '.claude', '.credentials.json')) || !!process.env.ANTHROPIC_API_KEY),
     codex: !!(await codexPath()),
+    opencode: !!(await opencodePath()),
     ffmpeg: existsSync(ffmpegPath()),
     whisper: !!(w.exe && w.model),
     ytDlp: !!(await ytDlpPath())

@@ -37,7 +37,7 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
   const [busy, setBusy] = useState(false)
   const [out, setOut] = useState<{ title: string; script: string; hooks?: string[]; sources: string[]; by: string; direction?: string; recreated?: Recreated } | null>(null)
   const want = settings?.writerProvider ?? 'Codex'
-  const writer = want === 'OpenRouter' ? 'OpenRouter' : want === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
+  const writer = want === 'OpenCode' && status?.opencode ? 'OpenCode' : want === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
   useEffect(() => window.api.writer.onRecreate(setStage), [])
   useEffect(() => window.api.writer.onTrends(setStage), [])
 
@@ -93,14 +93,14 @@ export function ScriptWriter({ onClose, onUse }: { onClose: () => void; onUse: (
                 className="rounded-md border border-line bg-[#0f0f11] px-2 py-0.5 text-[13.5px] text-ink outline-none"
                 value={writer}
                 disabled={busy}
-                onChange={async (e) => useApp.setState({ settings: await window.api.settings.set({ writerProvider: e.target.value as 'Claude Code' | 'Codex' | 'OpenRouter' }) })}
+                onChange={async (e) => useApp.setState({ settings: await window.api.settings.set({ writerProvider: e.target.value as 'Claude Code' | 'Codex' | 'OpenCode' }) })}
               >
                 <option value="Claude Code">Claude Code</option>
                 <option value="Codex" disabled={!status?.codex}>
                   Codex{status?.codex ? '' : ' (not installed)'}
                 </option>
-                <option value="OpenRouter" disabled={!settings?.openrouterKey}>
-                  OpenRouter (free){settings?.openrouterKey ? '' : ' (add a key in Settings)'}
+                <option value="OpenCode" disabled={!status?.opencode}>
+                  OpenCode (free){status?.opencode ? '' : ' (not installed)'}
                 </option>
               </select>
             </label>

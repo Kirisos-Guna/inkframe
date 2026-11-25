@@ -1,14 +1,14 @@
 import { spawn, execFile, execFileSync } from 'child_process'
 import { createHash } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { app } from 'electron'
 import { basename, join } from 'path'
 import type { Effort, Provider } from '../../shared/types'
-import { claudePath, codexPath, setClaudeSignedOut } from './tools'
+import { claudePath, codexPath, opencodePath, setClaudeSignedOut } from './tools'
+import { getSettings } from './store'
+import { freeOpenCodeModels, OPENCODE_DEFAULT, OPENCODE_QUICK_DEFAULT } from '../../shared/opencode'
 import { fakeAgent, fakeEnabled } from './fakeAgent'
 import { isLimitText, resetFromText } from './limits'
-import { getSettings, libDir } from './store'
-import { OPENROUTER_DEFAULT, OPENROUTER_URL } from '../../shared/openrouter'
 
 export interface Usage {
   fiveHour: number // percent used
@@ -144,44 +144,13 @@ export async function runAgent(o: AgentOpts): Promise<string> {
       }
       return Promise.reject(asLimit(e.message) ?? e)
     })
-  return o.provider === 'Codex' ? runCodex(o) : runClaude(o)
-}
-
-/**
- * OpenRouter runs through the same Claude Code engine (its tools, its picture reading, its stream), pointed at
- * OpenRouter's Anthropic-compatible API with the user's key. Every model the app asks for by Claude name (Sonnet for a
- * quick fix, Haiku for a check) becomes the OpenRouter model chosen in Settings, and Claude Code's own background
- * calls go there too. Its own settings folder keeps the user's Claude sign-in out of it.
- */
-function openRouterSetup(o: AgentOpts) {
-  const s = getSettings()
-  const key = s.openrouterKey?.trim()
-  if (!key) throw new Error('OpenRouter is chosen, but no OpenRouter API key is set. Add your key in Settings (get one free at openrouter.ai/keys).')
-  const quick = o.model in MODEL_IDS && /Haiku|Sonnet/.test(o.model)
-  const model = (o.model in MODEL_IDS || !o.model ? (quick ? s.openrouterQuickModel : undefined) ?? s.openrouterModel : o.model) || OPENROUTER_DEFAULT
-  const env: Record<string, string> = {
-    ANTHROPIC_BASE_URL: OPENROUTER_URL,
-    ANTHROPIC_AUTH_TOKEN: key,
-    ANTHROPIC_API_KEY: '',
-    ANTHROPIC_MODEL: model,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
-    ANTHROPIC_SMALL_FAST_MODEL: model,
-    CLAUDE_CONFIG_DIR: libDir('openrouter'),
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
-  }
-  return { model, env }
+  return o.provider === 'Codex' ? runCodex(o) : o.provider === 'OpenCode' ? runOpenCode(o) : runClaude(o)
 }
 
 async function runClaude(o: AgentOpts): Promise<string> {
   const exe = await claudePath()
   if (!exe) throw new Error('Claude Code is not installed on this computer. Install it, sign in once, or set its path in Settings.')
-  const router = o.provider === 'OpenRouter' ? openRouterSetup(o) : null
-  // Effort is a Claude setting: other models get their own default thinking.
-  const args = router
-    ? ['-p', '--output-format', 'stream-json', '--verbose', '--model', router.model]
-    : ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', MODEL_IDS[o.model] ?? o.model, '--effort', o.effort.toLowerCase()]
   // Lean sessions: only the tools this job needs, none of the user's MCP servers or skills, a short task-specific
   // system prompt instead of the general coding one, and nothing saved. Same work, far fewer tokens per call.
   args.push('--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file', systemPromptFile(o.system))
@@ -189,13 +158,12 @@ async function runClaude(o: AgentOpts): Promise<string> {
     args.push('--tools', 'Read,Write,Edit', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read', 'Write', 'Edit')
     for (const d of o.addDirs ?? []) args.push('--add-dir', d)
   } else {
-    // Research (the script writer's) may search and read the web. Web search is Anthropic's own server tool: through
-    // OpenRouter the writer reads pages it knows instead.
-    const web = o.search ? (router ? ['WebFetch'] : ['WebSearch', 'WebFetch']) : []
+    // Research (the script writer's) may search and read the web.
+    const web = o.search ? ['WebSearch', 'WebFetch'] : []
     args.push('--tools', ['Read', ...web].join(','), '--allowedTools', 'Read', ...web)
   }
   return new Promise((resolve, reject) => {
-    const p = start(exe, args, o.cwd, router?.env)
+    const p = start(exe, args, o.cwd)
     let buf = ''
     let result: string | null = null
     let error: string | null = null
@@ -239,10 +207,6 @@ async function runClaude(o: AgentOpts): Promise<string> {
         setClaudeSignedOut(false)
         resolve(result)
       } else if (limit) reject(limit)
-      else if (router && /\b401\b|authenticat|user not found|invalid api key/i.test(`${error ?? ''} ${stderr}`))
-        reject(new Error('OpenRouter did not accept the API key. Check it in Settings (openrouter.ai/keys).'))
-      else if (router && /\b404\b|no endpoints|not a valid model|model.*not (found|available)/i.test(`${error ?? ''} ${stderr}`))
-        reject(new Error(`OpenRouter cannot run "${router.model}" right now (free models come and go). Choose another free model in Settings.`))
       else if (isSignInError(`${error ?? ''} ${stderr}`)) {
         setClaudeSignedOut(true)
         reject(new Error(SIGN_IN_HELP))
@@ -310,7 +274,99 @@ async function runCodex(o: AgentOpts): Promise<string> {
   })
 }
 
+/**
+ * OpenCode: one `opencode run` of the console tool that ships inside the OpenCode desktop app, on one of its free
+ * models (no key, the desktop's own free access). Every Claude model the app asks for (Sonnet for a quick fix, Haiku
+ * for a check) becomes the OpenCode model chosen in Settings. The prompt goes in on standard input (too long for a
+ * command line), its JSON events come out: tool calls become the step shown, the last text is the answer.
+ */
+export function openCodeModel(asked: string) {
+  const s = getSettings()
+  if (!(asked in MODEL_IDS) && asked.startsWith('opencode/')) return asked
+  const quick = /Haiku|Sonnet/.test(asked)
+  return quick ? s.opencodeQuickModel || OPENCODE_QUICK_DEFAULT : s.opencodeModel || OPENCODE_DEFAULT
+}
+
+/**
+ * The free models OpenCode offers right now, read fresh from its console tool every time (OpenCode keeps its own
+ * catalogue up to date, so a newly released free model shows up here at once).
+ */
+export async function openCodeFreeModels() {
+  const exe = await opencodePath()
+  if (!exe) return []
+  const out = await new Promise<string>((res) => execFile(exe, ['models'], { windowsHide: true, timeout: 60000 }, (_e, o) => res(String(o ?? ''))))
+  return freeOpenCodeModels(out.split(/\r?\n/))
+}
+
+async function runOpenCode(o: AgentOpts, retried = false): Promise<string> {
+  const exe = await opencodePath()
+  if (!exe) throw new Error('OpenCode is not on this computer. Install the OpenCode desktop app, or set the path to opencode-cli.exe in Settings.')
+  let model = openCodeModel(o.model)
+  if (retried) {
+    // The chosen free model is gone (OpenCode's free models change): the default if it is still free, otherwise the
+    // first free model offered now.
+    const free = await openCodeFreeModels()
+    model = free.includes(OPENCODE_DEFAULT) ? OPENCODE_DEFAULT : free[0] ?? model
+  }
+  // --auto: its file tools work without asking (it only works in this job's folder); --archived: no session clutter.
+  const args = ['run', '--archived', '--auto', '--format', 'json', '-m', model]
+  return new Promise((resolve, reject) => {
+    // OpenCode takes its folder from PWD, not from the folder it is started in: without it, files land in the app's folder.
+    const p = start(exe, args, o.cwd, { PWD: o.cwd })
+    let buf = ''
+    let stderr = ''
+    let answer = ''
+    let failure = ''
+    const onAbort = () => {
+      killTree(p.pid)
+      reject(new Error('Stopped'))
+    }
+    o.signal?.addEventListener('abort', onAbort, { once: true })
+    // What OpenCode did, kept for when a run goes wrong (the last run in this folder, in work/opencode.log).
+    const log = existsSync(join(o.cwd, 'work')) ? join(o.cwd, 'work', 'opencode.log') : null
+    if (log) writeFileSync(log, `${model}\n${o.prompt.slice(0, 4000)}\n----\n`)
+    p.stdout.on('data', (d: string) => {
+      buf += d
+      if (log) appendFileSync(log, d)
+      let i: number
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim()
+        buf = buf.slice(i + 1)
+        if (!line) continue
+        try {
+          const ev = JSON.parse(line)
+          const part = ev.part ?? {}
+          if (ev.type === 'tool_use' && part.tool) {
+            const input = part.state?.input ?? {}
+            const name = String(part.tool)
+            o.onStep?.(friendly(name.charAt(0).toUpperCase() + name.slice(1), { file_path: input.filePath ?? input.path ?? input.file_path }))
+          } else if (ev.type === 'text' && typeof part.text === 'string' && part.text.trim()) answer = part.text
+          else if (ev.type === 'error') failure = String(ev.error?.message ?? ev.error?.type ?? 'OpenCode failed')
+        } catch {
+          /* not JSON: ignore */
+        }
+      }
+    })
+    p.stderr.on('data', (d) => (stderr += d.toString()))
+    p.on('error', reject)
+    p.on('close', (code) => {
+      o.signal?.removeEventListener('abort', onAbort)
+      if (o.signal?.aborted) return
+      if (answer && !failure) return resolve(answer)
+      const msg = failure || stderr.trim().split('\n').slice(-3).join(' ') || `OpenCode exited with code ${code}`
+      if (/model unavailable|no-route/i.test(msg)) {
+        if (!retried) return runOpenCode(o, true).then(resolve, reject)
+        return reject(new Error(`OpenCode cannot run "${model}" right now (free models come and go). Choose another free model in Settings.`))
+      }
+      reject(asLimit(msg) ?? new Error(msg))
+    })
+    // No system prompt flag: the shared instructions go first.
+    p.stdin.end(o.system ? `${o.system}\n\n---\n\n${o.prompt}` : o.prompt)
+  })
+}
+
 export { extractJson } from '../../shared/json'
+
 
 /** The short system prompt for every Inkframe session. */
 const SYSTEM_PROMPT = `You are the drawing and writing engine inside ${'Inkframe'}, a desktop app that turns a voiceover into an animated video.

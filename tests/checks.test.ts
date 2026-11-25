@@ -55,3 +55,11 @@ describe('upload text, the edge cases', () => {
     expect(fitTags(['a'.repeat(495), 'jitter'])).toEqual(['jitter'])
   })
 })
+
+describe('OpenCode free models', () => {
+  it('keeps only the free ones from the console list', async () => {
+    const { freeOpenCodeModels } = await import('../src/shared/opencode')
+    const out = ['opencode/claude-opus-5-5', 'opencode/deepseek-v4.1-flash-free', 'opencode/big-pickle', '', 'some warning line', 'opencode/gpt-5.5', 'opencode/nemotron-3.5-super-vl-free']
+    expect(freeOpenCodeModels(out)).toEqual(['opencode/deepseek-v4.1-flash-free', 'opencode/big-pickle', 'opencode/nemotron-3.5-super-vl-free'])
+  })
+})

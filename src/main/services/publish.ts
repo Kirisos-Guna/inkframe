@@ -12,15 +12,13 @@ import { HOUSE_VOICE, lintScript, retentionPrompt, SCRIPT_CRAFT, SCRIPT_JSON, SC
 import { linesFromWords, type Line } from './captions'
 import { emit } from './pipeline'
 
-/**
- * Who writes: Codex by default (when it is installed), otherwise Claude Code, or OpenRouter's free model when chosen.
- */
+/** Who writes: Codex by default (when it is installed), otherwise Claude Code, or OpenCode's free model when chosen. */
 export async function writer(): Promise<{ provider: Provider; model: string }> {
   const s = getSettings()
   const want = s.writerProvider ?? 'Codex'
   const provider = want === 'Codex' && !(await codexPath()) ? 'Claude Code' : want
   const model =
-    provider === 'Codex' ? s.writerModel ?? 'Codex default' : provider === 'OpenRouter' ? s.openrouterModel ?? '' : s.defaultProvider === 'Claude Code' ? s.defaultModel : 'Sonnet 5.5'
+    provider === 'Codex' ? s.writerModel ?? 'Codex default' : provider === 'OpenCode' ? s.opencodeModel ?? '' : s.defaultProvider === 'Claude Code' ? s.defaultModel : 'Sonnet 5.5'
   return { provider, model }
 }
 

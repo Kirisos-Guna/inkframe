@@ -106,8 +106,8 @@ Reply with JSON only: {"picks": ["id", "id", "id", "id"]}`
     urls: chosen.map((c) => `https://www.youtube.com/watch?v=${c.id}`),
     skipTest: true,
     mode: 'Look + pacing',
-    provider: p.settings.provider === 'Codex' || p.settings.provider === 'OpenRouter' ? p.settings.provider : s.defaultProvider,
-    model: p.settings.provider === 'Codex' || p.settings.provider === 'OpenRouter' ? p.settings.model : 'Sonnet 5.5',
+    provider: p.settings.provider === 'Codex' || p.settings.provider === 'OpenCode' ? p.settings.provider : s.defaultProvider,
+    model: p.settings.provider === 'Codex' || p.settings.provider === 'OpenCode' ? p.settings.model : 'Sonnet 5.5',
     effort: 'Medium'
   })
 }

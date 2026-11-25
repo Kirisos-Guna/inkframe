@@ -65,8 +65,14 @@ if (mode === 'make') {
   if (process.env.DIRECTION === 'template') await page.locator('button', { hasText: 'Explainer' }).first().click()
   else await page.fill('textarea', process.env.DIRECTION || 'One prompt, followed from the phone to the chip and back: the cell tower, the cable under the sea, the data center, the rows of servers, one GPU, and the answer coming home word by word. Dark board, pen drawings, one idea at a time.')
   // Quicker test: Sonnet, medium effort, low checks.
-  await page.locator('button', { hasText: 'Opus 5.5' }).first().click()
-  await page.locator('button', { hasText: 'Sonnet 5.5' }).first().click()
+  // PROVIDER=OpenCode: the free OpenCode model (no key); otherwise Claude Sonnet.
+  if (process.env.PROVIDER) {
+    await page.locator('button', { hasText: 'Claude Code' }).first().click()
+    await page.locator('button', { hasText: new RegExp('^' + process.env.PROVIDER + '$') }).first().click()
+  } else {
+    await page.locator('button', { hasText: 'Opus 5.5' }).first().click()
+    await page.locator('button', { hasText: 'Sonnet 5.5' }).first().click()
+  }
   await page.locator('button', { hasText: 'Intelligence: High' }).first().click()
   await page.locator('button', { hasText: 'Intelligence: Medium' }).first().click()
   await page.locator('select').nth(1).selectOption(process.env.CHECKS || 'Low')

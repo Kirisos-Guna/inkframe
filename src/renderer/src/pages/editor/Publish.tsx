@@ -16,7 +16,7 @@ export function Publish({ p }: { p: Project }) {
   const [note, setNote] = useState('')
   const [changed, setChanged] = useState(false)
   const want = settings?.writerProvider ?? 'Codex'
-  const writer = want === 'OpenRouter' ? 'OpenRouter' : want === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
+  const writer = want === 'OpenCode' && status?.opencode ? 'OpenCode' : want === 'Codex' && status?.codex ? 'Codex' : 'Claude Code'
   const ready = !!p.output && !p.job.running
 
   const run = async (what: string, fn: () => Promise<unknown>, done?: string) => {

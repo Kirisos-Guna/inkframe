@@ -5,14 +5,14 @@ import { APP_NAME, APP_VERSION } from '@shared/brand'
 import { useApp } from '@/store/app'
 import { Select } from '@/components/ui'
 import { UpdateSettings } from '@/components/Update'
-import { useFreeModels } from '@/components/openrouter'
-import { OPENROUTER_DEFAULT } from '@shared/openrouter'
+import { useOpenCodeModels } from '@/components/opencode'
+import { OPENCODE_DEFAULT, OPENCODE_QUICK_DEFAULT } from '@shared/opencode'
 
 export default function Settings() {
   const { settings, status } = useApp()
   const [s, setS] = useState<AppSettings | undefined>(settings)
   useEffect(() => setS(settings), [settings])
-  const free = useFreeModels(s?.openrouterModel)
+  const free = useOpenCodeModels(s?.opencodeModel)
   // The graphics card's video encoder, if FFmpeg can use one (undefined while checking).
   const [gpu, setGpu] = useState<string | null | undefined>(undefined)
   useEffect(() => {
@@ -84,12 +84,12 @@ export default function Settings() {
         <div className="grid grid-cols-4 gap-3">
           <Select<Provider>
             value={s.defaultProvider}
-            options={['Claude Code', 'Codex', 'OpenRouter']}
-            onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'Codex default' : v === 'OpenRouter' ? s.openrouterModel ?? OPENROUTER_DEFAULT : 'Opus 5.5' })}
+            options={['Claude Code', 'Codex', 'OpenCode']}
+            onChange={(v) => save({ defaultProvider: v, defaultModel: v === 'Codex' ? 'Codex default' : v === 'OpenCode' ? s.opencodeModel ?? OPENCODE_DEFAULT : 'Opus 5.5' })}
           />
           <Select
             value={s.defaultModel}
-            options={s.defaultProvider === 'Codex' ? ['Codex default'] : s.defaultProvider === 'OpenRouter' ? free : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']}
+            options={s.defaultProvider === 'Codex' ? ['Codex default'] : s.defaultProvider === 'OpenCode' ? free : ['Opus 5.5', 'Sonnet 5.5', 'Fable 5.1', 'Haiku 5.5']}
             onChange={(v) => save({ defaultModel: v })}
           />
           <Select<string>
@@ -102,41 +102,24 @@ export default function Settings() {
       </section>
 
       <section className="card mt-5 px-7 py-5">
-        <div className="text-[19px] font-semibold">OpenRouter (free models)</div>
+        <div className="text-[19px] font-semibold">OpenCode (free models)</div>
         <div className="mb-4 mt-1 text-[14px] text-muted">
-          Optional. Choose OpenRouter under Made by or Writing done by to make videos with free models instead of your Claude or ChatGPT plan. They run
-          through the same engine, but they are weaker than Claude: expect more fixes and simpler drawings. Free models have daily limits (about 50
-          requests a day, or 1,000 once your OpenRouter account has bought $10 of credits); a video uses one or two per part, plus its checks.{' '}
-          <a className="text-accent" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
-            Get a free key
-          </a>
+          Optional. Choose OpenCode under Made by or Writing done by to make videos with the free models of the OpenCode desktop app, with no key and no
+          plan. The app uses OpenCode's own console tool, the same prompts, checks and automatic fixes as with Claude. The free models are weaker than
+          Claude Opus, so the drawings and scripts may be plainer; keep Claude Code for your best videos.
+          {status?.opencode === false && <span className="text-accent2"> OpenCode is not on this computer: install the OpenCode desktop app.</span>}
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <label className="text-[13.5px] text-muted">
-            OpenRouter API key
-            <input
-              key={s.openrouterKey ?? ''}
-              type="password"
-              className="input mt-1 py-2 text-[14px]"
-              defaultValue={s.openrouterKey ?? ''}
-              placeholder="Not set"
-              onBlur={(e) => e.target.value.trim() !== (s.openrouterKey ?? '') && save({ openrouterKey: e.target.value.trim() })}
-            />
-          </label>
+        <div className="grid grid-cols-2 gap-3">
           <label className="text-[13.5px] text-muted">
             Model (draws, writes, reads pictures)
             <div className="mt-1">
-              <Select value={s.openrouterModel ?? OPENROUTER_DEFAULT} options={free} onChange={(v) => save({ openrouterModel: v })} />
+              <Select value={s.opencodeModel ?? OPENCODE_DEFAULT} options={free} onChange={(v) => save({ opencodeModel: v })} />
             </div>
           </label>
           <label className="text-[13.5px] text-muted">
-            Quick jobs (checks, small fixes)
+            Checks and small fixes (reads pictures)
             <div className="mt-1">
-              <Select
-                value={s.openrouterQuickModel ?? 'Same as the model'}
-                options={['Same as the model', ...free]}
-                onChange={(v) => save({ openrouterQuickModel: v === 'Same as the model' ? undefined : v })}
-              />
+              <Select value={s.opencodeQuickModel ?? OPENCODE_QUICK_DEFAULT} options={free} onChange={(v) => save({ opencodeQuickModel: v })} />
             </div>
           </label>
         </div>
@@ -146,7 +129,7 @@ export default function Settings() {
         <div className="text-[19px] font-semibold">Writing done by</div>
         <div className="mb-4 mt-1 text-[14px] text-muted">Scripts, titles, descriptions and captions.</div>
         <div className="grid grid-cols-4 gap-3">
-          <Select<Provider> value={s.writerProvider ?? 'Codex'} options={['Codex', 'Claude Code', 'OpenRouter']} onChange={(v) => save({ writerProvider: v })} />
+          <Select<Provider> value={s.writerProvider ?? 'Codex'} options={['Codex', 'Claude Code', 'OpenCode']} onChange={(v) => save({ writerProvider: v })} />
           {(s.writerProvider ?? 'Codex') === 'Codex' && (
             <Select value={s.writerModel ?? 'Codex default'} options={['Codex default']} onChange={(v) => save({ writerModel: v })} />
           )}
@@ -188,6 +171,7 @@ export default function Settings() {
         <div className="pb-1 pt-3 text-[19px] font-semibold">Tools on this computer</div>
         {pathRow('Claude Code', 'claudePath', status?.claude && status.claudeSignedIn, status?.claude && !status.claudeSignedIn ? 'Found, but not signed in. Install the Claude Code CLI, run claude in a terminal and sign in once.' : 'Makes the videos. Install it and sign in once.')}
         {pathRow('Codex', 'codexPath', status?.codex, 'Optional second maker.')}
+        {pathRow('OpenCode', 'opencodePath', status?.opencode, 'Optional free maker (opencode-cli.exe inside the OpenCode desktop app).')}
         {pathRow('whisper.cpp', 'whisperPath', status?.whisper, 'Hears the words in your voiceover. Downloaded the first time.')}
         {pathRow('Whisper model', 'whisperModel', status?.whisper, 'ggml model file (.bin).', 'bin')}
         {pathRow('yt-dlp', 'ytDlpPath', status?.ytDlp, 'Optional. Only for learning styles from links.')}
